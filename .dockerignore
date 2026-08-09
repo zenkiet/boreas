@@ -1,0 +1,8 @@
+.git
+.gitignore
+.env
+boreas
+boreas.new
+*.tar.gz
+*.log
+.DS_Store

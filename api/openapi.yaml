@@ -1,0 +1,2038 @@
+openapi: 3.0.3
+info:
+  description: Per-task staging environments. Tasks belong to projects and are served
+    at /{project}/{task}/. Proxied task traffic is public; this API is not.
+  title: Boreas API
+  version: 1.0.0
+paths:
+  /api/v1/auth/login:
+    post:
+      description: The token is returned once and expires after 30 days.
+      operationId: post-auth-login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      summary: Exchange credentials for a token
+      tags:
+      - auth
+  /api/v1/auth/logout:
+    post:
+      operationId: post-auth-logout
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Revoke the current token
+      tags:
+      - auth
+  /api/v1/auth/me:
+    get:
+      operationId: get-auth-me
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Current user
+      tags:
+      - auth
+  /api/v1/health:
+    get:
+      operationId: get-health
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      summary: Health check
+      tags:
+      - system
+  /api/v1/projects:
+    get:
+      description: Administrators see every project; other users see only their memberships.
+      operationId: get-projects
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectsResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List reachable projects
+      tags:
+      - projects
+    post:
+      description: The creator becomes the project owner. The slugs api, health, metrics,
+        static and admin are reserved.
+      operationId: post-projects
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Create a project
+      tags:
+      - projects
+  /api/v1/projects/{project}:
+    delete:
+      description: A project that still owns tasks cannot be deleted.
+      operationId: delete-projects-project
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Delete a project
+      tags:
+      - projects
+    get:
+      operationId: get-projects-project
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get a project
+      tags:
+      - projects
+    patch:
+      description: Send registry_credential_id as null to detach the credential; omit
+        it to leave it unchanged.
+      operationId: patch-projects-project
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Update a project
+      tags:
+      - projects
+  /api/v1/projects/{project}/members:
+    get:
+      operationId: get-projects-project-members
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembersResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List project members
+      tags:
+      - projects
+    post:
+      operationId: post-projects-project-members
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemberRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Add or promote a member
+      tags:
+      - projects
+  /api/v1/projects/{project}/members/{userID}:
+    delete:
+      description: The last owner cannot be removed.
+      operationId: delete-projects-project-members-userID
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: userID
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Remove a member
+      tags:
+      - projects
+  /api/v1/projects/{project}/tasks:
+    get:
+      operationId: get-projects-project-tasks
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List tasks
+      tags:
+      - tasks
+    post:
+      description: Task names are unique within a project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.
+      operationId: post-projects-project-tasks
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Create a task
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}:
+    delete:
+      description: Removes the task and its container.
+      operationId: delete-projects-project-tasks-name
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDeletedResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Delete a task
+      tags:
+      - tasks
+    get:
+      operationId: get-projects-project-tasks-name
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get a task
+      tags:
+      - tasks
+    patch:
+      description: 'Only the fields sent are changed. Changing image, port, labels,
+        or env needs a new container: auto_restart applies it immediately and defaults
+        to true, otherwise it is applied by the next start or restart. Editing only
+        the description leaves a running container untouched.'
+      operationId: patch-projects-project-tasks-name
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Update a task
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/env:
+    get:
+      operationId: get-projects-project-tasks-name-env
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get task environment
+      tags:
+      - tasks
+    put:
+      description: BOREAS_PROJECT, BOREAS_TASK, BOREAS_PORT and BASE_HREF are reserved.
+      operationId: put-projects-project-tasks-name-env
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEnvRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvUpdatedResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Update task environment
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/logs:
+    get:
+      operationId: get-projects-project-tasks-name-logs
+      parameters:
+      - in: query
+        name: tail
+        schema:
+          default: 100
+          minimum: 0
+          type: integer
+      - in: query
+        name: download
+        schema:
+          type: boolean
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Read task logs
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/logs/stream:
+    get:
+      description: 'Server-Sent Events. Each event carries a JSON object {"timestamp":
+        string, "stream": "stdout"|"stderr", "message": string}, and the server sends
+        a comment heartbeat while idle. Use EventSource rather than a generated client
+        method.'
+      operationId: get-projects-project-tasks-name-logs-stream
+      parameters:
+      - in: query
+        name: tail
+        schema:
+          default: 100
+          minimum: 0
+          type: integer
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Stream task logs
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/state:
+    put:
+      operationId: put-projects-project-tasks-name-state
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStateRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStateResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Start, stop, or restart a task
+      tags:
+      - tasks
+  /api/v1/registry-credentials:
+    get:
+      description: Credential tokens are never returned.
+      operationId: get-registry-credentials
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List registry credentials
+      tags:
+      - registry-credentials
+    post:
+      operationId: post-registry-credentials
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCredentialRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Create a registry credential
+      tags:
+      - registry-credentials
+  /api/v1/registry-credentials/{id}:
+    delete:
+      operationId: delete-registry-credentials-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Delete a registry credential
+      tags:
+      - registry-credentials
+  /api/v1/stats:
+    get:
+      operationId: get-stats
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStats'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Service statistics
+      tags:
+      - system
+  /api/v1/users:
+    get:
+      operationId: get-users
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List users
+      tags:
+      - users
+    post:
+      operationId: post-users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Create a user
+      tags:
+      - users
+  /api/v1/users/{id}:
+    delete:
+      description: A user cannot delete their own account.
+      operationId: delete-users-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Delete a user
+      tags:
+      - users
+    patch:
+      description: Changing the password or role, or disabling the account, revokes
+        that user's tokens.
+      operationId: patch-users-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Update a user
+      tags:
+      - users
+components:
+  schemas:
+    AddMemberRequest:
+      properties:
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+      required:
+      - user_id
+      type: object
+    CreateCredentialRequest:
+      properties:
+        name:
+          example: ghcr
+          type: string
+        registry:
+          $ref: '#/components/schemas/RegistryKind'
+        token:
+          format: password
+          type: string
+        username:
+          type: string
+      required:
+      - name
+      - registry
+      - username
+      - token
+      type: object
+    CreateProjectRequest:
+      properties:
+        name:
+          example: Demo
+          type: string
+        registry_credential_id:
+          $ref: '#/components/schemas/UUID'
+        slug:
+          example: demo
+          type: string
+      required:
+      - slug
+      type: object
+    CreateTaskRequest:
+      properties:
+        description:
+          type: string
+        env:
+          additionalProperties:
+            type: string
+          type: object
+        image:
+          example: nginx:alpine
+          type: string
+        labels:
+          additionalProperties:
+            type: string
+          type: object
+        name:
+          example: web
+          type: string
+        port:
+          example: 80
+          type: integer
+      required:
+      - name
+      - image
+      type: object
+    CreateUserRequest:
+      properties:
+        email:
+          format: email
+          type: string
+        password:
+          format: password
+          minLength: 8
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        username:
+          type: string
+      required:
+      - username
+      - email
+      - password
+      type: object
+    Credential:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          example: ghcr
+          type: string
+        registry:
+          $ref: '#/components/schemas/RegistryKind'
+        username:
+          type: string
+      required:
+      - id
+      - name
+      - registry
+      - username
+      - created_at
+      type: object
+    CredentialResponse:
+      properties:
+        credential:
+          $ref: '#/components/schemas/Credential'
+      required:
+      - credential
+      type: object
+    CredentialsResponse:
+      properties:
+        credentials:
+          items:
+            $ref: '#/components/schemas/Credential'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - credentials
+      - total
+      type: object
+    EnvResponse:
+      properties:
+        env:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+        total:
+          type: integer
+      required:
+      - env
+      - total
+      type: object
+    EnvUpdatedResponse:
+      properties:
+        auto_restart:
+          type: boolean
+        message:
+          example: environment updated
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        variables:
+          type: integer
+      required:
+      - message
+      - variables
+      - auto_restart
+      - status
+      type: object
+    ErrorResponse:
+      properties:
+        error:
+          example: not found
+          type: string
+      required:
+      - error
+      type: object
+    HealthResponse:
+      properties:
+        service:
+          example: boreas
+          type: string
+        status:
+          example: healthy
+          type: string
+      required:
+      - service
+      - status
+      type: object
+    LoginRequest:
+      properties:
+        password:
+          format: password
+          type: string
+        username:
+          example: admin
+          type: string
+      required:
+      - username
+      - password
+      type: object
+    LoginResponse:
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - token
+      - user
+      type: object
+    Member:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+      required:
+      - user_id
+      - username
+      - role
+      - created_at
+      type: object
+    MembersResponse:
+      properties:
+        members:
+          items:
+            $ref: '#/components/schemas/Member'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - members
+      - total
+      type: object
+    NullableUUID:
+      format: uuid
+      nullable: true
+      type: string
+    Project:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          example: Demo
+          type: string
+        registry_credential_id:
+          $ref: '#/components/schemas/UUID'
+        slug:
+          example: demo
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - slug
+      - name
+      - created_at
+      - updated_at
+      type: object
+    ProjectResponse:
+      properties:
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+      - project
+      type: object
+    ProjectRole:
+      enum:
+      - owner
+      - member
+      type: string
+    ProjectsResponse:
+      properties:
+        projects:
+          items:
+            $ref: '#/components/schemas/Project'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - projects
+      - total
+      type: object
+    RegistryKind:
+      enum:
+      - ghcr
+      - dockerhub
+      type: string
+    SuccessResponse:
+      properties:
+        success:
+          example: true
+          type: boolean
+      required:
+      - success
+      type: object
+    SystemStats:
+      properties:
+        running_tasks:
+          type: integer
+        stopped_tasks:
+          type: integer
+        total_memory_mb:
+          format: double
+          type: number
+        total_projects:
+          type: integer
+        total_tasks:
+          type: integer
+      required:
+      - total_tasks
+      - running_tasks
+      - stopped_tasks
+      - total_projects
+      - total_memory_mb
+      type: object
+    Task:
+      properties:
+        container_id:
+          type: string
+        container_ip:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        description:
+          type: string
+        env:
+          additionalProperties:
+            type: string
+          type: object
+        error:
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        image:
+          example: nginx:alpine
+          type: string
+        labels:
+          additionalProperties:
+            type: string
+          type: object
+        name:
+          example: web
+          type: string
+        pending_recreate:
+          type: boolean
+        port:
+          example: 80
+          type: integer
+        project_id:
+          $ref: '#/components/schemas/UUID'
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - project_id
+      - name
+      - image
+      - status
+      - port
+      - created_at
+      - updated_at
+      type: object
+    TaskDeletedResponse:
+      properties:
+        message:
+          example: task deleted
+          type: string
+        success:
+          type: boolean
+      required:
+      - success
+      - message
+      type: object
+    TaskResponse:
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+      required:
+      - task
+      type: object
+    TaskStateResponse:
+      properties:
+        success:
+          type: boolean
+        task:
+          $ref: '#/components/schemas/Task'
+      required:
+      - success
+      - task
+      type: object
+    TaskStatus:
+      enum:
+      - creating
+      - starting
+      - running
+      - stopped
+      - error
+      - unknown
+      type: string
+    TasksResponse:
+      properties:
+        tasks:
+          items:
+            $ref: '#/components/schemas/Task'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - tasks
+      - total
+      type: object
+    UUID:
+      format: uuid
+      type: string
+    UpdateEnvRequest:
+      properties:
+        auto_restart:
+          nullable: true
+          type: boolean
+        env:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+      required:
+      - env
+      type: object
+    UpdateProjectRequest:
+      properties:
+        name:
+          nullable: true
+          type: string
+        registry_credential_id:
+          $ref: '#/components/schemas/NullableUUID'
+      type: object
+    UpdateStateRequest:
+      properties:
+        action:
+          enum:
+          - start
+          - stop
+          - restart
+          example: start
+          type: string
+      required:
+      - action
+      type: object
+    UpdateTaskRequest:
+      properties:
+        auto_restart:
+          nullable: true
+          type: boolean
+        description:
+          nullable: true
+          type: string
+        env:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+        image:
+          example: nginx:1.27-alpine
+          nullable: true
+          type: string
+        labels:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+        port:
+          example: 80
+          nullable: true
+          type: integer
+      type: object
+    UpdateUserRequest:
+      properties:
+        disabled:
+          nullable: true
+          type: boolean
+        email:
+          format: email
+          nullable: true
+          type: string
+        password:
+          format: password
+          minLength: 8
+          nullable: true
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+      type: object
+    User:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        disabled:
+          type: boolean
+        email:
+          format: email
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        role:
+          $ref: '#/components/schemas/UserRole'
+        updated_at:
+          format: date-time
+          type: string
+        username:
+          example: admin
+          type: string
+      required:
+      - id
+      - username
+      - email
+      - role
+      - disabled
+      - created_at
+      - updated_at
+      type: object
+    UserResponse:
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - user
+      type: object
+    UserRole:
+      enum:
+      - admin
+      - user
+      nullable: true
+      type: string
+    UsersResponse:
+      properties:
+        total:
+          type: integer
+        users:
+          items:
+            $ref: '#/components/schemas/User'
+          nullable: true
+          type: array
+      required:
+      - users
+      - total
+      type: object
+  securitySchemes:
+    bearerAuth:
+      description: 'Token from POST /api/v1/auth/login, sent as: Authorization: Bearer
+        <token>'
+      scheme: bearer
+      type: http
