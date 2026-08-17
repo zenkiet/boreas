@@ -105,6 +105,7 @@ func (s *stubAuth) ListUsers(c context.Context) ([]core.User, error) {
 func (*stubAuth) CreateUser(context.Context, service.CreateUserInput) (core.User, error) {
 	return core.User{}, nil
 }
+
 func (*stubAuth) UpdateUser(context.Context, uuid.UUID, service.UpdateUserInput) (core.User, error) {
 	return core.User{}, nil
 }
@@ -147,6 +148,7 @@ func (*stubProjects) Delete(context.Context, string) error { return nil }
 func (*stubProjects) ListMembers(context.Context, string) ([]core.ProjectMember, error) {
 	return nil, nil
 }
+
 func (*stubProjects) AddMember(context.Context, string, uuid.UUID, core.ProjectRole) error {
 	return nil
 }

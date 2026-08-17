@@ -32,12 +32,14 @@ type responseRecorder struct {
 
 // Unwrap exposes streaming capabilities through the recorder.
 func (w *responseRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func (w *responseRecorder) WriteHeader(status int) {
 	if w.status == 0 {
 		w.status = status
 	}
 	w.ResponseWriter.WriteHeader(status)
 }
+
 func (w *responseRecorder) Write(p []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK

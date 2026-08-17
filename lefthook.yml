@@ -4,11 +4,17 @@ commit-msg:
       run: sh scripts/validate-commit-msg.sh {1}
 
 pre-commit:
+  commands:
+    format:
+      glob: "*.go"
+      run: golangci-lint fmt --diff {staged_files}
+
+pre-push:
   parallel: true
   commands:
     lint:
-      glob: "*.go"
-      run: golangci-lint run --path-prefix .
-    fmt:
-      glob: "*.go"
-      run: gofumpt -w {staged_files} && goimports -w {staged_files}
+      run: golangci-lint run ./...
+    test:
+      run: go test ./...
+    openapi:
+      run: make openapi-check

@@ -1,0 +1,27 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    # - errcheck
+    - govet
+    - ineffassign
+    - unused
+    # - staticcheck
+    # - gosec
+    - gocritic
+    # - revive
+    # - goconst
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true

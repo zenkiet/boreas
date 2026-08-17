@@ -255,6 +255,9 @@ redirected.
 ```bash
 make build            # Static pure-Go build (CGO_ENABLED=0)
 make db               # Start only PostgreSQL
+make hooks            # Install the repository Git hooks
+make fmt              # Format Go source with the repository lint configuration
+make lint             # Run the full Go linter set
 make test             # Standard Go tests
 make test-integration # Postgres store tests; needs a running database
 make test-docker      # Docker runtime tests; needs a running Docker daemon

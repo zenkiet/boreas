@@ -1,4 +1,4 @@
-.PHONY: all build run dev docker clean fmt test test-race test-integration test-docker lint db openapi openapi-check
+.PHONY: all build run dev docker clean fmt hooks test test-race test-integration test-docker lint db openapi openapi-check
 
 all: build
 
@@ -22,7 +22,10 @@ clean:
 	rm -f boreas
 
 fmt:
-	gofmt -w cmd internal
+	golangci-lint fmt
+
+hooks:
+	lefthook install
 
 openapi:
 	go run ./cmd/openapi > api/openapi.yaml
