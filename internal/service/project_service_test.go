@@ -9,21 +9,21 @@ import (
 	"github.com/zenkiet/boreas/internal/core"
 )
 
-func newProjects(t *testing.T) (*ProjectService, *fakeProjectStore, *fakeTaskStore, *fakeCredentialStore) {
+func newProjects(t *testing.T) (*ProjectService, *fakeProjectStore, *fakeCredentialStore) {
 	t.Helper()
-	projects, tasks, credentials := newFakeProjectStore(), newFakeTaskStore(), newFakeCredentialStore()
-	svc, err := NewProjectService(projects, tasks, credentials)
+	projects, credentials := newFakeProjectStore(), newFakeCredentialStore()
+	svc, err := NewProjectService(projects, credentials)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return svc, projects, tasks, credentials
+	return svc, projects, credentials
 }
 
 func admin() core.User  { return core.User{ID: uuid.New(), Username: "admin", Role: core.RoleAdmin} }
 func member() core.User { return core.User{ID: uuid.New(), Username: "member", Role: core.RoleUser} }
 
 func TestCreateProjectMakesCallerOwner(t *testing.T) {
-	svc, store, _, _ := newProjects(t)
+	svc, store, _ := newProjects(t)
 	actor := member()
 	project, err := svc.Create(context.Background(), actor, CreateProjectInput{Slug: "team-alpha"})
 	if err != nil {
@@ -42,7 +42,7 @@ func TestCreateProjectMakesCallerOwner(t *testing.T) {
 }
 
 func TestCreateProjectRejectsReservedAndInvalidSlugs(t *testing.T) {
-	svc, _, _, _ := newProjects(t)
+	svc, _, _ := newProjects(t)
 	for _, slug := range []string{"api", "admin", "Upper", "-dash", ""} {
 		if _, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: slug}); !errors.Is(err, core.ErrInvalidInput) {
 			t.Fatalf("slug %q: got %v, want ErrInvalidInput", slug, err)
@@ -51,7 +51,7 @@ func TestCreateProjectRejectsReservedAndInvalidSlugs(t *testing.T) {
 }
 
 func TestAccessRules(t *testing.T) {
-	svc, _, _, _ := newProjects(t)
+	svc, _, _ := newProjects(t)
 	owner := member()
 	_, err := svc.Create(context.Background(), owner, CreateProjectInput{Slug: "team"})
 	if err != nil {
@@ -83,7 +83,7 @@ func TestAccessRules(t *testing.T) {
 }
 
 func TestListScopedByRole(t *testing.T) {
-	svc, _, _, _ := newProjects(t)
+	svc, _, _ := newProjects(t)
 	first, second := member(), member()
 	if _, err := svc.Create(context.Background(), first, CreateProjectInput{Slug: "one"}); err != nil {
 		t.Fatal(err)
@@ -109,33 +109,8 @@ func TestListScopedByRole(t *testing.T) {
 	}
 }
 
-func TestDeleteProjectRequiresNoTasks(t *testing.T) {
-	svc, _, tasks, _ := newProjects(t)
-	project, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: "team"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tasks.Create(context.Background(), core.Task{ProjectID: project.ID, Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.Delete(context.Background(), "team"); !errors.Is(err, core.ErrConflict) {
-		t.Fatalf("got %v, want ErrConflict", err)
-	}
-
-	stored, err := tasks.GetByName(context.Background(), project.ID, "web")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tasks.Delete(context.Background(), stored.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.Delete(context.Background(), "team"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestRemoveMemberProtectsLastOwner(t *testing.T) {
-	svc, _, _, _ := newProjects(t)
+	svc, _, _ := newProjects(t)
 	owner, second := member(), member()
 	if _, err := svc.Create(context.Background(), owner, CreateProjectInput{Slug: "team"}); err != nil {
 		t.Fatal(err)
@@ -153,7 +128,7 @@ func TestRemoveMemberProtectsLastOwner(t *testing.T) {
 }
 
 func TestAddMemberRejectsUnknownRole(t *testing.T) {
-	svc, _, _, _ := newProjects(t)
+	svc, _, _ := newProjects(t)
 	if _, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: "team"}); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +138,7 @@ func TestAddMemberRejectsUnknownRole(t *testing.T) {
 }
 
 func TestCredentialLifecycleAndValidation(t *testing.T) {
-	svc, _, _, _ := newProjects(t)
+	svc, _, _ := newProjects(t)
 	actor := admin()
 	credential, err := svc.CreateCredential(context.Background(), actor, CreateCredentialInput{
 		Name: "ghcr-bot", Registry: core.RegistryGHCR, Username: "bot", Token: "secret",
@@ -197,12 +172,18 @@ func TestCredentialLifecycleAndValidation(t *testing.T) {
 }
 
 func TestCreateProjectRejectsUnknownCredential(t *testing.T) {
-	svc, _, _, _ := newProjects(t)
+	svc, _, _ := newProjects(t)
 	missing := uuid.New()
 	_, err := svc.Create(context.Background(), member(), CreateProjectInput{
 		Slug: "team", RegistryCredentialID: &missing,
 	})
 	if !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+func TestNewProjectServiceRequiresCredentialStore(t *testing.T) {
+	if _, err := NewProjectService(newFakeProjectStore(), nil); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("got %v, want ErrInvalidInput", err)
 	}
 }

@@ -125,7 +125,7 @@ func MarshalOpenAPIYAML() ([]byte, error) {
 func (h *Handler) openapiJSON(w http.ResponseWriter, _ *http.Request) {
 	spec, err := OpenAPISpec()
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, spec)

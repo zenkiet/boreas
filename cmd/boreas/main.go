@@ -84,7 +84,7 @@ func run() error {
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	defer routes.CloseIdleConnections()
 
-	projects, err := service.NewProjectService(projectStore, taskStore, credentials)
+	projects, err := service.NewProjectService(projectStore, credentials)
 	if err != nil {
 		return err
 	}
@@ -104,13 +104,8 @@ func run() error {
 		logger.Printf("startup reconciliation completed with warnings: %v", err)
 	}
 
-	httpOptions := httptransport.Options{
-		Logger: logger,
-		CORS:   httptransport.CORSConfig{AllowedOrigins: []string{"*"}},
-		Docs:   true,
-	}
 	handler := httptransport.ApplicationHandler(
-		httptransport.APIHandler(tasks, auth, projects, httpOptions),
+		httptransport.APIHandler(tasks, auth, projects, logger),
 		routes,
 		logger,
 	)

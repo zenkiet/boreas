@@ -107,6 +107,14 @@ Task names are unique per project, so two projects may each have a `web`.
 | `owner` | project | Project settings and membership, plus member rights |
 | `member` | project | Task read and lifecycle operations |
 
+Add an existing user to a project as a member:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/projects/demo/members \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"user_id":"<id>","role":"member"}'
+```
+
 ## API
 
 All API routes are under `/api/v1`.
@@ -139,8 +147,6 @@ All API routes are under `/api/v1`.
 | `PATCH` | `/projects/{project}/tasks/{name}` | member | Update image, port, labels, env, or description |
 | `PUT` | `/projects/{project}/tasks/{name}/state` | member | Start, stop, or restart |
 | `DELETE` | `/projects/{project}/tasks/{name}` | member | Delete a task and its container |
-| `GET` | `/projects/{project}/tasks/{name}/env` | member | Get task environment |
-| `PUT` | `/projects/{project}/tasks/{name}/env` | member | Update task environment |
 | `GET` | `/projects/{project}/tasks/{name}/logs` | member | Read task logs |
 | `GET` | `/projects/{project}/tasks/{name}/logs/stream` | member | Stream logs over SSE |
 
@@ -155,6 +161,18 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
   -d '{"image":"nginx:1.27-alpine"}' \
   http://localhost:8080/api/v1/projects/demo/tasks/web
 ```
+
+Task responses include their current `env`. Update or clear it through the
+same PATCH endpoint:
+
+```bash
+curl -X PATCH -H "$AUTH" -H "$JSON" \
+  -d '{"env":{"APP_MODE":"staging"},"auto_restart":false}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/web
+```
+
+The former dedicated `GET` and `PUT` `/tasks/{name}/env` endpoints have been
+removed. Clients should read `task.env` and use `PATCH /tasks/{name}` instead.
 
 For live logs, use an SSE-capable client:
 
@@ -188,8 +206,7 @@ npx @openapitools/openapi-generator-cli generate \
 
 The generated client exposes `TaskStatus`, `UserRole`, `ProjectRole`, and
 `RegistryKind` as string-literal unions, and UUID fields as `string`.
-The documentation endpoints are served only when the server enables them, which
-`cmd/boreas` does by default.
+The documentation endpoints are always available.
 
 ## Configuration
 
@@ -214,6 +231,16 @@ the database connection and the initial administrator.
 Registry credentials are no longer configuration. Store them once through
 `/api/v1/registry-credentials` and attach one to a project; Boreas uses it when
 pulling that project's images.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/registry-credentials \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"ghcr","registry":"ghcr","username":"bot","token":"..."}'
+
+curl -X PATCH http://localhost:8080/api/v1/projects/demo \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"registry_credential_id":"<id>"}'
+```
 
 ## Task application subpaths
 

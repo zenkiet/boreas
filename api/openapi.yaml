@@ -795,121 +795,6 @@ paths:
       summary: Update a task
       tags:
       - tasks
-  /api/v1/projects/{project}/tasks/{name}/env:
-    get:
-      operationId: get-projects-project-tasks-name-env
-      parameters:
-      - in: path
-        name: project
-        required: true
-        schema:
-          example: demo
-          type: string
-      - in: path
-        name: name
-        required: true
-        schema:
-          example: web
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Unauthorized
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Forbidden
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Not Found
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Internal Server Error
-      security:
-      - bearerAuth: []
-      summary: Get task environment
-      tags:
-      - tasks
-    put:
-      description: BOREAS_PROJECT, BOREAS_TASK, BOREAS_PORT and BASE_HREF are reserved.
-      operationId: put-projects-project-tasks-name-env
-      parameters:
-      - in: path
-        name: project
-        required: true
-        schema:
-          example: demo
-          type: string
-      - in: path
-        name: name
-        required: true
-        schema:
-          example: web
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateEnvRequest'
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvUpdatedResponse'
-          description: OK
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Bad Request
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Unauthorized
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Forbidden
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Not Found
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Internal Server Error
-      security:
-      - bearerAuth: []
-      summary: Update task environment
-      tags:
-      - tasks
   /api/v1/projects/{project}/tasks/{name}/logs:
     get:
       operationId: get-projects-project-tasks-name-logs
@@ -1605,36 +1490,6 @@ components:
       - credentials
       - total
       type: object
-    EnvResponse:
-      properties:
-        env:
-          additionalProperties:
-            type: string
-          nullable: true
-          type: object
-        total:
-          type: integer
-      required:
-      - env
-      - total
-      type: object
-    EnvUpdatedResponse:
-      properties:
-        auto_restart:
-          type: boolean
-        message:
-          example: environment updated
-          type: string
-        status:
-          $ref: '#/components/schemas/TaskStatus'
-        variables:
-          type: integer
-      required:
-      - message
-      - variables
-      - auto_restart
-      - status
-      type: object
     ErrorResponse:
       properties:
         error:
@@ -1808,6 +1663,7 @@ components:
         env:
           additionalProperties:
             type: string
+          nullable: true
           type: object
         error:
           type: string
@@ -1844,6 +1700,7 @@ components:
       - port
       - created_at
       - updated_at
+      - env
       type: object
     TaskDeletedResponse:
       properties:
@@ -1898,19 +1755,6 @@ components:
     UUID:
       format: uuid
       type: string
-    UpdateEnvRequest:
-      properties:
-        auto_restart:
-          nullable: true
-          type: boolean
-        env:
-          additionalProperties:
-            type: string
-          nullable: true
-          type: object
-      required:
-      - env
-      type: object
     UpdateProjectRequest:
       properties:
         name:

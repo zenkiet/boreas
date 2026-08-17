@@ -2,6 +2,7 @@ package httptransport
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,7 +16,7 @@ type Handler struct {
 	tasks    TaskService
 	auth     AuthService
 	projects ProjectService
-	options  Options
+	logger   *log.Logger
 }
 
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
@@ -25,7 +26,7 @@ func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.tasks.SystemStats(r.Context())
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, systemStatsDTO{
@@ -37,7 +38,7 @@ func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -47,7 +48,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 			writeUnauthorized(w)
 			return
 		}
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, loginResponse{Token: token, User: userFromCore(user)})
@@ -55,7 +56,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.auth.Logout(r.Context(), bearerToken(r)); err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
@@ -68,7 +69,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.auth.ListUsers(r.Context())
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	result := make([]userDTO, len(users))
@@ -80,7 +81,7 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	var req createUserRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -88,7 +89,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		Username: req.Username, Email: req.Email, Password: req.Password, Role: req.Role,
 	})
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, userResponse{User: userFromCore(user)})
@@ -101,7 +102,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req updateUserRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -109,7 +110,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		Email: req.Email, Password: req.Password, Role: req.Role, Disabled: req.Disabled,
 	})
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, userResponse{User: userFromCore(user)})
@@ -126,7 +127,7 @@ func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.auth.DeleteUser(r.Context(), id); err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
@@ -135,7 +136,7 @@ func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listCredentials(w http.ResponseWriter, r *http.Request) {
 	credentials, err := h.projects.ListCredentials(r.Context())
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	result := make([]credentialDTO, len(credentials))
@@ -147,7 +148,7 @@ func (h *Handler) listCredentials(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createCredential(w http.ResponseWriter, r *http.Request) {
 	var req createCredentialRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -155,7 +156,7 @@ func (h *Handler) createCredential(w http.ResponseWriter, r *http.Request) {
 		Name: req.Name, Registry: req.Registry, Username: req.Username, Token: req.Token,
 	})
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, credentialResponse{Credential: credentialFromCore(credential)})
@@ -168,7 +169,7 @@ func (h *Handler) deleteCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.projects.DeleteCredential(r.Context(), id); err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
@@ -177,7 +178,7 @@ func (h *Handler) deleteCredential(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 	projects, err := h.projects.List(r.Context(), userFrom(r.Context()))
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	result := make([]projectDTO, len(projects))
@@ -189,7 +190,7 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 	var req createProjectRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -197,7 +198,7 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 		Slug: req.Slug, Name: req.Name, RegistryCredentialID: req.RegistryCredentialID,
 	})
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, projectResponse{Project: projectFromCore(project)})
@@ -206,7 +207,7 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
 	project, err := h.projects.Get(r.Context(), r.PathValue("project"))
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, projectResponse{Project: projectFromCore(project)})
@@ -214,7 +215,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 	var req updateProjectRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -224,7 +225,7 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	project, err := h.projects.Update(r.Context(), r.PathValue("project"), in)
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, projectResponse{Project: projectFromCore(project)})
@@ -232,7 +233,7 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request) {
 	if err := h.projects.Delete(r.Context(), r.PathValue("project")); err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
@@ -241,7 +242,7 @@ func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listMembers(w http.ResponseWriter, r *http.Request) {
 	members, err := h.projects.ListMembers(r.Context(), r.PathValue("project"))
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	result := make([]memberDTO, len(members))
@@ -254,7 +255,7 @@ func (h *Handler) listMembers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {
 	var req addMemberRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -263,7 +264,7 @@ func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {
 		role = core.ProjectRoleMember
 	}
 	if err := h.projects.AddMember(r.Context(), r.PathValue("project"), req.UserID, role); err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
@@ -276,7 +277,7 @@ func (h *Handler) removeMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.projects.RemoveMember(r.Context(), r.PathValue("project"), userID); err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
@@ -285,7 +286,7 @@ func (h *Handler) removeMember(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := h.tasks.List(r.Context(), r.PathValue("project"))
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	result := make([]taskDTO, len(tasks))
@@ -298,7 +299,7 @@ func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.tasks.Get(r.Context(), r.PathValue("project"), r.PathValue("name"))
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, taskResponse{Task: taskFromCore(task)})
@@ -306,7 +307,7 @@ func (h *Handler) getTask(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 	var req createTaskRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -315,7 +316,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 		Port: req.Port, Labels: req.Labels, Env: req.Env,
 	})
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, taskResponse{Task: taskFromCore(task)})
@@ -323,7 +324,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	var req updateTaskRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -334,7 +335,7 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 			Labels: req.Labels, Env: req.Env,
 		}, autoRestart)
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, taskResponse{Task: taskFromCore(task)})
@@ -342,7 +343,7 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) updateState(w http.ResponseWriter, r *http.Request) {
 	var req updateStateRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil {
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
 		writeBadRequest(w)
 		return
 	}
@@ -360,7 +361,7 @@ func (h *Handler) updateState(w http.ResponseWriter, r *http.Request) {
 		err = errors.Join(core.ErrInvalidInput, errors.New("unknown state action"))
 	}
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, taskStateResponse{Success: true, Task: taskFromCore(task)})
@@ -368,40 +369,10 @@ func (h *Handler) updateState(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteTask(w http.ResponseWriter, r *http.Request) {
 	if err := h.tasks.Delete(r.Context(), r.PathValue("project"), r.PathValue("name")); err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, taskDeletedResponse{Success: true, Message: "task deleted"})
-}
-
-func (h *Handler) getEnv(w http.ResponseWriter, r *http.Request) {
-	env, err := h.tasks.GetEnv(r.Context(), r.PathValue("project"), r.PathValue("name"))
-	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
-		return
-	}
-	if env == nil {
-		env = map[string]string{}
-	}
-	writeJSON(w, http.StatusOK, envResponse{Env: env, Total: len(env)})
-}
-
-func (h *Handler) updateEnv(w http.ResponseWriter, r *http.Request) {
-	var req updateEnvRequest
-	if err := decodeJSON(w, r, h.options.MaxRequestBytes, &req); err != nil || req.Env == nil {
-		writeBadRequest(w)
-		return
-	}
-	autoRestart := req.AutoRestart == nil || *req.AutoRestart
-	task, err := h.tasks.UpdateEnv(r.Context(), r.PathValue("project"), r.PathValue("name"), req.Env, autoRestart)
-	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, envUpdatedResponse{
-		Message: "environment updated", Variables: len(task.Env),
-		AutoRestart: autoRestart, Status: task.Status,
-	})
 }
 
 func parseTail(r *http.Request) (int, error) {

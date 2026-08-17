@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zenkiet/boreas/internal/core"
 	"github.com/zenkiet/boreas/internal/pkg/database"
@@ -142,6 +143,36 @@ func TestTaskNameUniquePerProject(t *testing.T) {
 	}
 	if len(tasks) != 1 {
 		t.Fatalf("List must be scoped to one project, got %d tasks", len(tasks))
+	}
+}
+
+func TestProjectDeleteRestrictedByTasks(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	project := seedProject(t, pool)
+	projects, tasks := NewProjectStore(pool), NewTaskStore(pool)
+
+	task, err := tasks.Create(ctx, core.Task{
+		ProjectID: project.ID, Name: "web", Image: "img", Status: core.StatusUnknown, Port: 80,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := projects.Delete(ctx, project.ID); !errors.Is(err, core.ErrConflict) {
+		t.Fatalf("got %v, want ErrConflict", err)
+	}
+	if err := tasks.Delete(ctx, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := projects.Delete(ctx, project.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestForeignKeyViolationMapsToConflict(t *testing.T) {
+	err := mapError("delete project", &pgconn.PgError{Code: foreignKeyViolation})
+	if !errors.Is(err, core.ErrConflict) {
+		t.Fatalf("got %v, want ErrConflict", err)
 	}
 }
 

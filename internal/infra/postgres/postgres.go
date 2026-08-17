@@ -12,8 +12,12 @@ import (
 	"github.com/zenkiet/boreas/internal/core"
 )
 
-// uniqueViolation is the SQLSTATE code Postgres reports for a duplicate key.
-const uniqueViolation = "23505"
+const (
+	// uniqueViolation is the SQLSTATE code Postgres reports for a duplicate key.
+	uniqueViolation = "23505"
+	// foreignKeyViolation is the SQLSTATE code Postgres reports for a blocked reference change.
+	foreignKeyViolation = "23503"
+)
 
 func mapError(operation string, err error) error {
 	if err == nil {
@@ -23,8 +27,13 @@ func mapError(operation string, err error) error {
 		return core.ErrNotFound
 	}
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
-		return errors.Join(core.ErrAlreadyExists, fmt.Errorf("%s: %w", operation, err))
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case uniqueViolation:
+			return errors.Join(core.ErrAlreadyExists, fmt.Errorf("%s: %w", operation, err))
+		case foreignKeyViolation:
+			return errors.Join(core.ErrConflict, fmt.Errorf("%s: %w", operation, err))
+		}
 	}
 	return fmt.Errorf("%s: %w", operation, err)
 }

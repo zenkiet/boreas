@@ -100,8 +100,7 @@ func TestSpecRoundTrips(t *testing.T) {
 }
 
 func TestDocsEndpoints(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{},
-		Options{Logger: log.New(io.Discard, "", 0), Docs: true})
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, log.New(io.Discard, "", 0))
 
 	rr := do(h, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	if rr.Code != http.StatusOK {
@@ -122,15 +121,6 @@ func TestDocsEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(body, "/api/v1/openapi.json") {
 		t.Fatal("the documentation page must load the served specification")
-	}
-}
-
-func TestDocsDisabledByDefault(t *testing.T) {
-	h := testHandler(stubTasks{}, nil, nil)
-	for _, path := range []string{"/api/v1/openapi.json", "/api/v1/docs"} {
-		if rr := do(h, httptest.NewRequest(http.MethodGet, path, nil)); rr.Code != http.StatusNotFound {
-			t.Fatalf("%s status = %d, want 404", path, rr.Code)
-		}
 	}
 }
 

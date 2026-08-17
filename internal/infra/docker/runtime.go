@@ -10,7 +10,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -228,13 +227,9 @@ func (r *Runtime) Inspect(ctx context.Context, id string) (core.ContainerState, 
 
 func (r *Runtime) Logs(ctx context.Context, id string, options core.LogOptions) (io.ReadCloser, error) {
 	tail := strconv.Itoa(options.Tail)
-	since := ""
-	if !options.Since.IsZero() {
-		since = options.Since.Format(time.RFC3339Nano)
-	}
 	stream, err := r.client.ContainerLogs(ctx, id, container.LogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: options.Follow, Tail: tail,
-		Timestamps: options.Timestamps, Since: since,
+		Timestamps: options.Timestamps,
 	})
 	if err != nil {
 		return nil, mapError("read logs for container "+id, err)

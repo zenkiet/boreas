@@ -45,3 +45,5 @@ go.work.sum
 
 # Data
 data/
+# Added by goreleaser init:
+dist/

@@ -20,55 +20,42 @@ type logEntry struct {
 	Message   string    `json:"message"`
 }
 
+const heartbeatInterval = 15 * time.Second
+
 func (h *Handler) logs(w http.ResponseWriter, r *http.Request) {
 	tail, err := parseTail(r)
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	reader, err := h.tasks.Logs(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		core.LogOptions{Tail: tail, Timestamps: true})
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	defer reader.Close()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if r.URL.Query().Get("download") == "true" {
-		filename := safeFilename(r.PathValue("project")) + "-" + safeFilename(r.PathValue("name"))
+		filename := r.PathValue("project") + "-" + r.PathValue("name")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`-logs.txt"`)
 	}
 	if _, err := stdcopy.StdCopy(w, w, reader); err != nil && !errors.Is(err, r.Context().Err()) {
-		h.options.Logger.Printf("stream task logs: %v", err)
+		h.logger.Printf("stream task logs: %v", err)
 	}
-}
-
-func safeFilename(value string) string {
-	var b strings.Builder
-	for _, r := range value {
-		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('_')
-		}
-	}
-	if b.Len() == 0 {
-		return "task"
-	}
-	return b.String()
 }
 
 func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 	tail, err := parseTail(r)
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	reader, err := h.tasks.Logs(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		core.LogOptions{Tail: tail, Follow: true, Timestamps: true})
 	if err != nil {
-		writeServiceError(w, h.options.Logger, err)
+		writeServiceError(w, h.logger, err)
 		return
 	}
 	defer reader.Close()
@@ -91,7 +78,7 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		done <- copyErr
 	}()
 
-	heartbeat := time.NewTicker(h.options.Heartbeat)
+	heartbeat := time.NewTicker(heartbeatInterval)
 	defer heartbeat.Stop()
 	for {
 		select {
@@ -112,7 +99,7 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 					_, _ = w.Write(append(append([]byte("data: "), payload...), '\n', '\n'))
 				default:
 					if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, r.Context().Err()) {
-						h.options.Logger.Printf("decode task log stream: %v", err)
+						h.logger.Printf("decode task log stream: %v", err)
 					}
 					_ = rc.Flush()
 					return

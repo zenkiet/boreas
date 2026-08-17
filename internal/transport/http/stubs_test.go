@@ -18,12 +18,11 @@ var (
 )
 
 type stubTasks struct {
-	get       func(context.Context, string, string) (core.Task, error)
-	create    func(context.Context, string, service.CreateTaskInput) (core.Task, error)
-	update    func(context.Context, string, string, service.UpdateTaskInput, bool) (core.Task, error)
-	updateEnv func(context.Context, string, string, map[string]string, bool) (core.Task, error)
-	logs      func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
-	stats     func(context.Context) (core.SystemStats, error)
+	get    func(context.Context, string, string) (core.Task, error)
+	create func(context.Context, string, service.CreateTaskInput) (core.Task, error)
+	update func(context.Context, string, string, service.UpdateTaskInput, bool) (core.Task, error)
+	logs   func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
+	stats  func(context.Context) (core.SystemStats, error)
 }
 
 func (stubTasks) List(context.Context, string) ([]core.Task, error) { return nil, nil }
@@ -55,16 +54,6 @@ func (stubTasks) Restart(context.Context, string, string) (core.Task, error) {
 	return core.Task{}, nil
 }
 func (stubTasks) Delete(context.Context, string, string) error { return nil }
-func (stubTasks) GetEnv(context.Context, string, string) (map[string]string, error) {
-	return nil, nil
-}
-
-func (s stubTasks) UpdateEnv(c context.Context, project, name string, env map[string]string, recreate bool) (core.Task, error) {
-	if s.updateEnv != nil {
-		return s.updateEnv(c, project, name, env, recreate)
-	}
-	return core.Task{}, nil
-}
 
 func (s stubTasks) Logs(c context.Context, project, name string, opts core.LogOptions) (io.ReadCloser, error) {
 	if s.logs != nil {

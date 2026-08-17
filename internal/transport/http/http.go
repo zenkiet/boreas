@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
@@ -22,8 +21,6 @@ type TaskService interface {
 	Stop(ctx context.Context, project, name string) (core.Task, error)
 	Restart(ctx context.Context, project, name string) (core.Task, error)
 	Delete(ctx context.Context, project, name string) error
-	GetEnv(ctx context.Context, project, name string) (map[string]string, error)
-	UpdateEnv(ctx context.Context, project, name string, env map[string]string, recreate bool) (core.Task, error)
 	Logs(ctx context.Context, project, name string, opts core.LogOptions) (io.ReadCloser, error)
 	SystemStats(context.Context) (core.SystemStats, error)
 }
@@ -53,41 +50,14 @@ type ProjectService interface {
 	DeleteCredential(ctx context.Context, id uuid.UUID) error
 }
 
-type CORSConfig struct {
-	AllowedOrigins   []string
-	AllowedHeaders   []string
-	AllowCredentials bool
-}
-
-type Options struct {
-	Logger          *log.Logger
-	MaxRequestBytes int64
-	CORS            CORSConfig
-	Heartbeat       time.Duration
-	// Docs exposes public API documentation but no application data.
-	Docs bool
-}
-
-func (o Options) defaults() Options {
-	if o.Logger == nil {
-		o.Logger = log.Default()
-	}
-	if o.MaxRequestBytes <= 0 {
-		o.MaxRequestBytes = 1 << 20
-	}
-	if o.Heartbeat <= 0 {
-		o.Heartbeat = 15 * time.Second
-	}
-	if len(o.CORS.AllowedHeaders) == 0 {
-		o.CORS.AllowedHeaders = []string{"Authorization", "Content-Type"}
-	}
-	return o
-}
+const maxRequestBytes = 1 << 20
 
 // APIHandler protects every route except health and login; project routes also enforce membership.
-func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, options Options) http.Handler {
-	o := options.defaults()
-	h := &Handler{tasks: tasks, auth: auth, projects: projects, options: o}
+func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, logger *log.Logger) http.Handler {
+	if logger == nil {
+		logger = log.Default()
+	}
+	h := &Handler{tasks: tasks, auth: auth, projects: projects, logger: logger}
 
 	mux := http.NewServeMux()
 	for _, r := range routeTable {
@@ -97,10 +67,8 @@ func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, op
 		}
 		mux.Handle(r.method+" "+r.path, handler)
 	}
-	if o.Docs {
-		mux.HandleFunc("GET /api/v1/openapi.json", h.openapiJSON)
-		mux.HandleFunc("GET /api/v1/docs", h.docsPage)
-	}
+	mux.HandleFunc("GET /api/v1/openapi.json", h.openapiJSON)
+	mux.HandleFunc("GET /api/v1/docs", h.docsPage)
 
-	return cors(o.CORS)(mux)
+	return cors(mux)
 }

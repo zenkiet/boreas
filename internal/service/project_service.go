@@ -12,15 +12,14 @@ import (
 
 type ProjectService struct {
 	projects    core.ProjectStore
-	tasks       core.TaskStore
 	credentials core.CredentialStore
 }
 
-func NewProjectService(projects core.ProjectStore, tasks core.TaskStore, credentials core.CredentialStore) (*ProjectService, error) {
-	if projects == nil || tasks == nil {
-		return nil, errors.Join(core.ErrInvalidInput, errors.New("project and task stores are required"))
+func NewProjectService(projects core.ProjectStore, credentials core.CredentialStore) (*ProjectService, error) {
+	if projects == nil || credentials == nil {
+		return nil, errors.Join(core.ErrInvalidInput, errors.New("project and credential stores are required"))
 	}
-	return &ProjectService{projects: projects, tasks: tasks, credentials: credentials}, nil
+	return &ProjectService{projects: projects, credentials: credentials}, nil
 }
 
 // List scopes non-admin results to memberships to enforce project visibility.
@@ -112,18 +111,10 @@ func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProje
 	return updated, nil
 }
 
-// Delete preserves the tasks.project_id ON DELETE RESTRICT contract.
 func (s *ProjectService) Delete(ctx context.Context, slug string) error {
 	project, err := s.Get(ctx, slug)
 	if err != nil {
 		return err
-	}
-	tasks, err := s.tasks.List(ctx, project.ID)
-	if err != nil {
-		return fmt.Errorf("list project tasks: %w", err)
-	}
-	if len(tasks) > 0 {
-		return fmt.Errorf("project %q still has %d task(s): %w", slug, len(tasks), core.ErrConflict)
 	}
 	if err := s.projects.Delete(ctx, project.ID); err != nil {
 		return fmt.Errorf("delete project: %w", err)
@@ -208,9 +199,6 @@ func (s *ProjectService) Access(ctx context.Context, actor core.User, slug strin
 }
 
 func (s *ProjectService) ListCredentials(ctx context.Context) ([]core.RegistryCredential, error) {
-	if s.credentials == nil {
-		return nil, errors.Join(core.ErrInvalidInput, errors.New("credential store is not configured"))
-	}
 	credentials, err := s.credentials.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list credentials: %w", err)
@@ -226,9 +214,6 @@ type CreateCredentialInput struct {
 }
 
 func (s *ProjectService) CreateCredential(ctx context.Context, actor core.User, in CreateCredentialInput) (core.RegistryCredential, error) {
-	if s.credentials == nil {
-		return core.RegistryCredential{}, errors.Join(core.ErrInvalidInput, errors.New("credential store is not configured"))
-	}
 	if strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.Username) == "" || strings.TrimSpace(in.Token) == "" {
 		return core.RegistryCredential{}, errors.Join(core.ErrInvalidInput,
 			errors.New("credential name, username, and token are required"))
@@ -247,9 +232,6 @@ func (s *ProjectService) CreateCredential(ctx context.Context, actor core.User, 
 }
 
 func (s *ProjectService) DeleteCredential(ctx context.Context, id uuid.UUID) error {
-	if s.credentials == nil {
-		return errors.Join(core.ErrInvalidInput, errors.New("credential store is not configured"))
-	}
 	if err := s.credentials.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete credential: %w", err)
 	}
@@ -259,9 +241,6 @@ func (s *ProjectService) DeleteCredential(ctx context.Context, id uuid.UUID) err
 func (s *ProjectService) checkCredential(ctx context.Context, id *uuid.UUID) error {
 	if id == nil {
 		return nil
-	}
-	if s.credentials == nil {
-		return errors.Join(core.ErrInvalidInput, errors.New("credential store is not configured"))
 	}
 	if _, err := s.credentials.Get(ctx, *id); err != nil {
 		return fmt.Errorf("get registry credential: %w", err)

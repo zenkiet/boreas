@@ -44,9 +44,9 @@ func NewTaskService(
 	ready func(context.Context, string) error,
 	cfg Config,
 ) (*TaskService, error) {
-	if runtime == nil || tasks == nil || projects == nil || routes == nil {
+	if runtime == nil || tasks == nil || projects == nil || credentials == nil || routes == nil {
 		return nil, errors.Join(core.ErrInvalidInput,
-			errors.New("runtime, task store, project store, and route registry are required"))
+			errors.New("runtime, task store, project store, credential store, and route registry are required"))
 	}
 	if cfg.DefaultPort == 0 {
 		cfg.DefaultPort = 80
@@ -111,7 +111,7 @@ func (s *TaskService) get(ctx context.Context, slug, name string) (core.Task, co
 }
 
 func (s *TaskService) credential(ctx context.Context, project core.Project) (*core.RegistryCredential, error) {
-	if project.RegistryCredentialID == nil || s.credentials == nil {
+	if project.RegistryCredentialID == nil {
 		return nil, nil
 	}
 	stored, err := s.credentials.Get(ctx, *project.RegistryCredentialID)
@@ -294,11 +294,6 @@ func (s *TaskService) Delete(ctx context.Context, slug, name string) error {
 	return nil
 }
 
-func (s *TaskService) GetEnv(ctx context.Context, slug, name string) (map[string]string, error) {
-	task, _, err := s.get(ctx, slug, name)
-	return maps.Clone(task.Env), err
-}
-
 // UpdateTaskInput uses pointers to preserve omitted fields during partial updates.
 type UpdateTaskInput struct {
 	Description *string
@@ -378,51 +373,6 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 	newID, err := s.runtime.Recreate(ctx, task.ContainerID, task.Spec(project.Slug))
 	if err != nil {
 		return s.failTask(ctx, task, fmt.Errorf("apply update: %w", err))
-	}
-	task.ContainerID, task.PendingRecreate = newID, false
-	if !wasRunning {
-		if task, err = s.tasks.Update(ctx, task); err != nil {
-			return core.Task{}, fmt.Errorf("persist recreated container: %w", err)
-		}
-		return task.Clone(), nil
-	}
-	task.Status = core.StatusStarting
-	if err := s.runtime.Start(ctx, newID); err != nil {
-		return s.failTask(ctx, task, fmt.Errorf("start recreated container: %w", err))
-	}
-	return s.finishStart(ctx, task, project.Slug)
-}
-
-// UpdateEnv can defer recreation so the caller controls when new values take effect.
-func (s *TaskService) UpdateEnv(ctx context.Context, slug, name string, env map[string]string, recreate bool) (core.Task, error) {
-	unlock := s.lockTask(slug, name)
-	defer unlock()
-	task, project, err := s.get(ctx, slug, name)
-	if err != nil {
-		return core.Task{}, err
-	}
-	spec := task.Spec(project.Slug)
-	spec.Env = maps.Clone(env)
-	if err := spec.Validate(); err != nil {
-		return core.Task{}, err
-	}
-	wasRunning := task.Status == core.StatusRunning
-	if wasRunning {
-		if err := s.runtime.Stop(ctx, task.ContainerID); err != nil {
-			return s.failTask(ctx, task, fmt.Errorf("stop for environment update: %w", err))
-		}
-		_ = s.routes.Unregister(ctx, project.Slug, name)
-	}
-	task.Env, task.PendingRecreate, task.Status, task.ContainerIP = spec.Env, true, core.StatusStopped, ""
-	if task, err = s.tasks.Update(ctx, task); err != nil {
-		return core.Task{}, fmt.Errorf("persist environment: %w", err)
-	}
-	if !recreate {
-		return task.Clone(), nil
-	}
-	newID, err := s.runtime.Recreate(ctx, task.ContainerID, task.Spec(project.Slug))
-	if err != nil {
-		return s.failTask(ctx, task, fmt.Errorf("apply environment: %w", err))
 	}
 	task.ContainerID, task.PendingRecreate = newID, false
 	if !wasRunning {

@@ -39,7 +39,7 @@ func (h *Handler) authorize(required access, next http.HandlerFunc) http.Handler
 				writeUnauthorized(w)
 				return
 			}
-			writeServiceError(w, h.options.Logger, err)
+			writeServiceError(w, h.logger, err)
 			return
 		}
 		if required == accessAdmin && !user.IsAdmin() {
@@ -49,7 +49,7 @@ func (h *Handler) authorize(required access, next http.HandlerFunc) http.Handler
 		if required == accessMember || required == accessOwner {
 			role, err := h.projects.Access(r.Context(), user, r.PathValue("project"))
 			if err != nil {
-				writeServiceError(w, h.options.Logger, err)
+				writeServiceError(w, h.logger, err)
 				return
 			}
 			if required == accessOwner && role != core.ProjectRoleOwner {

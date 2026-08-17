@@ -26,8 +26,7 @@ func testHandler(tasks TaskService, auth AuthService, projects ProjectService) h
 	if projects == nil {
 		projects = &stubProjects{}
 	}
-	return APIHandler(tasks, auth, projects,
-		Options{Logger: log.New(io.Discard, "", 0), Heartbeat: time.Millisecond})
+	return APIHandler(tasks, auth, projects, log.New(io.Discard, "", 0))
 }
 
 func authed(method, target string, body io.Reader) *http.Request {
@@ -216,6 +215,28 @@ func TestTaskRouteAndDTO(t *testing.T) {
 	}
 }
 
+func TestTaskDTOAlwaysIncludesEnv(t *testing.T) {
+	h := testHandler(stubTasks{
+		get: func(context.Context, string, string) (core.Task, error) {
+			return core.Task{Name: "T"}, nil
+		},
+	}, nil, nil)
+	rr := do(h, authed(http.MethodGet, "/api/v1/projects/team/tasks/T", nil))
+	if !strings.Contains(rr.Body.String(), `"env":{}`) {
+		t.Fatalf("task response must include empty env: %s", rr.Body.String())
+	}
+}
+
+func TestRemovedEnvEndpointsReturnNotFound(t *testing.T) {
+	h := testHandler(stubTasks{}, nil, nil)
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		rr := do(h, authed(method, "/api/v1/projects/team/tasks/T/env", nil))
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want 404", method, rr.Code)
+		}
+	}
+}
+
 func TestCreateTaskPassesProject(t *testing.T) {
 	var seen string
 	var input service.CreateTaskInput
@@ -255,24 +276,6 @@ func TestStatsDTO(t *testing.T) {
 	}
 	if strings.Contains(body, "max_containers") || strings.Contains(body, "container_memory_mb") {
 		t.Fatalf("removed statistics returned: %s", body)
-	}
-}
-
-func TestUpdateEnvAutoRestartDefaultsTrue(t *testing.T) {
-	called := false
-	h := testHandler(stubTasks{
-		updateEnv: func(_ context.Context, project, name string, env map[string]string, recreate bool) (core.Task, error) {
-			called = true
-			if project != "team" || name != "T-1" || env["A"] != "B" || !recreate {
-				t.Fatalf("arguments: %q %q %#v %v", project, name, env, recreate)
-			}
-			return core.Task{Status: core.StatusRunning, Env: env}, nil
-		},
-	}, nil, nil)
-	rr := do(h, authed(http.MethodPut, "/api/v1/projects/team/tasks/T-1/env",
-		strings.NewReader(`{"env":{"A":"B"}}`)))
-	if rr.Code != http.StatusOK || !called || !strings.Contains(rr.Body.String(), `"auto_restart":true`) {
-		t.Fatalf("status/body = %d %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -399,6 +402,24 @@ func TestUpdateTaskSendsOnlySuppliedFields(t *testing.T) {
 	}
 }
 
+func TestUpdateTaskEnvDefaultsAutoRestartTrue(t *testing.T) {
+	called := false
+	h := testHandler(stubTasks{
+		update: func(_ context.Context, project, name string, in service.UpdateTaskInput, recreate bool) (core.Task, error) {
+			called = true
+			if project != "team" || name != "T-1" || in.Env == nil || (*in.Env)["A"] != "B" || !recreate {
+				t.Fatalf("arguments: %q %q %#v %v", project, name, in.Env, recreate)
+			}
+			return core.Task{Status: core.StatusRunning, Env: *in.Env}, nil
+		},
+	}, nil, nil)
+	rr := do(h, authed(http.MethodPatch, "/api/v1/projects/team/tasks/T-1",
+		strings.NewReader(`{"env":{"A":"B"}}`)))
+	if rr.Code != http.StatusOK || !called {
+		t.Fatalf("status/body = %d %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestUpdateTaskHonoursAutoRestartFalse(t *testing.T) {
 	var recreate bool
 	h := testHandler(stubTasks{
@@ -456,13 +477,15 @@ func TestUpdateTaskRejectsUnknownFields(t *testing.T) {
 
 // Preflight must advertise every routed method because browsers reject missing methods.
 func TestCORSAdvertisesEveryRoutedMethod(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, Options{
-		Logger: log.New(io.Discard, "", 0),
-		CORS:   CORSConfig{AllowedOrigins: []string{"*"}},
-	})
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, log.New(io.Discard, "", 0))
 	r := httptest.NewRequest(http.MethodOptions, "/api/v1/projects/team/tasks/T", nil)
 	r.Header.Set("Origin", "http://localhost:4200")
-	allowed := do(h, r).Header().Get("Access-Control-Allow-Methods")
+	headers := do(h, r).Header()
+	allowed := headers.Get("Access-Control-Allow-Methods")
+	if headers.Get("Access-Control-Allow-Origin") != "*" ||
+		headers.Get("Access-Control-Allow-Headers") != allowedHeaders {
+		t.Fatalf("unexpected CORS headers: %v", headers)
+	}
 
 	for _, r := range routeTable {
 		if !strings.Contains(allowed, r.method) {

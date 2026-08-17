@@ -222,20 +222,6 @@ var routeTable = [...]route{
 		extraErrors: []int{http.StatusBadRequest},
 	},
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/env", access: accessMember,
-		handler: (*Handler).getEnv,
-		tag:     "tasks", summary: "Get task environment",
-		req: new(taskPath), resp: new(envResponse), status: http.StatusOK,
-	},
-	{
-		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/env", access: accessMember,
-		handler: (*Handler).updateEnv,
-		tag:     "tasks", summary: "Update task environment",
-		description: "BOREAS_PROJECT, BOREAS_TASK, BOREAS_PORT and BASE_HREF are reserved.",
-		req:         new(updateEnvRequest), resp: new(envUpdatedResponse), status: http.StatusOK,
-		extraErrors: []int{http.StatusBadRequest},
-	},
-	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/logs", access: accessMember,
 		handler: (*Handler).logs,
 		tag:     "tasks", summary: "Read task logs",

@@ -40,6 +40,16 @@ func newHarness(t *testing.T) *harness {
 	return h
 }
 
+func TestNewTaskServiceRequiresCredentialStore(t *testing.T) {
+	_, err := NewTaskService(
+		newFakeRuntime(), newFakeTaskStore(), newFakeProjectStore(), nil, newFakeRoutes(), nil,
+		Config{DefaultPort: 80, PollInterval: time.Millisecond, ReadinessTimeout: time.Second},
+	)
+	if !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("got %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestCreateLifecycleAndDefaults(t *testing.T) {
 	h := newHarness(t)
 	task, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "task-1", Image: " image "})
@@ -153,13 +163,14 @@ func TestStartStopRestartDelete(t *testing.T) {
 	}
 }
 
-func TestUpdateEnvDeferredAndImmediate(t *testing.T) {
+func TestUpdateTaskEnvDeferredAndImmediate(t *testing.T) {
 	h := newHarness(t)
 	if _, err := h.svc.Create(context.Background(), "team",
 		CreateTaskInput{Name: "env", Image: "img", Env: map[string]string{"OLD": "1"}}); err != nil {
 		t.Fatal(err)
 	}
-	deferred, err := h.svc.UpdateEnv(context.Background(), "team", "env", map[string]string{"NEW": "2"}, false)
+	deferredEnv := map[string]string{"NEW": "2"}
+	deferred, err := h.svc.Update(context.Background(), "team", "env", UpdateTaskInput{Env: &deferredEnv}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,18 +187,20 @@ func TestUpdateEnvDeferredAndImmediate(t *testing.T) {
 	if h.runtime.recreated[0].Project != "team" || h.runtime.recreated[0].Name != "env" {
 		t.Fatalf("recreate spec lost its identity: %+v", h.runtime.recreated[0])
 	}
-	updated, err := h.svc.UpdateEnv(context.Background(), "team", "env", map[string]string{"NOW": "3"}, true)
+	immediateEnv := map[string]string{"NOW": "3"}
+	updated, err := h.svc.Update(context.Background(), "team", "env", UpdateTaskInput{Env: &immediateEnv}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.Status != core.StatusRunning || len(h.runtime.recreated) != 2 || h.runtime.recreated[1].Env["NOW"] != "3" {
 		t.Fatal("immediate recreate not applied")
 	}
-	env, _ := h.svc.GetEnv(context.Background(), "team", "env")
+	task, _ := h.svc.Get(context.Background(), "team", "env")
+	env := task.Env
 	env["NOW"] = "changed"
-	again, _ := h.svc.GetEnv(context.Background(), "team", "env")
-	if again["NOW"] != "3" {
-		t.Fatal("GetEnv leaked map")
+	again, _ := h.svc.Get(context.Background(), "team", "env")
+	if again.Env["NOW"] != "3" {
+		t.Fatal("Get leaked env map")
 	}
 }
 
@@ -374,12 +387,12 @@ func TestUpdateClonesSuppliedMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	env["KEY"] = "mutated"
-	stored, err := h.svc.GetEnv(context.Background(), "team", "web")
+	stored, err := h.svc.Get(context.Background(), "team", "web")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored["KEY"] != "value" {
-		t.Fatalf("service kept the caller's map: %v", stored)
+	if stored.Env["KEY"] != "value" {
+		t.Fatalf("service kept the caller's map: %v", stored.Env)
 	}
 }
 

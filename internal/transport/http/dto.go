@@ -50,12 +50,15 @@ type taskDTO struct {
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 	Labels          map[string]string `json:"labels,omitempty"`
-	Env             map[string]string `json:"env,omitempty"`
+	Env             map[string]string `json:"env"`
 	Error           string            `json:"error,omitempty"`
 	PendingRecreate bool              `json:"pending_recreate,omitempty"`
 }
 
 func taskFromCore(t core.Task) taskDTO {
+	if t.Env == nil {
+		t.Env = map[string]string{}
+	}
 	return taskDTO{
 		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description,
 		Image: t.Image, Status: t.Status, Port: t.Port,
@@ -102,13 +105,6 @@ type updateStateRequest struct {
 	Action  string `json:"action" enum:"start,stop,restart" example:"start"`
 }
 
-type updateEnvRequest struct {
-	Project     string            `json:"-" path:"project" example:"demo"`
-	Name        string            `json:"-" path:"name" example:"web"`
-	Env         map[string]string `json:"env"`
-	AutoRestart *bool             `json:"auto_restart,omitempty"`
-}
-
 type logsRequest struct {
 	Project  string `json:"-" path:"project" example:"demo"`
 	Name     string `json:"-" path:"name" example:"web"`
@@ -139,18 +135,6 @@ type taskStateResponse struct {
 type taskDeletedResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message" example:"task deleted"`
-}
-
-type envResponse struct {
-	Env   map[string]string `json:"env"`
-	Total int               `json:"total"`
-}
-
-type envUpdatedResponse struct {
-	Message     string          `json:"message" example:"environment updated"`
-	Variables   int             `json:"variables"`
-	AutoRestart bool            `json:"auto_restart"`
-	Status      core.TaskStatus `json:"status"`
 }
 
 type projectDTO struct {

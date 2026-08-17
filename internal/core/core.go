@@ -224,7 +224,6 @@ type LogOptions struct {
 	Tail       int
 	Follow     bool
 	Timestamps bool
-	Since      time.Time
 }
 
 type SystemStats struct {

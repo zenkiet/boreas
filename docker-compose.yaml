@@ -6,10 +6,8 @@ services:
       - boreas-net
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
-    # Postgres 18 images store data in a version-specific subdirectory, so the
-    # mount belongs at /var/lib/postgresql rather than /var/lib/postgresql/data.
     volumes:
-      - boreas-db-data:/var/lib/postgresql
+      - ${DATA_PATH:-./data}:/var/lib/postgresql
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -22,6 +20,7 @@ services:
       start_period: 30s
 
   boreas:
+    # image: ghcr.io/boreas-ai/boreas:latest
     build: .
     container_name: boreas
     ports:
@@ -35,18 +34,13 @@ services:
       BOREAS_DB_USER: ${POSTGRES_USER:-postgres}
       BOREAS_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       BOREAS_DB_NAME: ${POSTGRES_DB:-boreas}
-      # Required on first start; ignored once a user exists. Boreas refuses to
-      # start with an empty database and no admin password.
       BOREAS_ADMIN_USERNAME: ${BOREAS_ADMIN_USERNAME:-admin}
       BOREAS_ADMIN_EMAIL: ${BOREAS_ADMIN_EMAIL:-admin@example.com}
       BOREAS_ADMIN_PASSWORD: ${BOREAS_ADMIN_PASSWORD:-LoveAngular123}
     depends_on:
       boreas-db:
         condition: service_healthy
-    restart: unless-stopped
-
-volumes:
-  boreas-db-data:
+    restart: ${RESTART_POLICY:-unless-stopped}
 
 networks:
   boreas-net:
