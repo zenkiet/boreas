@@ -17,6 +17,7 @@ type TaskService interface {
 	Get(ctx context.Context, project, name string) (core.Task, error)
 	Create(ctx context.Context, project string, in service.CreateTaskInput) (core.Task, error)
 	Update(ctx context.Context, project, name string, in service.UpdateTaskInput, recreate bool) (core.Task, error)
+	Deploy(ctx context.Context, project, name, image string) (core.Task, error)
 	Start(ctx context.Context, project, name string) (core.Task, error)
 	Stop(ctx context.Context, project, name string) (core.Task, error)
 	Restart(ctx context.Context, project, name string) (core.Task, error)
@@ -27,8 +28,11 @@ type TaskService interface {
 
 type AuthService interface {
 	Login(ctx context.Context, username, password string) (string, core.User, error)
-	Authenticate(ctx context.Context, token string) (core.User, error)
+	Authenticate(ctx context.Context, token string) (core.User, core.TokenKind, error)
 	Logout(ctx context.Context, token string) error
+	CreateAPIToken(ctx context.Context, userID uuid.UUID, in service.CreateAPITokenInput) (string, core.AuthToken, error)
+	ListAPITokens(ctx context.Context, userID uuid.UUID) ([]core.AuthToken, error)
+	RevokeAPIToken(ctx context.Context, userID, tokenID uuid.UUID) error
 	ListUsers(context.Context) ([]core.User, error)
 	CreateUser(context.Context, service.CreateUserInput) (core.User, error)
 	UpdateUser(ctx context.Context, id uuid.UUID, in service.UpdateUserInput) (core.User, error)
@@ -52,7 +56,7 @@ type ProjectService interface {
 
 const maxRequestBytes = 1 << 20
 
-// APIHandler protects every route except health and login; project routes also enforce membership.
+// APIHandler serves the API and applies each route's declared access policy.
 func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, logger *log.Logger) http.Handler {
 	if logger == nil {
 		logger = log.Default()

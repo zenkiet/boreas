@@ -297,9 +297,25 @@ func newFakeTokenStore() *fakeTokenStore {
 	return &fakeTokenStore{tokens: map[string]core.AuthToken{}}
 }
 
-func (f *fakeTokenStore) Create(_ context.Context, token core.AuthToken) error {
+func (f *fakeTokenStore) Create(_ context.Context, token core.AuthToken) (core.AuthToken, error) {
+	if token.ID == uuid.Nil {
+		token.ID = uuid.New()
+	}
+	if token.CreatedAt.IsZero() {
+		token.CreatedAt = time.Now().UTC()
+	}
 	f.tokens[token.TokenHash] = token
-	return nil
+	return token, nil
+}
+
+func (f *fakeTokenStore) ListAPITokens(_ context.Context, userID uuid.UUID) ([]core.AuthToken, error) {
+	result := make([]core.AuthToken, 0)
+	for _, token := range f.tokens {
+		if token.UserID == userID && token.Kind == core.TokenKindAPI {
+			result = append(result, token)
+		}
+	}
+	return result, nil
 }
 
 func (f *fakeTokenStore) GetByHash(_ context.Context, hash string) (core.AuthToken, error) {
@@ -321,6 +337,20 @@ func (f *fakeTokenStore) Revoke(_ context.Context, hash string) error {
 	return nil
 }
 
+func (f *fakeTokenStore) RevokeByID(_ context.Context, userID, tokenID uuid.UUID) error {
+	for hash, token := range f.tokens {
+		if token.ID == tokenID && token.UserID == userID && token.Kind == core.TokenKindAPI {
+			if token.RevokedAt == nil {
+				now := time.Now()
+				token.RevokedAt = &now
+				f.tokens[hash] = token
+			}
+			return nil
+		}
+	}
+	return core.ErrNotFound
+}
+
 func (f *fakeTokenStore) RevokeAllForUser(_ context.Context, userID uuid.UUID) error {
 	now := time.Now()
 	for hash, token := range f.tokens {
@@ -339,9 +369,9 @@ type fakeRuntime struct {
 	pulled                    []*core.RegistryCredential
 	pulledImages              []string
 	started, stopped, removed []string
+	pullErr                   error
 	totalMemory               int64
-	// calls verifies that changed images are pulled before container recreation.
-	calls []string
+	calls                     []string
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -352,7 +382,7 @@ func (f *fakeRuntime) Pull(_ context.Context, image string, credential *core.Reg
 	f.pulled = append(f.pulled, credential)
 	f.pulledImages = append(f.pulledImages, image)
 	f.calls = append(f.calls, "pull")
-	return nil
+	return f.pullErr
 }
 
 func (f *fakeRuntime) Create(_ context.Context, s core.ContainerSpec) (string, error) {

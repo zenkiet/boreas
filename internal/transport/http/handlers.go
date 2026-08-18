@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
@@ -64,6 +65,51 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userResponse{User: userFromCore(userFrom(r.Context()))})
+}
+
+func (h *Handler) createAPIToken(w http.ResponseWriter, r *http.Request) {
+	var req createAPITokenRequest
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
+		writeBadRequest(w)
+		return
+	}
+	raw, token, err := h.auth.CreateAPIToken(r.Context(), userFrom(r.Context()).ID, service.CreateAPITokenInput{
+		Name: req.Name, ValidFrom: req.ValidFrom, ValidTo: req.ValidTo,
+	})
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, createAPITokenResponse{
+		Token: raw, APIToken: apiTokenFromCore(token, time.Now().UTC()),
+	})
+}
+
+func (h *Handler) listAPITokens(w http.ResponseWriter, r *http.Request) {
+	tokens, err := h.auth.ListAPITokens(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	now := time.Now().UTC()
+	result := make([]apiTokenDTO, len(tokens))
+	for i := range tokens {
+		result[i] = apiTokenFromCore(tokens[i], now)
+	}
+	writeJSON(w, http.StatusOK, apiTokensResponse{APITokens: result, Total: len(result)})
+}
+
+func (h *Handler) revokeAPIToken(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	if err := h.auth.RevokeAPIToken(r.Context(), userFrom(r.Context()).ID, id); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
@@ -334,6 +380,20 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 			Description: req.Description, Image: req.Image, Port: req.Port,
 			Labels: req.Labels, Env: req.Env,
 		}, autoRestart)
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, taskResponse{Task: taskFromCore(task)})
+}
+
+func (h *Handler) deployTask(w http.ResponseWriter, r *http.Request) {
+	var req deployTaskRequest
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
+		writeBadRequest(w)
+		return
+	}
+	task, err := h.tasks.Deploy(r.Context(), r.PathValue("project"), r.PathValue("name"), req.Image)
 	if err != nil {
 		writeServiceError(w, h.logger, err)
 		return

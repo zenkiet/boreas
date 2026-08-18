@@ -209,10 +209,16 @@ func TestUserAndTokenStores(t *testing.T) {
 	}
 
 	hash := uuid.New().String()
-	if err := tokens.Create(ctx, core.AuthToken{
-		UserID: user.ID, TokenHash: hash, ExpiresAt: time.Now().Add(time.Hour),
-	}); err != nil {
+	now := time.Now().UTC()
+	createdToken, err := tokens.Create(ctx, core.AuthToken{
+		UserID: user.ID, Kind: core.TokenKindSession, TokenHash: hash,
+		ValidFrom: now, ExpiresAt: now.Add(time.Hour),
+	})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if createdToken.ID == uuid.Nil || createdToken.Kind != core.TokenKindSession || createdToken.CreatedAt.IsZero() {
+		t.Fatalf("database defaults were not returned: %+v", createdToken)
 	}
 	stored, err := tokens.GetByHash(ctx, hash)
 	if err != nil {
@@ -220,6 +226,42 @@ func TestUserAndTokenStores(t *testing.T) {
 	}
 	if stored.RevokedAt != nil {
 		t.Fatal("a new token must not be revoked")
+	}
+
+	apiOwner := user.ID
+	otherUser, err := users.Create(ctx, core.User{
+		Username: "token-other-" + uuid.New().String()[:8],
+		Email:    uuid.New().String()[:8] + "@example.com",
+		Role:     core.RoleUser,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = users.Delete(context.Background(), otherUser.ID) })
+	apiHash := uuid.New().String()
+	apiToken, err := tokens.Create(ctx, core.AuthToken{
+		UserID: apiOwner, Name: "ci", Kind: core.TokenKindAPI, TokenHash: apiHash,
+		ValidFrom: now, ExpiresAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := tokens.ListAPITokens(ctx, apiOwner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].ID != apiToken.ID || listed[0].Name != "ci" {
+		t.Fatalf("listed API tokens = %+v", listed)
+	}
+	if err := tokens.RevokeByID(ctx, otherUser.ID, apiToken.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("another user revoked the token: %v", err)
+	}
+	if err := tokens.RevokeByID(ctx, apiOwner, apiToken.ID); err != nil {
+		t.Fatal(err)
+	}
+	revokedAPI, err := tokens.GetByHash(ctx, apiHash)
+	if err != nil || revokedAPI.RevokedAt == nil {
+		t.Fatalf("API token was not revoked: %+v %v", revokedAPI, err)
 	}
 	if err := tokens.Revoke(ctx, hash); err != nil {
 		t.Fatal(err)
@@ -316,5 +358,36 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	pool := newPool(t)
 	if err := database.RunMigrations(context.Background(), pool, nil); err != nil {
 		t.Fatalf("re-running migrations failed: %v", err)
+	}
+}
+
+func TestAPITokenSchemaConstraints(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	users := NewUserStore(pool)
+	user, err := users.Create(ctx, core.User{
+		Username: "constraints-" + uuid.New().String()[:8],
+		Email:    uuid.New().String()[:8] + "@example.com",
+		Role:     core.RoleUser,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+	now := time.Now().UTC()
+	for name, args := range map[string][]any{
+		"blank name": {user.ID, "", "api", uuid.New().String(), now, now.Add(time.Hour)},
+		"bad kind":   {user.ID, "ci", "other", uuid.New().String(), now, now.Add(time.Hour)},
+		"bad window": {user.ID, "ci", "api", uuid.New().String(), now, now},
+		"over 90":    {user.ID, "ci", "api", uuid.New().String(), now, now.Add(90*24*time.Hour + time.Second)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := pool.Exec(ctx, `INSERT INTO auth_tokens
+				(user_id, name, kind, token_hash, valid_from, expires_at)
+				VALUES ($1, $2, $3, $4, $5, $6)`, args...)
+			if err == nil {
+				t.Fatal("database constraint accepted invalid token")
+			}
+		})
 	}
 }

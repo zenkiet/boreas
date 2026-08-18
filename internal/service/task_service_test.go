@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,6 +206,168 @@ func TestUpdateTaskEnvDeferredAndImmediate(t *testing.T) {
 	}
 }
 
+const (
+	deployDigestA = "ghcr.io/acme/web@sha256:" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	deployDigestB = "ghcr.io/acme/web@sha256:" + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
+func TestDeployPullsAndRestartsARunningTask(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team",
+		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
+		t.Fatal(err)
+	}
+	h.runtime.calls = nil
+
+	deployed, err := h.svc.Deploy(context.Background(), "team", "web", " "+deployDigestB+" ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deployed.Image != deployDigestB || deployed.Status != core.StatusRunning {
+		t.Fatalf("unexpected task: %+v", deployed)
+	}
+	pull, recreate := slices.Index(h.runtime.calls, "pull"), slices.Index(h.runtime.calls, "recreate")
+	if pull < 0 || recreate < 0 || pull > recreate {
+		t.Fatalf("pull must precede recreate, got %v", h.runtime.calls)
+	}
+	if last := h.runtime.pulledImages[len(h.runtime.pulledImages)-1]; last != deployDigestB {
+		t.Fatalf("pulled %q", last)
+	}
+	if h.routes.registered["team/web"] != deployed.ContainerIP {
+		t.Fatal("route was not restored after the deployment")
+	}
+}
+
+func TestDeployLeavesAStoppedTaskStopped(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team",
+		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Stop(context.Background(), "team", "web"); err != nil {
+		t.Fatal(err)
+	}
+	starts := len(h.runtime.started)
+
+	deployed, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deployed.Status != core.StatusStopped || len(h.runtime.started) != starts {
+		t.Fatalf("a stopped task was started: status=%s starts=%d", deployed.Status, len(h.runtime.started))
+	}
+	if deployed.Image != deployDigestB || deployed.PendingRecreate {
+		t.Fatalf("the new image was not applied to the container: %+v", deployed)
+	}
+}
+
+func TestDeployOfTheSameImageIsANoOp(t *testing.T) {
+	h := newHarness(t)
+	created, err := h.svc.Create(context.Background(), "team",
+		CreateTaskInput{Name: "web", Image: deployDigestA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.runtime.calls = nil
+
+	deployed, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deployed.ContainerID != created.ContainerID || deployed.Status != core.StatusRunning {
+		t.Fatalf("the container was disturbed: %+v", deployed)
+	}
+	if len(h.runtime.calls) != 0 {
+		t.Fatalf("redeploying the same image touched the runtime: %v", h.runtime.calls)
+	}
+}
+
+func TestDeployRetriesPendingRecreate(t *testing.T) {
+	h := newHarness(t)
+	created, err := h.svc.Create(context.Background(), "team",
+		CreateTaskInput{Name: "web", Image: deployDigestA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.PendingRecreate = true
+	if _, err := h.tasks.Update(context.Background(), created); err != nil {
+		t.Fatal(err)
+	}
+	h.runtime.calls = nil
+
+	deployed, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deployed.PendingRecreate || !slices.Contains(h.runtime.calls, "recreate") {
+		t.Fatalf("pending deployment was not retried: task=%+v calls=%v", deployed, h.runtime.calls)
+	}
+}
+
+func TestDeployPullFailureLeavesRunningTaskUntouched(t *testing.T) {
+	h := newHarness(t)
+	created, err := h.svc.Create(context.Background(), "team",
+		CreateTaskInput{Name: "web", Image: deployDigestA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.runtime.calls = nil
+	h.runtime.pullErr = errors.New("registry unavailable")
+
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err == nil {
+		t.Fatal("expected pull failure")
+	}
+	stored, err := h.svc.Get(context.Background(), "team", "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Image != created.Image || stored.Status != core.StatusRunning ||
+		stored.ContainerID != created.ContainerID || stored.PendingRecreate {
+		t.Fatalf("pull failure changed the task: before=%+v after=%+v", created, stored)
+	}
+	if len(h.runtime.stopped) != 0 || slices.Contains(h.runtime.calls, "recreate") {
+		t.Fatalf("pull failure touched the container: calls=%v stops=%v", h.runtime.calls, h.runtime.stopped)
+	}
+}
+
+func TestDeployRejectsMutableAndMalformedImages(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team",
+		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
+		t.Fatal(err)
+	}
+	h.runtime.calls = nil
+
+	for name, image := range map[string]string{
+		"tag":          "ghcr.io/acme/web:staging",
+		"bare digest":  "sha256:" + strings.Repeat("a", 64),
+		"short digest": "ghcr.io/acme/web@sha256:abc",
+		"other digest": "ghcr.io/acme/web@sha512:" + strings.Repeat("a", 64),
+		"empty":        "",
+	} {
+		if _, err := h.svc.Deploy(context.Background(), "team", "web", image); !errors.Is(err, core.ErrInvalidInput) {
+			t.Fatalf("%s: got %v, want ErrInvalidInput", name, err)
+		}
+	}
+	if len(h.runtime.calls) != 0 {
+		t.Fatalf("a rejected deployment touched the runtime: %v", h.runtime.calls)
+	}
+	task, err := h.svc.Get(context.Background(), "team", "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Image != deployDigestA {
+		t.Fatalf("a rejected deployment changed the image: %q", task.Image)
+	}
+}
+
+func TestDeployUnknownTask(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Deploy(context.Background(), "team", "absent", deployDigestA); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
 func TestUpdateDescriptionLeavesContainerAlone(t *testing.T) {
 	h := newHarness(t)
 	created, err := h.svc.Create(context.Background(), "team",
@@ -364,7 +528,7 @@ func TestUpdateWithNoFieldsIsANoOp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recreates := len(h.runtime.recreated)
+	recreates, updatedAt := len(h.runtime.recreated), created.UpdatedAt
 	updated, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -374,6 +538,32 @@ func TestUpdateWithNoFieldsIsANoOp(t *testing.T) {
 	}
 	if len(h.runtime.recreated) != recreates {
 		t.Fatal("an empty update touched the container")
+	}
+	if !updated.UpdatedAt.Equal(updatedAt) {
+		t.Fatal("an empty update wrote to the store")
+	}
+}
+
+func TestUpdateWithUnchangedValuesIsANoOp(t *testing.T) {
+	h := newHarness(t)
+	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{
+		Name: "web", Image: "img", Port: 80,
+		Labels: map[string]string{"tier": "web"}, Env: map[string]string{"A": "B"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.runtime.calls = nil
+	description, image, port := created.Description, created.Image, created.Port
+	labels, env := maps.Clone(created.Labels), maps.Clone(created.Env)
+	updated, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{
+		Description: &description, Image: &image, Port: &port, Labels: &labels, Env: &env,
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.UpdatedAt.Equal(created.UpdatedAt) || len(h.runtime.calls) != 0 {
+		t.Fatalf("unchanged values caused work: task=%+v calls=%v", updated, h.runtime.calls)
 	}
 }
 

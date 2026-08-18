@@ -96,6 +96,140 @@ paths:
       summary: Current user
       tags:
       - auth
+  /api/v1/auth/tokens:
+    get:
+      description: Returns metadata only; plaintext tokens and token hashes are never
+        returned.
+      operationId: get-auth-tokens
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APITokensResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List your API tokens
+      tags:
+      - auth
+    post:
+      description: The plaintext token is returned once. Its validity window must
+        not exceed 90 days. Only a login session, not another API token, can create
+        it.
+      operationId: post-auth-tokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPITokenRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAPITokenResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Create an API token
+      tags:
+      - auth
+  /api/v1/auth/tokens/{id}:
+    delete:
+      description: Only a login session can revoke an API token, and users can revoke
+        only their own tokens.
+      operationId: delete-auth-tokens-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Revoke one of your API tokens
+      tags:
+      - auth
   /api/v1/health:
     get:
       operationId: get-health
@@ -795,6 +929,80 @@ paths:
       summary: Update a task
       tags:
       - tasks
+  /api/v1/projects/{project}/tasks/{name}/deploy:
+    post:
+      description: For a build pipeline to call once it has pushed an image. The image
+        must be immutable, of the form repository@sha256:<64 hex digits>, so the exact
+        artifact that was built is the one that runs. Boreas pulls it and recreates
+        the container, leaving a stopped task stopped. Deploying the image a task
+        already runs changes nothing, so a callback may be retried safely.
+      operationId: post-projects-project-tasks-name-deploy
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployTaskRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Deploy an image built elsewhere
+      tags:
+      - tasks
   /api/v1/projects/{project}/tasks/{name}/logs:
     get:
       operationId: get-projects-project-tasks-name-logs
@@ -1366,6 +1574,57 @@ paths:
       - users
 components:
   schemas:
+    APIToken:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          example: staging-deployer
+          type: string
+        revoked_at:
+          format: date-time
+          nullable: true
+          type: string
+        status:
+          $ref: '#/components/schemas/APITokenStatus'
+        valid_from:
+          format: date-time
+          type: string
+        valid_to:
+          format: date-time
+          type: string
+      required:
+      - id
+      - name
+      - valid_from
+      - valid_to
+      - created_at
+      - revoked_at
+      - status
+      type: object
+    APITokenStatus:
+      enum:
+      - scheduled
+      - active
+      - expired
+      - revoked
+      type: string
+    APITokensResponse:
+      properties:
+        api_tokens:
+          items:
+            $ref: '#/components/schemas/APIToken'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - api_tokens
+      - total
+      type: object
     AddMemberRequest:
       properties:
         role:
@@ -1374,6 +1633,33 @@ components:
           $ref: '#/components/schemas/UUID'
       required:
       - user_id
+      type: object
+    CreateAPITokenRequest:
+      properties:
+        name:
+          example: staging-deployer
+          type: string
+        valid_from:
+          format: date-time
+          type: string
+        valid_to:
+          format: date-time
+          type: string
+      required:
+      - name
+      - valid_from
+      - valid_to
+      type: object
+    CreateAPITokenResponse:
+      properties:
+        api_token:
+          $ref: '#/components/schemas/APIToken'
+        token:
+          format: password
+          type: string
+      required:
+      - token
+      - api_token
       type: object
     CreateCredentialRequest:
       properties:
@@ -1489,6 +1775,14 @@ components:
       required:
       - credentials
       - total
+      type: object
+    DeployTaskRequest:
+      properties:
+        image:
+          example: ghcr.io/acme/web@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          type: string
+      required:
+      - image
       type: object
     ErrorResponse:
       properties:
@@ -1876,7 +2170,6 @@ components:
       type: object
   securitySchemes:
     bearerAuth:
-      description: 'Token from POST /api/v1/auth/login, sent as: Authorization: Bearer
-        <token>'
+      description: 'Login session or API token, sent as: Authorization: Bearer <token>'
       scheme: bearer
       type: http

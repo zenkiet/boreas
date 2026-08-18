@@ -65,7 +65,7 @@ TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
 ```
 
 Changing a password, changing a role, or disabling an account revokes that
-user's existing tokens.
+user's existing login sessions and API tokens.
 
 ## Create and access a task
 
@@ -125,6 +125,9 @@ All API routes are under `/api/v1`.
 | `POST` | `/auth/login` | public | Exchange credentials for a token |
 | `POST` | `/auth/logout` | user | Revoke the current token |
 | `GET` | `/auth/me` | user | Current user |
+| `GET` | `/auth/tokens` | login session | List your API tokens |
+| `POST` | `/auth/tokens` | login session | Create an API token |
+| `DELETE` | `/auth/tokens/{id}` | login session | Revoke one of your API tokens |
 | `GET` | `/stats` | user | Service statistics |
 | `GET` | `/users` | admin | List users |
 | `POST` | `/users` | admin | Create a user |
@@ -145,6 +148,7 @@ All API routes are under `/api/v1`.
 | `POST` | `/projects/{project}/tasks` | member | Create a task |
 | `GET` | `/projects/{project}/tasks/{name}` | member | Get a task |
 | `PATCH` | `/projects/{project}/tasks/{name}` | member | Update image, port, labels, env, or description |
+| `POST` | `/projects/{project}/tasks/{name}/deploy` | member | Deploy an image built elsewhere |
 | `PUT` | `/projects/{project}/tasks/{name}/state` | member | Start, stop, or restart |
 | `DELETE` | `/projects/{project}/tasks/{name}` | member | Delete a task and its container |
 | `GET` | `/projects/{project}/tasks/{name}/logs` | member | Read task logs |
@@ -173,6 +177,51 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
 
 The former dedicated `GET` and `PUT` `/tasks/{name}/env` endpoints have been
 removed. Clients should read `task.env` and use `PATCH /tasks/{name}` instead.
+
+## Deploy from a build pipeline
+
+Create a dedicated API token with a login session. The validity window may be
+scheduled in the future but cannot exceed 90 days:
+
+```bash
+curl -X POST -H "$AUTH" -H "$JSON" \
+  -d '{
+    "name":"staging-deployer",
+    "valid_from":"2026-08-18T00:00:00Z",
+    "valid_to":"2026-11-16T00:00:00Z"
+  }' \
+  http://localhost:8080/api/v1/auth/tokens
+```
+
+The plaintext token is returned only by this response. Store it immediately in
+the CI secret manager; Boreas keeps only its SHA-256 hash and cannot show it
+again. API tokens inherit their user's role and project memberships, but cannot
+create, list, or revoke API tokens. Use a non-admin project member for CI.
+
+A pipeline that has just pushed an image then tells Boreas to run it:
+
+```bash
+curl -X POST -H "$AUTH" -H "$JSON" \
+  -d '{"image":"ghcr.io/acme/web@sha256:'"$DIGEST"'"}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/web/deploy
+```
+
+The image must be immutable, of the form `repository@sha256:<64 hex digits>`, so
+the exact artifact that was built is the one that runs; a mutable tag is
+rejected because it can change between the pull and the container recreation.
+Most build tools report the digest they pushed, for example the `digest` output
+of `docker/build-push-action`.
+
+Boreas pulls the image and recreates the container, restarting a running task
+and leaving a stopped one stopped. Deploying the image a task already runs
+changes nothing, so a pipeline may retry its callback safely.
+
+List token metadata or revoke a token by ID with the login session:
+
+```bash
+curl -H "$AUTH" http://localhost:8080/api/v1/auth/tokens
+curl -X DELETE -H "$AUTH" http://localhost:8080/api/v1/auth/tokens/<id>
+```
 
 For live logs, use an SSE-capable client:
 

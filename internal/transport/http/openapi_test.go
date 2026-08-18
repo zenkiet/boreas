@@ -83,6 +83,22 @@ func TestSpecNeverExposesSecrets(t *testing.T) {
 	if _, present := request.Schema.Properties["token"]; !present {
 		t.Fatal("the credential request schema must accept token")
 	}
+	apiToken, ok := schemas["APIToken"]
+	if !ok {
+		t.Fatal("APIToken schema is missing")
+	}
+	for _, forbidden := range []string{"token", "token_hash"} {
+		if _, leaked := apiToken.Schema.Properties[forbidden]; leaked {
+			t.Fatalf("the API token metadata schema must not expose %s", forbidden)
+		}
+	}
+	created, ok := schemas["CreateAPITokenResponse"]
+	if !ok {
+		t.Fatal("CreateAPITokenResponse schema is missing")
+	}
+	if token, present := created.Schema.Properties["token"]; !present || token.Schema == nil || token.Schema.Format == nil || *token.Schema.Format != "password" {
+		t.Fatal("the one-time API token response must document token as a password")
+	}
 }
 
 func TestSpecRoundTrips(t *testing.T) {

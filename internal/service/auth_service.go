@@ -4,21 +4,23 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
 	"golang.org/x/crypto/bcrypt"
 )
 
-const tokenTTL = 30 * 24 * time.Hour
-
-const minPasswordLength = 8
+const (
+	tokenTTL          = 30 * 24 * time.Hour
+	maxAPITokenTTL    = 90 * 24 * time.Hour
+	minPasswordLength = 8
+)
 
 type AuthService struct {
 	users  core.UserStore
@@ -32,7 +34,6 @@ func NewAuthService(users core.UserStore, tokens core.TokenStore) (*AuthService,
 	return &AuthService{users: users, tokens: tokens}, nil
 }
 
-// hashToken derives a one-way representation so leaked storage cannot reveal bearer tokens.
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -56,51 +57,108 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 		return "", core.User{}, core.ErrUnauthorized
 	}
 
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", core.User{}, fmt.Errorf("generate token: %w", err)
-	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
-	if err := s.tokens.Create(ctx, core.AuthToken{
+	token := rand.Text()
+	now := time.Now().UTC()
+	if _, err := s.tokens.Create(ctx, core.AuthToken{
 		UserID:    user.ID,
+		Kind:      core.TokenKindSession,
 		TokenHash: hashToken(token),
-		ExpiresAt: time.Now().Add(tokenTTL),
+		ValidFrom: now,
+		ExpiresAt: now.Add(tokenTTL),
 	}); err != nil {
 		return "", core.User{}, fmt.Errorf("persist token: %w", err)
 	}
 	return token, user, nil
 }
 
-func (s *AuthService) Authenticate(ctx context.Context, token string) (core.User, error) {
+func (s *AuthService) Authenticate(ctx context.Context, token string) (core.User, core.TokenKind, error) {
 	if strings.TrimSpace(token) == "" {
-		return core.User{}, core.ErrUnauthorized
+		return core.User{}, "", core.ErrUnauthorized
 	}
 	stored, err := s.tokens.GetByHash(ctx, hashToken(token))
 	if err != nil {
 		if errors.Is(err, core.ErrNotFound) {
-			return core.User{}, core.ErrUnauthorized
+			return core.User{}, "", core.ErrUnauthorized
 		}
-		return core.User{}, fmt.Errorf("lookup token: %w", err)
+		return core.User{}, "", fmt.Errorf("lookup token: %w", err)
 	}
-	if stored.RevokedAt != nil || !stored.ExpiresAt.After(time.Now()) {
-		return core.User{}, core.ErrUnauthorized
+	now := time.Now().UTC()
+	if stored.RevokedAt != nil || stored.ValidFrom.After(now) || !stored.ExpiresAt.After(now) {
+		return core.User{}, "", core.ErrUnauthorized
 	}
 	user, err := s.users.Get(ctx, stored.UserID)
 	if err != nil {
 		if errors.Is(err, core.ErrNotFound) {
-			return core.User{}, core.ErrUnauthorized
+			return core.User{}, "", core.ErrUnauthorized
 		}
-		return core.User{}, fmt.Errorf("lookup token user: %w", err)
+		return core.User{}, "", fmt.Errorf("lookup token user: %w", err)
 	}
 	if user.Disabled() {
-		return core.User{}, core.ErrUnauthorized
+		return core.User{}, "", core.ErrUnauthorized
 	}
-	return user, nil
+	return user, stored.Kind, nil
 }
 
 func (s *AuthService) Logout(ctx context.Context, token string) error {
 	if err := s.tokens.Revoke(ctx, hashToken(token)); err != nil {
 		return fmt.Errorf("revoke token: %w", err)
+	}
+	return nil
+}
+
+type CreateAPITokenInput struct {
+	Name      string
+	ValidFrom time.Time
+	ValidTo   time.Time
+}
+
+// CreateAPIToken returns the plaintext credential once; only its hash is persisted.
+func (s *AuthService) CreateAPIToken(ctx context.Context, userID uuid.UUID, in CreateAPITokenInput) (string, core.AuthToken, error) {
+	name := strings.TrimSpace(in.Name)
+	if name == "" || utf8.RuneCountInString(name) > 100 {
+		return "", core.AuthToken{}, errors.Join(core.ErrInvalidInput,
+			errors.New("token name must be between 1 and 100 characters"))
+	}
+	validFrom, validTo := in.ValidFrom.UTC(), in.ValidTo.UTC()
+	if in.ValidFrom.IsZero() || in.ValidTo.IsZero() {
+		return "", core.AuthToken{}, errors.Join(core.ErrInvalidInput,
+			errors.New("valid_from and valid_to are required"))
+	}
+	if !validFrom.Before(validTo) {
+		return "", core.AuthToken{}, errors.Join(core.ErrInvalidInput,
+			errors.New("valid_from must be before valid_to"))
+	}
+	if validTo.Sub(validFrom) > maxAPITokenTTL {
+		return "", core.AuthToken{}, errors.Join(core.ErrInvalidInput,
+			errors.New("API token validity must not exceed 90 days"))
+	}
+	if !validTo.After(time.Now().UTC()) {
+		return "", core.AuthToken{}, errors.Join(core.ErrInvalidInput,
+			errors.New("valid_to must be in the future"))
+	}
+
+	raw := rand.Text()
+	created, err := s.tokens.Create(ctx, core.AuthToken{
+		UserID: userID, Name: name, Kind: core.TokenKindAPI,
+		TokenHash: hashToken(raw), ValidFrom: validFrom, ExpiresAt: validTo,
+	})
+	if err != nil {
+		return "", core.AuthToken{}, fmt.Errorf("persist API token: %w", err)
+	}
+	return raw, created, nil
+}
+
+func (s *AuthService) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]core.AuthToken, error) {
+	tokens, err := s.tokens.ListAPITokens(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list API tokens: %w", err)
+	}
+	return tokens, nil
+}
+
+func (s *AuthService) RevokeAPIToken(ctx context.Context, userID, tokenID uuid.UUID) error {
+	if err := s.tokens.RevokeByID(ctx, userID, tokenID); err != nil {
+		return fmt.Errorf("revoke API token: %w", err)
 	}
 	return nil
 }

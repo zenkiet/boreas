@@ -24,7 +24,7 @@ func OpenAPISpec() (*openapi3.Spec, error) {
 		WithDescription("Per-task staging environments. Tasks belong to projects and are " +
 			"served at /{project}/{task}/. Proxied task traffic is public; this API is not.")
 	spec.SetHTTPBearerTokenSecurity(bearerScheme, "",
-		"Token from POST /api/v1/auth/login, sent as: Authorization: Bearer <token>")
+		"Login session or API token, sent as: Authorization: Bearer <token>")
 
 	configureSchemas(reflector.JSONSchemaReflector())
 
@@ -49,7 +49,6 @@ func configureSchemas(js *jsonschema.Reflector) {
 	)
 }
 
-// requiredFromOmitEmpty derives required fields from JSON tags so schema and serialization stay aligned.
 func requiredFromOmitEmpty(params jsonschema.InterceptPropParams) error {
 	if !params.Processed || params.Name == "" || params.ParentSchema == nil {
 		return nil
@@ -72,10 +71,8 @@ func schemaName(_ reflect.Type, defaultName string) string {
 	for _, prefix := range []string{"Httptransport", "Http", "Core", "Uuid"} {
 		name = strings.TrimPrefix(name, prefix)
 	}
-	if trimmed := strings.TrimSuffix(name, "DTO"); trimmed != "" {
-		name = trimmed
-	}
-	return name
+	name = strings.ReplaceAll(name, "ApiToken", "APIToken")
+	return strings.TrimSuffix(name, "DTO")
 }
 
 func addOperation(reflector *openapi3.Reflector, r route) error {
@@ -131,7 +128,6 @@ func (h *Handler) openapiJSON(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, spec)
 }
 
-// docsPage uses pinned CDN assets to keep the binary small at the cost of network access.
 const docsPage = `<!DOCTYPE html>
 <html lang="en">
 <head>

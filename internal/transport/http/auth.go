@@ -33,7 +33,7 @@ func (h *Handler) authorize(required access, next http.HandlerFunc) http.Handler
 			writeUnauthorized(w)
 			return
 		}
-		user, err := h.auth.Authenticate(r.Context(), token)
+		user, kind, err := h.auth.Authenticate(r.Context(), token)
 		if err != nil {
 			if errors.Is(err, core.ErrUnauthorized) {
 				writeUnauthorized(w)
@@ -43,6 +43,10 @@ func (h *Handler) authorize(required access, next http.HandlerFunc) http.Handler
 			return
 		}
 		if required == accessAdmin && !user.IsAdmin() {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
+		if required == accessSession && kind != core.TokenKindSession {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 			return
 		}

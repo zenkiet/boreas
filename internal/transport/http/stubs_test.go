@@ -21,6 +21,7 @@ type stubTasks struct {
 	get    func(context.Context, string, string) (core.Task, error)
 	create func(context.Context, string, service.CreateTaskInput) (core.Task, error)
 	update func(context.Context, string, string, service.UpdateTaskInput, bool) (core.Task, error)
+	deploy func(context.Context, string, string, string) (core.Task, error)
 	logs   func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
 	stats  func(context.Context) (core.SystemStats, error)
 }
@@ -44,6 +45,13 @@ func (s stubTasks) Create(c context.Context, project string, in service.CreateTa
 func (s stubTasks) Update(c context.Context, project, name string, in service.UpdateTaskInput, recreate bool) (core.Task, error) {
 	if s.update != nil {
 		return s.update(c, project, name, in, recreate)
+	}
+	return core.Task{}, nil
+}
+
+func (s stubTasks) Deploy(c context.Context, project, name, image string) (core.Task, error) {
+	if s.deploy != nil {
+		return s.deploy(c, project, name, image)
 	}
 	return core.Task{}, nil
 }
@@ -72,6 +80,10 @@ func (s stubTasks) SystemStats(c context.Context) (core.SystemStats, error) {
 type stubAuth struct {
 	user      core.User
 	login     func(context.Context, string, string) (string, core.User, error)
+	auth      func(context.Context, string) (core.User, core.TokenKind, error)
+	createAPI func(context.Context, uuid.UUID, service.CreateAPITokenInput) (string, core.AuthToken, error)
+	listAPI   func(context.Context, uuid.UUID) ([]core.AuthToken, error)
+	revokeAPI func(context.Context, uuid.UUID, uuid.UUID) error
 	listUsers func(context.Context) ([]core.User, error)
 	loggedOut []string
 }
@@ -83,15 +95,39 @@ func (s *stubAuth) Login(c context.Context, username, password string) (string, 
 	return testToken, s.user, nil
 }
 
-func (s *stubAuth) Authenticate(_ context.Context, token string) (core.User, error) {
-	if token != testToken {
-		return core.User{}, core.ErrUnauthorized
+func (s *stubAuth) Authenticate(c context.Context, token string) (core.User, core.TokenKind, error) {
+	if s.auth != nil {
+		return s.auth(c, token)
 	}
-	return s.user, nil
+	if token != testToken {
+		return core.User{}, "", core.ErrUnauthorized
+	}
+	return s.user, core.TokenKindSession, nil
 }
 
 func (s *stubAuth) Logout(_ context.Context, token string) error {
 	s.loggedOut = append(s.loggedOut, token)
+	return nil
+}
+
+func (s *stubAuth) CreateAPIToken(c context.Context, userID uuid.UUID, in service.CreateAPITokenInput) (string, core.AuthToken, error) {
+	if s.createAPI != nil {
+		return s.createAPI(c, userID, in)
+	}
+	return "", core.AuthToken{}, nil
+}
+
+func (s *stubAuth) ListAPITokens(c context.Context, userID uuid.UUID) ([]core.AuthToken, error) {
+	if s.listAPI != nil {
+		return s.listAPI(c, userID)
+	}
+	return nil, nil
+}
+
+func (s *stubAuth) RevokeAPIToken(c context.Context, userID, tokenID uuid.UUID) error {
+	if s.revokeAPI != nil {
+		return s.revokeAPI(c, userID, tokenID)
+	}
 	return nil
 }
 

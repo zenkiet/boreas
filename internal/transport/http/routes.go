@@ -9,6 +9,7 @@ type access int
 const (
 	accessPublic access = iota
 	accessAuthed
+	accessSession
 	accessAdmin
 	accessMember
 	accessOwner
@@ -29,7 +30,6 @@ type route struct {
 	extraErrors []int
 }
 
-// routeTable drives both routing and OpenAPI security metadata.
 var routeTable = [...]route{
 	{
 		method: http.MethodGet, path: "/api/v1/health", access: accessPublic,
@@ -63,6 +63,30 @@ var routeTable = [...]route{
 		handler: (*Handler).me,
 		tag:     "auth", summary: "Current user",
 		resp: new(userResponse), status: http.StatusOK,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/auth/tokens", access: accessSession,
+		handler: (*Handler).listAPITokens,
+		tag:     "auth", summary: "List your API tokens",
+		description: "Returns metadata only; plaintext tokens and token hashes are never returned.",
+		resp:        new(apiTokensResponse), status: http.StatusOK,
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/auth/tokens", access: accessSession,
+		handler: (*Handler).createAPIToken,
+		tag:     "auth", summary: "Create an API token",
+		description: "The plaintext token is returned once. Its validity window must not exceed 90 days. " +
+			"Only a login session, not another API token, can create it.",
+		req: new(createAPITokenRequest), resp: new(createAPITokenResponse), status: http.StatusCreated,
+		extraErrors: []int{http.StatusBadRequest},
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/auth/tokens/{id}", access: accessSession,
+		handler: (*Handler).revokeAPIToken,
+		tag:     "auth", summary: "Revoke one of your API tokens",
+		description: "Only a login session can revoke an API token, and users can revoke only their own tokens.",
+		req:         new(apiTokenPath), resp: new(successResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 
 	{
@@ -215,6 +239,18 @@ var routeTable = [...]route{
 		req:         new(taskPath), resp: new(taskDeletedResponse), status: http.StatusOK,
 	},
 	{
+		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks/{name}/deploy", access: accessMember,
+		handler: (*Handler).deployTask,
+		tag:     "tasks", summary: "Deploy an image built elsewhere",
+		description: "For a build pipeline to call once it has pushed an image. The image must be " +
+			"immutable, of the form repository@sha256:<64 hex digits>, so the exact artifact that was " +
+			"built is the one that runs. Boreas pulls it and recreates the container, leaving a stopped " +
+			"task stopped. Deploying the image a task already runs changes nothing, so a callback may be " +
+			"retried safely.",
+		req: new(deployTaskRequest), resp: new(taskResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
+	},
+	{
 		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/state", access: accessMember,
 		handler: (*Handler).updateState,
 		tag:     "tasks", summary: "Start, stop, or restart a task",
@@ -246,7 +282,7 @@ func (r route) errorStatuses() []int {
 		statuses = append(statuses, http.StatusUnauthorized)
 	}
 	switch r.access {
-	case accessAdmin, accessMember, accessOwner:
+	case accessSession, accessAdmin, accessMember, accessOwner:
 		statuses = append(statuses, http.StatusForbidden)
 	}
 	statuses = append(statuses, r.extraErrors...)

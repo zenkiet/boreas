@@ -17,7 +17,66 @@ type successResponse struct {
 	Success bool `json:"success" example:"true"`
 }
 
-// nullableUUID distinguishes null from omission so project updates can detach credentials.
+type apiTokenStatus string
+
+const (
+	apiTokenScheduled apiTokenStatus = "scheduled"
+	apiTokenActive    apiTokenStatus = "active"
+	apiTokenExpired   apiTokenStatus = "expired"
+	apiTokenRevoked   apiTokenStatus = "revoked"
+)
+
+func (apiTokenStatus) Enum() []any {
+	return []any{apiTokenScheduled, apiTokenActive, apiTokenExpired, apiTokenRevoked}
+}
+
+type apiTokenDTO struct {
+	ID        uuid.UUID      `json:"id"`
+	Name      string         `json:"name" example:"staging-deployer"`
+	ValidFrom time.Time      `json:"valid_from"`
+	ValidTo   time.Time      `json:"valid_to"`
+	CreatedAt time.Time      `json:"created_at"`
+	RevokedAt *time.Time     `json:"revoked_at"`
+	Status    apiTokenStatus `json:"status"`
+}
+
+func apiTokenFromCore(token core.AuthToken, now time.Time) apiTokenDTO {
+	status := apiTokenActive
+	switch {
+	case token.RevokedAt != nil:
+		status = apiTokenRevoked
+	case !token.ExpiresAt.After(now):
+		status = apiTokenExpired
+	case token.ValidFrom.After(now):
+		status = apiTokenScheduled
+	}
+	return apiTokenDTO{
+		ID: token.ID, Name: token.Name, ValidFrom: token.ValidFrom,
+		ValidTo: token.ExpiresAt, CreatedAt: token.CreatedAt,
+		RevokedAt: token.RevokedAt, Status: status,
+	}
+}
+
+type createAPITokenRequest struct {
+	Name      string    `json:"name" example:"staging-deployer"`
+	ValidFrom time.Time `json:"valid_from"`
+	ValidTo   time.Time `json:"valid_to"`
+}
+
+type createAPITokenResponse struct {
+	Token    string      `json:"token" format:"password"`
+	APIToken apiTokenDTO `json:"api_token"`
+}
+
+type apiTokensResponse struct {
+	APITokens []apiTokenDTO `json:"api_tokens"`
+	Total     int           `json:"total"`
+}
+
+type apiTokenPath struct {
+	ID uuid.UUID `json:"-" path:"id"`
+}
+
 type nullableUUID struct {
 	Set   bool
 	Value *uuid.UUID
@@ -28,7 +87,6 @@ func (n *nullableUUID) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &n.Value)
 }
 
-// JSONSchema exposes nullableUUID as a nullable UUID string instead of its wrapper.
 func (nullableUUID) JSONSchema() (jsonschema.Schema, error) {
 	schema := jsonschema.Schema{}
 	schema.AddType(jsonschema.String)
@@ -87,7 +145,6 @@ type createTaskRequest struct {
 	Env         map[string]string `json:"env,omitempty"`
 }
 
-// updateTaskRequest uses pointers to preserve omitted versus explicit zero values.
 type updateTaskRequest struct {
 	Project     string             `json:"-" path:"project" example:"demo"`
 	Name        string             `json:"-" path:"name" example:"web"`
@@ -97,6 +154,12 @@ type updateTaskRequest struct {
 	Labels      *map[string]string `json:"labels,omitempty"`
 	Env         *map[string]string `json:"env,omitempty"`
 	AutoRestart *bool              `json:"auto_restart,omitempty"`
+}
+
+type deployTaskRequest struct {
+	Project string `json:"-" path:"project" example:"demo"`
+	Name    string `json:"-" path:"name" example:"web"`
+	Image   string `json:"image" example:"ghcr.io/acme/web@sha256:0000000000000000000000000000000000000000000000000000000000000000"`
 }
 
 type updateStateRequest struct {
@@ -208,7 +271,6 @@ type userDTO struct {
 	UpdatedAt time.Time     `json:"updated_at"`
 }
 
-// userFromCore deliberately omits PasswordHash so it can never reach a client.
 func userFromCore(u core.User) userDTO {
 	return userDTO{
 		ID: u.ID, Username: u.Username, Email: u.Email, Role: u.Role,
@@ -262,7 +324,6 @@ type credentialDTO struct {
 	CreatedAt time.Time         `json:"created_at"`
 }
 
-// credentialFromCore omits Token; it is write-only from the API's perspective.
 func credentialFromCore(c core.RegistryCredential) credentialDTO {
 	return credentialDTO{
 		ID: c.ID, Name: c.Name, Registry: c.Registry,
@@ -290,7 +351,6 @@ type credentialsResponse struct {
 	Total       int             `json:"total"`
 }
 
-// healthResponse preserves the root health payload's historical key order.
 type healthResponse struct {
 	Service string `json:"service" example:"boreas"`
 	Status  string `json:"status" example:"healthy"`

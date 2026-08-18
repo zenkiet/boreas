@@ -103,11 +103,23 @@ func (u User) IsAdmin() bool  { return u.Role == RoleAdmin }
 func (u User) Disabled() bool { return u.DisabledAt != nil }
 
 type AuthToken struct {
+	ID        uuid.UUID
 	UserID    uuid.UUID
+	Name      string
+	Kind      TokenKind
 	TokenHash string
+	ValidFrom time.Time
 	ExpiresAt time.Time
 	RevokedAt *time.Time
+	CreatedAt time.Time
 }
+
+type TokenKind string
+
+const (
+	TokenKindSession TokenKind = "session"
+	TokenKindAPI     TokenKind = "api"
+)
 
 type RegistryCredential struct {
 	ID        uuid.UUID
@@ -267,9 +279,11 @@ type UserStore interface {
 }
 
 type TokenStore interface {
-	Create(context.Context, AuthToken) error
+	Create(context.Context, AuthToken) (AuthToken, error)
+	ListAPITokens(ctx context.Context, userID uuid.UUID) ([]AuthToken, error)
 	GetByHash(ctx context.Context, hash string) (AuthToken, error)
 	Revoke(ctx context.Context, hash string) error
+	RevokeByID(ctx context.Context, userID, tokenID uuid.UUID) error
 	RevokeAllForUser(ctx context.Context, userID uuid.UUID) error
 }
 

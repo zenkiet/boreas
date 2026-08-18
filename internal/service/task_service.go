@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -311,13 +312,36 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 	if err != nil {
 		return core.Task{}, err
 	}
+	return s.update(ctx, task, project, in, recreate)
+}
+
+var deployDigest = regexp.MustCompile(`^[^@\s]+@sha256:[0-9a-f]{64}$`)
+
+// Deploy applies an immutable image and treats an already-deployed image as an idempotent retry.
+func (s *TaskService) Deploy(ctx context.Context, slug, name, image string) (core.Task, error) {
+	trimmed := strings.TrimSpace(image)
+	if !deployDigest.MatchString(trimmed) {
+		return core.Task{}, errors.Join(core.ErrInvalidInput,
+			errors.New("deploy image must be immutable, of the form repository@sha256:<64 hex digits>"))
+	}
+	unlock := s.lockTask(slug, name)
+	defer unlock()
+	task, project, err := s.get(ctx, slug, name)
+	if err != nil {
+		return core.Task{}, err
+	}
+	if task.Image == trimmed && !task.PendingRecreate {
+		return task.Clone(), nil
+	}
+	return s.update(ctx, task, project, UpdateTaskInput{Image: &trimmed}, true)
+}
+
+func (s *TaskService) update(ctx context.Context, task core.Task, project core.Project, in UpdateTaskInput, recreate bool) (core.Task, error) {
+	var err error
 
 	spec := task.Spec(project.Slug)
-	imageChanged := false
 	if in.Image != nil {
-		trimmed := strings.TrimSpace(*in.Image)
-		imageChanged = trimmed != task.Image
-		spec.Image = trimmed
+		spec.Image = strings.TrimSpace(*in.Image)
 	}
 	if in.Port != nil {
 		spec.Port = *in.Port
@@ -331,16 +355,33 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 	if err := spec.Validate(); err != nil {
 		return core.Task{}, err
 	}
-	if in.Description != nil {
+	descriptionChanged := in.Description != nil && *in.Description != task.Description
+	containerChanged := spec.Image != task.Image || spec.Port != task.Port ||
+		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env)
+	if recreate && task.PendingRecreate {
+		containerChanged = true
+	}
+	if !descriptionChanged && !containerChanged {
+		return task.Clone(), nil
+	}
+	if descriptionChanged {
 		task.Description = *in.Description
 	}
-
-	needsContainer := in.Image != nil || in.Port != nil || in.Labels != nil || in.Env != nil
-	if !needsContainer {
+	if !containerChanged {
 		if task, err = s.tasks.Update(ctx, task); err != nil {
 			return core.Task{}, fmt.Errorf("persist task: %w", err)
 		}
 		return task.Clone(), nil
+	}
+
+	if spec.Image != task.Image && recreate {
+		credential, err := s.credential(ctx, project)
+		if err != nil {
+			return core.Task{}, err
+		}
+		if err := s.runtime.Pull(ctx, spec.Image, credential); err != nil {
+			return core.Task{}, fmt.Errorf("pull image: %w", err)
+		}
 	}
 
 	wasRunning := task.Status == core.StatusRunning
@@ -348,7 +389,7 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 		if err := s.runtime.Stop(ctx, task.ContainerID); err != nil {
 			return s.failTask(ctx, task, fmt.Errorf("stop for update: %w", err))
 		}
-		_ = s.routes.Unregister(ctx, project.Slug, name)
+		_ = s.routes.Unregister(ctx, project.Slug, task.Name)
 	}
 	task.Image, task.Port, task.Labels, task.Env = spec.Image, spec.Port, spec.Labels, spec.Env
 	// Clear stale failures because this configuration may fix them.
@@ -358,17 +399,6 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 	}
 	if !recreate {
 		return task.Clone(), nil
-	}
-
-	// Pull changed images before recreate because Docker otherwise uses its cache.
-	if imageChanged {
-		credential, credErr := s.credential(ctx, project)
-		if credErr != nil {
-			return core.Task{}, credErr
-		}
-		if err := s.runtime.Pull(ctx, task.Image, credential); err != nil {
-			return s.failTask(ctx, task, fmt.Errorf("pull image: %w", err))
-		}
 	}
 	newID, err := s.runtime.Recreate(ctx, task.ContainerID, task.Spec(project.Slug))
 	if err != nil {

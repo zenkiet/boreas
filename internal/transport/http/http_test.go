@@ -333,6 +333,166 @@ func TestLogoutRevokesCallerToken(t *testing.T) {
 	}
 }
 
+func TestCreateAPITokenReturnsSecretOnce(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	tokenID := uuid.New()
+	var gotUser uuid.UUID
+	var got service.CreateAPITokenInput
+	auth := &stubAuth{
+		user: testMember,
+		createAPI: func(_ context.Context, userID uuid.UUID, in service.CreateAPITokenInput) (string, core.AuthToken, error) {
+			gotUser, got = userID, in
+			return "plain-secret", core.AuthToken{
+				ID: tokenID, UserID: userID, Name: in.Name, Kind: core.TokenKindAPI,
+				TokenHash: "must-not-leak", ValidFrom: in.ValidFrom, ExpiresAt: in.ValidTo, CreatedAt: now,
+			}, nil
+		},
+	}
+	h := testHandler(stubTasks{}, auth, nil)
+	body := `{"name":"ci","valid_from":"` + now.Format(time.RFC3339) +
+		`","valid_to":"` + now.Add(24*time.Hour).Format(time.RFC3339) + `"}`
+	rr := do(h, authed(http.MethodPost, "/api/v1/auth/tokens", strings.NewReader(body)))
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if gotUser != testMember.ID || got.Name != "ci" || !got.ValidFrom.Equal(now) {
+		t.Fatalf("arguments: user=%s input=%+v", gotUser, got)
+	}
+	response := rr.Body.String()
+	if !strings.Contains(response, `"token":"plain-secret"`) || !strings.Contains(response, tokenID.String()) {
+		t.Fatalf("body=%s", response)
+	}
+	if strings.Contains(response, "must-not-leak") || strings.Contains(response, "token_hash") {
+		t.Fatalf("token hash leaked: %s", response)
+	}
+}
+
+func TestListAPITokensReturnsMetadataAndStatuses(t *testing.T) {
+	now := time.Now().UTC()
+	revokedAt := now.Add(-time.Minute)
+	auth := &stubAuth{
+		user: testMember,
+		listAPI: func(_ context.Context, userID uuid.UUID) ([]core.AuthToken, error) {
+			if userID != testMember.ID {
+				t.Fatalf("userID=%s", userID)
+			}
+			return []core.AuthToken{
+				{ID: uuid.New(), Name: "future", Kind: core.TokenKindAPI, TokenHash: "hidden-1", ValidFrom: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour), CreatedAt: now},
+				{ID: uuid.New(), Name: "active", Kind: core.TokenKindAPI, TokenHash: "hidden-2", ValidFrom: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour), CreatedAt: now},
+				{ID: uuid.New(), Name: "expired", Kind: core.TokenKindAPI, TokenHash: "hidden-3", ValidFrom: now.Add(-2 * time.Hour), ExpiresAt: now.Add(-time.Hour), CreatedAt: now},
+				{ID: uuid.New(), Name: "revoked", Kind: core.TokenKindAPI, TokenHash: "hidden-4", ValidFrom: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour), RevokedAt: &revokedAt, CreatedAt: now},
+			}, nil
+		},
+	}
+	h := testHandler(stubTasks{}, auth, nil)
+	rr := do(h, authed(http.MethodGet, "/api/v1/auth/tokens", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	response := rr.Body.String()
+	for _, status := range []string{"scheduled", "active", "expired", "revoked"} {
+		if !strings.Contains(response, `"status":"`+status+`"`) {
+			t.Fatalf("missing %s: %s", status, response)
+		}
+	}
+	if strings.Contains(response, "hidden-") || strings.Contains(response, "token_hash") {
+		t.Fatalf("secret metadata leaked: %s", response)
+	}
+}
+
+func TestRevokeAPITokenUsesCurrentUser(t *testing.T) {
+	tokenID := uuid.New()
+	var gotUser, gotToken uuid.UUID
+	auth := &stubAuth{
+		user: testMember,
+		revokeAPI: func(_ context.Context, userID, id uuid.UUID) error {
+			gotUser, gotToken = userID, id
+			return nil
+		},
+	}
+	h := testHandler(stubTasks{}, auth, nil)
+	rr := do(h, authed(http.MethodDelete, "/api/v1/auth/tokens/"+tokenID.String(), nil))
+	if rr.Code != http.StatusOK || gotUser != testMember.ID || gotToken != tokenID {
+		t.Fatalf("status=%d user=%s token=%s", rr.Code, gotUser, gotToken)
+	}
+	if !strings.Contains(rr.Body.String(), `"success":true`) {
+		t.Fatalf("body=%s", rr.Body.String())
+	}
+}
+
+func TestAPITokenCannotManageAPITokens(t *testing.T) {
+	called := false
+	auth := &stubAuth{
+		user: testMember,
+		auth: func(_ context.Context, token string) (core.User, core.TokenKind, error) {
+			if token != testToken {
+				return core.User{}, "", core.ErrUnauthorized
+			}
+			return testMember, core.TokenKindAPI, nil
+		},
+		listAPI: func(context.Context, uuid.UUID) ([]core.AuthToken, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	h := testHandler(stubTasks{}, auth, nil)
+	for _, request := range []*http.Request{
+		authed(http.MethodGet, "/api/v1/auth/tokens", nil),
+		authed(http.MethodPost, "/api/v1/auth/tokens", strings.NewReader(`{}`)),
+		authed(http.MethodDelete, "/api/v1/auth/tokens/"+uuid.New().String(), nil),
+	} {
+		rr := do(h, request)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("%s %s status=%d, want 403", request.Method, request.URL.Path, rr.Code)
+		}
+	}
+	if called {
+		t.Fatal("API token management service was called")
+	}
+}
+
+func TestAPITokenCanDeploy(t *testing.T) {
+	digest := "ghcr.io/acme/web@sha256:" + strings.Repeat("a", 64)
+	deployed := false
+	auth := &stubAuth{
+		user: testMember,
+		auth: func(context.Context, string) (core.User, core.TokenKind, error) {
+			return testMember, core.TokenKindAPI, nil
+		},
+	}
+	h := testHandler(stubTasks{
+		deploy: func(_ context.Context, project, name, image string) (core.Task, error) {
+			deployed = project == "team" && name == "web" && image == digest
+			return core.Task{Name: name, Image: image, Status: core.StatusRunning}, nil
+		},
+	}, auth, &stubProjects{role: core.ProjectRoleMember})
+	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks/web/deploy",
+		strings.NewReader(`{"image":"`+digest+`"}`)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !deployed {
+		t.Fatal("API token did not reach the deploy service")
+	}
+}
+
+func TestCreateAPITokenRejectsMalformedTime(t *testing.T) {
+	called := false
+	auth := &stubAuth{
+		user: testMember,
+		createAPI: func(context.Context, uuid.UUID, service.CreateAPITokenInput) (string, core.AuthToken, error) {
+			called = true
+			return "", core.AuthToken{}, nil
+		},
+	}
+	h := testHandler(stubTasks{}, auth, nil)
+	rr := do(h, authed(http.MethodPost, "/api/v1/auth/tokens",
+		strings.NewReader(`{"name":"ci","valid_from":"tomorrow","valid_to":"later"}`)))
+	if rr.Code != http.StatusBadRequest || called {
+		t.Fatalf("status=%d called=%v", rr.Code, called)
+	}
+}
+
 func frame(stream byte, payload string) []byte {
 	b := make([]byte, 8, 8+len(payload))
 	b[0] = stream
@@ -456,6 +616,57 @@ func TestUpdateTaskDistinguishesEmptyFromOmitted(t *testing.T) {
 	}
 	if len(*got.Env) != 0 {
 		t.Fatalf("env = %v", *got.Env)
+	}
+}
+
+func TestDeployTaskPassesImage(t *testing.T) {
+	digest := "ghcr.io/acme/web@sha256:" + strings.Repeat("a", 64)
+	var seenProject, seenName, seenImage string
+	h := testHandler(stubTasks{
+		deploy: func(_ context.Context, project, name, image string) (core.Task, error) {
+			seenProject, seenName, seenImage = project, name, image
+			return core.Task{Name: name, Image: image, Status: core.StatusRunning}, nil
+		},
+	}, nil, nil)
+
+	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks/T-1/deploy",
+		strings.NewReader(`{"image":"`+digest+`"}`)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	if seenProject != "team" || seenName != "T-1" || seenImage != digest {
+		t.Fatalf("arguments: %q %q %q", seenProject, seenName, seenImage)
+	}
+	if !strings.Contains(rr.Body.String(), digest) {
+		t.Fatalf("body = %s", rr.Body.String())
+	}
+}
+
+func TestDeployTaskMapsInvalidImageTo400(t *testing.T) {
+	h := testHandler(stubTasks{
+		deploy: func(context.Context, string, string, string) (core.Task, error) {
+			return core.Task{}, errors.Join(core.ErrInvalidInput, errors.New("deploy image must be immutable"))
+		},
+	}, nil, nil)
+	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks/T/deploy",
+		strings.NewReader(`{"image":"ghcr.io/acme/web:staging"}`)))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+}
+
+func TestDeployTaskRejectsUnknownFields(t *testing.T) {
+	called := false
+	h := testHandler(stubTasks{
+		deploy: func(context.Context, string, string, string) (core.Task, error) {
+			called = true
+			return core.Task{}, nil
+		},
+	}, nil, nil)
+	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks/T/deploy",
+		strings.NewReader(`{"image":"x","digest":"sha256:abc"}`)))
+	if rr.Code != http.StatusBadRequest || called {
+		t.Fatalf("status=%d called=%v", rr.Code, called)
 	}
 }
 
