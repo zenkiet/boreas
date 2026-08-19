@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.1.1 - 2026-08-19
+#### 👷 Continuous Integration
+- 👷 setup publish workflow pipeline - (02cd3e5) - *zenkiet*
+
+- - -
+
 ## v1.1.0 - 2026-08-19
 #### 🚀 Features
 - ✨ add CI deploy API tokens - (30bc132) - Zen Kiet, *factory-droid[bot]*
