@@ -1,0 +1,48 @@
+from_latest_tag = true
+ignore_merge_commits = true
+ignore_fixup_commits = true
+disable_changelog = false
+disable_bump_commit =false
+tag_prefix = "v"
+
+generate_mono_repository_global_tag = true
+generate_mono_repository_package_tags = true
+branch_whitelist = ["main"]
+skip_ci = "[skip ci]"
+skip_untracked = false
+
+# Hooks validation & push
+pre_bump_hooks = [
+  "golangci-lint run",
+  "go test -v ./...",
+  "make openapi-check"
+]
+
+post_bump_hooks = [
+  "git commit --amend -m 'chore: 🔖 bump version {{version}}'",
+  "git tag --force {{version_tag}}",
+  "git push origin main",
+  "git push origin --tags"
+]
+
+pre_package_bump_hooks = []
+post_package_bump_hooks = []
+
+[commit_types]
+feat = { changelog_title = "🚀 Features" }
+fix = { changelog_title = "🐛 Bug Fixes" }
+perf = { changelog_title = "⚡ Performance Improvements" }
+refactor = { changelog_title = "♻️ Code Refactoring" }
+docs = { changelog_title = "📝 Documentation" }
+test = { changelog_title = "🧪 Testing" }
+build = { changelog_title = "📦 Build System" }
+ci = { changelog_title = "👷 Continuous Integration" }
+style = { changelog_title = "🎨 Styles & Formatting" }
+chore = { changelog_title = "🔧 Chores & Maintenance" }
+
+[changelog]
+path = "CHANGELOG.md"
+remote = "github.com"
+owner = "zenkiet"
+repository = "boreas"
+authors = [{ signature = "Kiet Le", username = "zenkiet" }]
