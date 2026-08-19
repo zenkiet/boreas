@@ -23,8 +23,8 @@ dockers_v2:
     ids:
       - boreas
     images:
-      # - "ghcr.io/zenkiet/boreas"
       - "zenkiet/boreas"
+      - "ghcr.io/zenkiet/boreas"
     tags:
       - "{{ .Tag }}"
       - "latest"
