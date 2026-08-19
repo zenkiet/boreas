@@ -21,7 +21,9 @@ services:
 
   boreas:
     # image: ghcr.io/boreas-ai/boreas:latest
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.local
     container_name: boreas
     ports:
       - "8080:8080"
