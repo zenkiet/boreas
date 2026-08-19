@@ -242,6 +242,7 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 	}
 	project, err := h.projects.Create(r.Context(), userFrom(r.Context()), service.CreateProjectInput{
 		Slug: req.Slug, Name: req.Name, RegistryCredentialID: req.RegistryCredentialID,
+		DefaultImage: req.DefaultImage, DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv,
 	})
 	if err != nil {
 		writeServiceError(w, h.logger, err)
@@ -265,7 +266,10 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w)
 		return
 	}
-	in := service.UpdateProjectInput{Name: req.Name}
+	in := service.UpdateProjectInput{
+		Name: req.Name, DefaultImage: req.DefaultImage,
+		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv,
+	}
 	if req.RegistryCredentialID.Set {
 		in.RegistryCredentialID = &req.RegistryCredentialID.Value
 	}

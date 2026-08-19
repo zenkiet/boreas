@@ -39,8 +39,9 @@ func seedProject(t *testing.T, pool *pgxpool.Pool) core.Project {
 	ctx := context.Background()
 	store := NewProjectStore(pool)
 	project, err := store.Create(ctx, core.Project{
-		Slug: "test-" + uuid.New().String()[:8],
-		Name: "integration test",
+		Slug:        "test-" + uuid.New().String()[:8],
+		Name:        "integration test",
+		DefaultPort: 80,
 	})
 	if err != nil {
 		t.Fatalf("create project: %v", err)
@@ -101,6 +102,40 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	}
 	if err := store.Delete(ctx, created.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+func TestProjectDefaultsRoundTrip(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	store := NewProjectStore(pool)
+
+	project := seedProject(t, pool)
+	if project.DefaultImage != "" || project.DefaultPort != 80 || len(project.DefaultEnv) != 0 {
+		t.Fatalf("column defaults = %+v, want \"\", 80, empty", project)
+	}
+
+	project.DefaultImage, project.DefaultPort = "nginx:alpine", 8080
+	project.DefaultEnv = map[string]string{"APP_ENV": "dev"}
+	updated, err := store.Update(ctx, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.DefaultImage != "nginx:alpine" || updated.DefaultPort != 8080 || updated.DefaultEnv["APP_ENV"] != "dev" {
+		t.Fatalf("update round trip = %+v", updated)
+	}
+
+	fetched, err := store.GetBySlug(ctx, project.Slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" {
+		t.Fatalf("select round trip = %+v", fetched)
+	}
+
+	fetched.DefaultPort = 70000
+	if _, err := store.Update(ctx, fetched); err == nil {
+		t.Fatal("the database must reject an out-of-range default port")
 	}
 }
 
@@ -179,7 +214,9 @@ func TestForeignKeyViolationMapsToConflict(t *testing.T) {
 func TestSchemaRejectsReservedProjectSlug(t *testing.T) {
 	pool := newPool(t)
 	store := NewProjectStore(pool)
-	if _, err := store.Create(context.Background(), core.Project{Slug: "api", Name: "reserved"}); err == nil {
+	if _, err := store.Create(context.Background(), core.Project{
+		Slug: "api", Name: "reserved", DefaultPort: 80,
+	}); err == nil {
 		t.Fatal("the database CHECK constraint should reject the reserved slug 'api'")
 	}
 }

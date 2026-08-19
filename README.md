@@ -178,6 +178,22 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
 The former dedicated `GET` and `PUT` `/tasks/{name}/env` endpoints have been
 removed. Clients should read `task.env` and use `PATCH /tasks/{name}` instead.
 
+## Task form defaults
+
+A project carries `default_image`, `default_port`, and `default_env` so a UI can
+prefill its task creation form. They are stored hints only: task creation uses
+exactly the `image`, `port`, and `env` it is sent, and editing them never
+changes an existing task or restarts a container.
+
+```bash
+curl -X PATCH -H "$AUTH" -H "$JSON" \
+  -d '{"default_image":"nginx:alpine","default_port":8080,"default_env":{"APP_ENV":"dev"}}' \
+  http://localhost:8080/api/v1/projects/demo
+```
+
+Send `""` for `default_image` or `{}` for `default_env` to clear a default;
+omit a field to leave it unchanged. New projects start at `""`, `80`, and `{}`.
+
 ## Deploy from a build pipeline
 
 Create a dedicated API token with a login session. The validity window may be

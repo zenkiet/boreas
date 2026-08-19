@@ -794,6 +794,49 @@ func TestUpdateProjectDistinguishesNullFromOmittedCredential(t *testing.T) {
 	}
 }
 
+func TestUpdateProjectForwardsTaskDefaults(t *testing.T) {
+	var got service.UpdateProjectInput
+	projects := &stubProjects{update: func(_ context.Context, _ string, in service.UpdateProjectInput) (core.Project, error) {
+		got = in
+		return core.Project{}, nil
+	}}
+	h := testHandler(stubTasks{}, nil, projects)
+	rr := do(h, authed(http.MethodPatch, "/api/v1/projects/team",
+		strings.NewReader(`{"default_image":"nginx:alpine","default_port":8080,"default_env":{}}`)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	if got.DefaultImage == nil || *got.DefaultImage != "nginx:alpine" {
+		t.Fatalf("default_image = %v", got.DefaultImage)
+	}
+	if got.DefaultPort == nil || *got.DefaultPort != 8080 {
+		t.Fatalf("default_port = %v", got.DefaultPort)
+	}
+	// An explicit empty object must survive as a clear instruction, not as omission.
+	if got.DefaultEnv == nil || len(*got.DefaultEnv) != 0 {
+		t.Fatalf("default_env = %v", got.DefaultEnv)
+	}
+
+	rr = do(h, authed(http.MethodPatch, "/api/v1/projects/team", strings.NewReader(`{"name":"Renamed"}`)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if got.DefaultImage != nil || got.DefaultPort != nil || got.DefaultEnv != nil {
+		t.Fatalf("omitted defaults leaked: %+v", got)
+	}
+}
+
+func TestProjectDTOAlwaysIncludesTaskDefaults(t *testing.T) {
+	h := testHandler(stubTasks{}, nil, &stubProjects{})
+	rr := do(h, authed(http.MethodGet, "/api/v1/projects/team", nil))
+	body := rr.Body.String()
+	for _, want := range []string{`"default_image":""`, `"default_port":0`, `"default_env":{}`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project response must include %s: %s", want, body)
+		}
+	}
+}
+
 func TestUpdateProjectRejectsMalformedCredentialID(t *testing.T) {
 	h := testHandler(stubTasks{}, nil, nil)
 	rr := do(h, authed(http.MethodPatch, "/api/v1/projects/team",

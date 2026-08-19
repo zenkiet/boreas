@@ -279,7 +279,9 @@ paths:
       - projects
     post:
       description: The creator becomes the project owner. The slugs api, health, metrics,
-        static and admin are reserved.
+        static and admin are reserved. default_image, default_port and default_env
+        only prefill the task creation form; task creation never applies them on its
+        own.
       operationId: post-projects
       requestBody:
         content:
@@ -422,7 +424,8 @@ paths:
       - projects
     patch:
       description: Send registry_credential_id as null to detach the credential; omit
-        it to leave it unchanged.
+        it to leave it unchanged. An empty default_image or default_env clears that
+        task form default; existing tasks and their containers are never touched.
       operationId: patch-projects-project
       parameters:
       - in: path
@@ -1681,6 +1684,16 @@ components:
       type: object
     CreateProjectRequest:
       properties:
+        default_env:
+          additionalProperties:
+            type: string
+          type: object
+        default_image:
+          example: nginx:alpine
+          type: string
+        default_port:
+          example: 80
+          type: integer
         name:
           example: Demo
           type: string
@@ -1865,6 +1878,17 @@ components:
         created_at:
           format: date-time
           type: string
+        default_env:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+        default_image:
+          example: nginx:alpine
+          type: string
+        default_port:
+          example: 80
+          type: integer
         id:
           $ref: '#/components/schemas/UUID'
         name:
@@ -1882,6 +1906,9 @@ components:
       - id
       - slug
       - name
+      - default_image
+      - default_port
+      - default_env
       - created_at
       - updated_at
       type: object
@@ -2051,6 +2078,19 @@ components:
       type: string
     UpdateProjectRequest:
       properties:
+        default_env:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+        default_image:
+          example: nginx:alpine
+          nullable: true
+          type: string
+        default_port:
+          example: 80
+          nullable: true
+          type: integer
         name:
           nullable: true
           type: string

@@ -75,6 +75,33 @@ func TestCreateLifecycleAndDefaults(t *testing.T) {
 	}
 }
 
+func TestCreateIgnoresProjectFormDefaults(t *testing.T) {
+	h := newHarness(t)
+	project := h.project
+	project.DefaultImage, project.DefaultPort = "preset:image", 9999
+	project.DefaultEnv = map[string]string{"PRESET": "yes"}
+	if _, err := h.projects.Update(context.Background(), project); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, in := range map[string]CreateTaskInput{
+		"missing image": {Name: "no-image"},
+		"blank image":   {Name: "blank-image", Image: "   "},
+	} {
+		if _, err := h.svc.Create(context.Background(), "team", in); !errors.Is(err, core.ErrInvalidInput) {
+			t.Fatalf("%s: got %v, want ErrInvalidInput", name, err)
+		}
+	}
+
+	task, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "sent:image"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Image != "sent:image" || task.Port == 9999 || len(task.Env) != 0 {
+		t.Fatalf("project form defaults leaked into the task: %+v", task)
+	}
+}
+
 func TestCreateAllowsSameNameInDifferentProjects(t *testing.T) {
 	h := newHarness(t)
 	h.projects.add("other")

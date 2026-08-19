@@ -152,8 +152,10 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/projects", access: accessAuthed,
 		handler: (*Handler).createProject,
 		tag:     "projects", summary: "Create a project",
-		description: "The creator becomes the project owner. The slugs api, health, metrics, static and admin are reserved.",
-		req:         new(createProjectRequest), resp: new(projectResponse), status: http.StatusCreated,
+		description: "The creator becomes the project owner. The slugs api, health, metrics, static and admin are reserved. " +
+			"default_image, default_port and default_env only prefill the task creation form; " +
+			"task creation never applies them on its own.",
+		req: new(createProjectRequest), resp: new(projectResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
@@ -166,8 +168,10 @@ var routeTable = [...]route{
 		method: http.MethodPatch, path: "/api/v1/projects/{project}", access: accessOwner,
 		handler: (*Handler).updateProject,
 		tag:     "projects", summary: "Update a project",
-		description: "Send registry_credential_id as null to detach the credential; omit it to leave it unchanged.",
-		req:         new(updateProjectRequest), resp: new(projectResponse), status: http.StatusOK,
+		description: "Send registry_credential_id as null to detach the credential; omit it to leave it unchanged. " +
+			"An empty default_image or default_env clears that task form default; " +
+			"existing tasks and their containers are never touched.",
+		req: new(updateProjectRequest), resp: new(projectResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest},
 	},
 	{

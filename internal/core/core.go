@@ -77,6 +77,20 @@ func ValidateTaskName(name string) error {
 	return nil
 }
 
+// ValidateEnv rejects names Docker cannot express and those Boreas injects itself.
+func ValidateEnv(env map[string]string) error {
+	for key := range env {
+		if key == "" || strings.ContainsAny(key, "=\x00") {
+			return errors.Join(ErrInvalidInput, errors.New("environment variable names must be non-empty and contain neither '=' nor NUL"))
+		}
+		switch key {
+		case "BOREAS_PROJECT", "BOREAS_TASK", "BOREAS_PORT", "BASE_HREF":
+			return errors.Join(ErrInvalidInput, errors.New("environment variable is reserved by Boreas: "+key))
+		}
+	}
+	return nil
+}
+
 func ValidateProjectSlug(slug string) error {
 	if !projectSlugRegexp.MatchString(slug) {
 		return errors.Join(ErrInvalidInput, errors.New("project slug must match ^[a-z0-9][a-z0-9-]{0,62}$"))
@@ -136,6 +150,9 @@ type Project struct {
 	Slug                 string
 	Name                 string
 	RegistryCredentialID *uuid.UUID
+	DefaultImage         string
+	DefaultPort          int
+	DefaultEnv           map[string]string
 	CreatedBy            *uuid.UUID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -207,14 +224,8 @@ func (s ContainerSpec) Validate() error {
 	if s.Port < 1 || s.Port > 65535 {
 		return errors.Join(ErrInvalidInput, errors.New("port must be between 1 and 65535"))
 	}
-	for key := range s.Env {
-		if key == "" || strings.ContainsAny(key, "=\x00") {
-			return errors.Join(ErrInvalidInput, errors.New("environment variable names must be non-empty and contain neither '=' nor NUL"))
-		}
-		switch key {
-		case "BOREAS_PROJECT", "BOREAS_TASK", "BOREAS_PORT", "BASE_HREF":
-			return errors.Join(ErrInvalidInput, errors.New("environment variable is reserved by Boreas: "+key))
-		}
+	if err := ValidateEnv(s.Env); err != nil {
+		return err
 	}
 	for key := range s.Labels {
 		switch key {

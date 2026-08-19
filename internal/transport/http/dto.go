@@ -201,32 +201,45 @@ type taskDeletedResponse struct {
 }
 
 type projectDTO struct {
-	ID                   uuid.UUID  `json:"id"`
-	Slug                 string     `json:"slug" example:"demo"`
-	Name                 string     `json:"name" example:"Demo"`
-	RegistryCredentialID *uuid.UUID `json:"registry_credential_id,omitempty"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	ID                   uuid.UUID         `json:"id"`
+	Slug                 string            `json:"slug" example:"demo"`
+	Name                 string            `json:"name" example:"Demo"`
+	RegistryCredentialID *uuid.UUID        `json:"registry_credential_id,omitempty"`
+	DefaultImage         string            `json:"default_image" example:"nginx:alpine"`
+	DefaultPort          int               `json:"default_port" example:"80"`
+	DefaultEnv           map[string]string `json:"default_env"`
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
 }
 
 func projectFromCore(p core.Project) projectDTO {
+	if p.DefaultEnv == nil {
+		p.DefaultEnv = map[string]string{}
+	}
 	return projectDTO{
 		ID: p.ID, Slug: p.Slug, Name: p.Name,
 		RegistryCredentialID: p.RegistryCredentialID,
-		CreatedAt:            p.CreatedAt, UpdatedAt: p.UpdatedAt,
+		DefaultImage:         p.DefaultImage, DefaultPort: p.DefaultPort, DefaultEnv: p.DefaultEnv,
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
 }
 
 type createProjectRequest struct {
-	Slug                 string     `json:"slug" example:"demo"`
-	Name                 string     `json:"name,omitempty" example:"Demo"`
-	RegistryCredentialID *uuid.UUID `json:"registry_credential_id,omitempty"`
+	Slug                 string            `json:"slug" example:"demo"`
+	Name                 string            `json:"name,omitempty" example:"Demo"`
+	RegistryCredentialID *uuid.UUID        `json:"registry_credential_id,omitempty"`
+	DefaultImage         string            `json:"default_image,omitempty" example:"nginx:alpine"`
+	DefaultPort          int               `json:"default_port,omitempty" example:"80"`
+	DefaultEnv           map[string]string `json:"default_env,omitempty"`
 }
 
 type updateProjectRequest struct {
-	Project              string       `json:"-" path:"project" example:"demo"`
-	Name                 *string      `json:"name,omitempty"`
-	RegistryCredentialID nullableUUID `json:"registry_credential_id,omitempty"`
+	Project              string             `json:"-" path:"project" example:"demo"`
+	Name                 *string            `json:"name,omitempty"`
+	RegistryCredentialID nullableUUID       `json:"registry_credential_id,omitempty"`
+	DefaultImage         *string            `json:"default_image,omitempty" example:"nginx:alpine"`
+	DefaultPort          *int               `json:"default_port,omitempty" example:"80"`
+	DefaultEnv           *map[string]string `json:"default_env,omitempty"`
 }
 
 type addMemberRequest struct {

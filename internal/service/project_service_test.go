@@ -41,6 +41,77 @@ func TestCreateProjectMakesCallerOwner(t *testing.T) {
 	}
 }
 
+func TestCreateProjectTaskDefaults(t *testing.T) {
+	svc, _, _ := newProjects(t)
+	project, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: "bare"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.DefaultImage != "" || project.DefaultPort != 80 || len(project.DefaultEnv) != 0 {
+		t.Fatalf("unset defaults = %+v, want \"\", 80, empty", project)
+	}
+
+	project, err = svc.Create(context.Background(), member(), CreateProjectInput{
+		Slug: "preset", DefaultImage: "  nginx:alpine  ", DefaultPort: 8080,
+		DefaultEnv: map[string]string{"APP_ENV": "dev"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.DefaultImage != "nginx:alpine" || project.DefaultPort != 8080 || project.DefaultEnv["APP_ENV"] != "dev" {
+		t.Fatalf("supplied defaults = %+v", project)
+	}
+
+	for name, in := range map[string]CreateProjectInput{
+		"port too high": {Slug: "bad-port", DefaultPort: 65536},
+		"reserved env":  {Slug: "bad-env", DefaultEnv: map[string]string{"BOREAS_PORT": "1"}},
+	} {
+		if _, err := svc.Create(context.Background(), member(), in); !errors.Is(err, core.ErrInvalidInput) {
+			t.Fatalf("%s: got %v, want ErrInvalidInput", name, err)
+		}
+	}
+}
+
+func TestUpdateProjectTaskDefaults(t *testing.T) {
+	svc, _, _ := newProjects(t)
+	if _, err := svc.Create(context.Background(), member(), CreateProjectInput{
+		Slug: "team", DefaultImage: "nginx:alpine", DefaultPort: 8080,
+		DefaultEnv: map[string]string{"APP_ENV": "dev"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	renamed := "Renamed"
+	project, err := svc.Update(context.Background(), "team", UpdateProjectInput{Name: &renamed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.DefaultImage != "nginx:alpine" || project.DefaultPort != 8080 || project.DefaultEnv["APP_ENV"] != "dev" {
+		t.Fatalf("omitted defaults were changed: %+v", project)
+	}
+
+	blank, empty := "", map[string]string{}
+	project, err = svc.Update(context.Background(), "team", UpdateProjectInput{
+		DefaultImage: &blank, DefaultEnv: &empty,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.DefaultImage != "" || len(project.DefaultEnv) != 0 || project.DefaultPort != 8080 {
+		t.Fatalf("clearing defaults = %+v", project)
+	}
+
+	badPort, reserved := 0, map[string]string{"BASE_HREF": "/"}
+	for name, in := range map[string]UpdateProjectInput{
+		"port zero":    {DefaultPort: &badPort},
+		"reserved env": {DefaultEnv: &reserved},
+	} {
+		if _, err := svc.Update(context.Background(), "team", in); !errors.Is(err, core.ErrInvalidInput) {
+			t.Fatalf("%s: got %v, want ErrInvalidInput", name, err)
+		}
+	}
+}
+
 func TestCreateProjectRejectsReservedAndInvalidSlugs(t *testing.T) {
 	svc, _, _ := newProjects(t)
 	for _, slug := range []string{"api", "admin", "Upper", "-dash", ""} {

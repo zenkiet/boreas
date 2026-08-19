@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/google/uuid"
@@ -54,6 +55,9 @@ type CreateProjectInput struct {
 	Slug                 string
 	Name                 string
 	RegistryCredentialID *uuid.UUID
+	DefaultImage         string
+	DefaultPort          int
+	DefaultEnv           map[string]string
 }
 
 // Create makes the caller an owner so the project is never ownerless.
@@ -65,11 +69,23 @@ func (s *ProjectService) Create(ctx context.Context, actor core.User, in CreateP
 	if name == "" {
 		name = in.Slug
 	}
+	port := in.DefaultPort
+	if port == 0 {
+		port = 80
+	}
+	if port < 1 || port > 65535 {
+		return core.Project{}, errors.Join(core.ErrInvalidInput, errors.New("default port must be between 1 and 65535"))
+	}
+	if err := core.ValidateEnv(in.DefaultEnv); err != nil {
+		return core.Project{}, err
+	}
 	if err := s.checkCredential(ctx, in.RegistryCredentialID); err != nil {
 		return core.Project{}, err
 	}
 	project, err := s.projects.Create(ctx, core.Project{
-		Slug: in.Slug, Name: name, RegistryCredentialID: in.RegistryCredentialID, CreatedBy: &actor.ID,
+		Slug: in.Slug, Name: name, RegistryCredentialID: in.RegistryCredentialID,
+		DefaultImage: strings.TrimSpace(in.DefaultImage), DefaultPort: port,
+		DefaultEnv: maps.Clone(in.DefaultEnv), CreatedBy: &actor.ID,
 	})
 	if err != nil {
 		return core.Project{}, fmt.Errorf("create project: %w", err)
@@ -85,6 +101,9 @@ func (s *ProjectService) Create(ctx context.Context, actor core.User, in CreateP
 type UpdateProjectInput struct {
 	Name                 *string
 	RegistryCredentialID **uuid.UUID
+	DefaultImage         *string
+	DefaultPort          *int
+	DefaultEnv           *map[string]string
 }
 
 func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProjectInput) (core.Project, error) {
@@ -97,6 +116,21 @@ func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProje
 			return core.Project{}, errors.Join(core.ErrInvalidInput, errors.New("project name must not be empty"))
 		}
 		project.Name = *in.Name
+	}
+	if in.DefaultImage != nil {
+		project.DefaultImage = strings.TrimSpace(*in.DefaultImage)
+	}
+	if in.DefaultPort != nil {
+		if *in.DefaultPort < 1 || *in.DefaultPort > 65535 {
+			return core.Project{}, errors.Join(core.ErrInvalidInput, errors.New("default port must be between 1 and 65535"))
+		}
+		project.DefaultPort = *in.DefaultPort
+	}
+	if in.DefaultEnv != nil {
+		if err := core.ValidateEnv(*in.DefaultEnv); err != nil {
+			return core.Project{}, err
+		}
+		project.DefaultEnv = maps.Clone(*in.DefaultEnv)
 	}
 	if in.RegistryCredentialID != nil {
 		if err := s.checkCredential(ctx, *in.RegistryCredentialID); err != nil {

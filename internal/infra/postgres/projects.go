@@ -13,7 +13,8 @@ type ProjectStore struct{ pool *pgxpool.Pool }
 
 func NewProjectStore(pool *pgxpool.Pool) *ProjectStore { return &ProjectStore{pool: pool} }
 
-const projectColumns = `id, slug, name, registry_credential_id, created_by, created_at, updated_at`
+const projectColumns = `id, slug, name, registry_credential_id,
+	default_image, default_port, default_env, created_by, created_at, updated_at`
 
 func (s *ProjectStore) List(ctx context.Context) ([]core.Project, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects ORDER BY slug`)
@@ -28,12 +29,9 @@ func (s *ProjectStore) List(ctx context.Context) ([]core.Project, error) {
 }
 
 func (s *ProjectStore) ListForUser(ctx context.Context, userID uuid.UUID) ([]core.Project, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT p.id, p.slug, p.name, p.registry_credential_id, p.created_by, p.created_at, p.updated_at
-		FROM projects p
-		JOIN project_members m ON m.project_id = p.id
-		WHERE m.user_id = $1
-		ORDER BY p.slug`, userID)
+	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects
+		WHERE id IN (SELECT project_id FROM project_members WHERE user_id = $1)
+		ORDER BY slug`, userID)
 	if err != nil {
 		return nil, mapError("list user projects", err)
 	}
@@ -58,18 +56,22 @@ func (s *ProjectStore) Count(ctx context.Context) (int, error) {
 
 func (s *ProjectStore) Create(ctx context.Context, project core.Project) (core.Project, error) {
 	return s.one(ctx, "create project", `
-		INSERT INTO projects (slug, name, registry_credential_id, created_by)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO projects (slug, name, registry_credential_id,
+			default_image, default_port, default_env, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING `+projectColumns,
-		project.Slug, project.Name, project.RegistryCredentialID, project.CreatedBy)
+		project.Slug, project.Name, project.RegistryCredentialID,
+		project.DefaultImage, project.DefaultPort, nonNilMap(project.DefaultEnv), project.CreatedBy)
 }
 
 func (s *ProjectStore) Update(ctx context.Context, project core.Project) (core.Project, error) {
 	return s.one(ctx, "update project", `
-		UPDATE projects SET name = $2, registry_credential_id = $3
+		UPDATE projects SET name = $2, registry_credential_id = $3,
+			default_image = $4, default_port = $5, default_env = $6
 		WHERE id = $1
 		RETURNING `+projectColumns,
-		project.ID, project.Name, project.RegistryCredentialID)
+		project.ID, project.Name, project.RegistryCredentialID,
+		project.DefaultImage, project.DefaultPort, nonNilMap(project.DefaultEnv))
 }
 
 func (s *ProjectStore) Delete(ctx context.Context, id uuid.UUID) error {
@@ -137,8 +139,13 @@ func (s *ProjectStore) one(ctx context.Context, operation, query string, args ..
 
 func scanProject(row pgx.CollectableRow) (core.Project, error) {
 	var p core.Project
-	err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.RegistryCredentialID, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
-	return p, err
+	err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.RegistryCredentialID,
+		&p.DefaultImage, &p.DefaultPort, &p.DefaultEnv, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return core.Project{}, err
+	}
+	p.DefaultEnv = nonNilMap(p.DefaultEnv)
+	return p, nil
 }
 
 func scanMember(row pgx.CollectableRow) (core.ProjectMember, error) {
