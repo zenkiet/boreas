@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.2.0 - 2026-08-19
+#### 🚀 Features
+- ✨ add project task form defaults - (09cb533) - Zen Kiet
+
+- - -
+
 ## v1.1.1 - 2026-08-19
 #### 👷 Continuous Integration
 - 👷 setup publish workflow pipeline - (02cd3e5) - *zenkiet*
