@@ -12,14 +12,15 @@ import (
 func newProjects(t *testing.T) (*ProjectService, *fakeProjectStore, *fakeCredentialStore) {
 	t.Helper()
 	projects, credentials := newFakeProjectStore(), newFakeCredentialStore()
-	svc, err := NewProjectService(projects, credentials)
+	svc, err := NewProjectService(projects, credentials, newFakeNotificationStore())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return svc, projects, credentials
 }
 
-func admin() core.User  { return core.User{ID: uuid.New(), Username: "admin", Role: core.RoleAdmin} }
+func admin() core.User { return core.User{ID: uuid.New(), Username: "admin", Role: core.RoleAdmin} }
+
 func member() core.User { return core.User{ID: uuid.New(), Username: "member", Role: core.RoleUser} }
 
 func TestCreateProjectMakesCallerOwner(t *testing.T) {
@@ -254,7 +255,7 @@ func TestCreateProjectRejectsUnknownCredential(t *testing.T) {
 }
 
 func TestNewProjectServiceRequiresCredentialStore(t *testing.T) {
-	if _, err := NewProjectService(newFakeProjectStore(), nil); !errors.Is(err, core.ErrInvalidInput) {
+	if _, err := NewProjectService(newFakeProjectStore(), nil, newFakeNotificationStore()); !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("got %v, want ErrInvalidInput", err)
 	}
 }

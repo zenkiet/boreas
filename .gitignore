@@ -45,5 +45,8 @@ go.work.sum
 
 # Data
 data/
+
+# Apprise configuration; holds Slack and ntfy credentials
+/apprise/
 # Added by goreleaser init:
 dist/

@@ -51,7 +51,7 @@ case "$commit_type" in
   test) expected_icon="✅" ;;
   build) expected_icon="📦" ;;
   ci) expected_icon="👷" ;;
-  chore) expected_icon="🔧" ;;
+  chore) expected_icon="🔖" ;;
   revert) expected_icon="⏪" ;;
   *)
     echo "Unsupported commit type: $commit_type"

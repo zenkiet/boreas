@@ -22,6 +22,8 @@ type Config struct {
 	DefaultPort      int
 	ReadinessTimeout time.Duration
 	PollInterval     time.Duration
+	// Notify reports deploy outcomes. It defaults to a no-op so callers need no nil check.
+	Notify func(context.Context, core.Notification)
 }
 
 type TaskService struct {
@@ -57,6 +59,9 @@ func NewTaskService(
 	}
 	if cfg.PollInterval == 0 {
 		cfg.PollInterval = 100 * time.Millisecond
+	}
+	if cfg.Notify == nil {
+		cfg.Notify = func(context.Context, core.Notification) {}
 	}
 	if cfg.DefaultPort < 1 || cfg.DefaultPort > 65535 || cfg.ReadinessTimeout < 0 || cfg.PollInterval <= 0 {
 		return nil, errors.Join(core.ErrInvalidInput, errors.New("invalid service configuration"))
@@ -330,10 +335,27 @@ func (s *TaskService) Deploy(ctx context.Context, slug, name, image string) (cor
 	if err != nil {
 		return core.Task{}, err
 	}
+	// A retried callback for the image already running is not a new deploy, so it notifies nothing.
 	if task.Image == trimmed && !task.PendingRecreate {
 		return task.Clone(), nil
 	}
-	return s.update(ctx, task, project, UpdateTaskInput{Image: &trimmed}, true)
+	deployed, err := s.update(ctx, task, project, UpdateTaskInput{Image: &trimmed}, true)
+	s.cfg.Notify(ctx, deployNotification(project, name, trimmed, err))
+	return deployed, err
+}
+
+func deployNotification(project core.Project, name, image string, cause error) core.Notification {
+	target := project.Slug + "/" + name
+	if cause != nil {
+		return core.Notification{
+			ProjectID: project.ID, TaskName: name, Status: core.NotificationFailure,
+			Title: "Deploy failed: " + target, Body: image + ": " + cause.Error(),
+		}
+	}
+	return core.Notification{
+		ProjectID: project.ID, TaskName: name, Status: core.NotificationSuccess,
+		Title: "Deployed: " + target, Body: image,
+	}
 }
 
 func (s *TaskService) update(ctx context.Context, task core.Task, project core.Project, in UpdateTaskInput, recreate bool) (core.Task, error) {

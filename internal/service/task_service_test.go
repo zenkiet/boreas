@@ -21,6 +21,7 @@ type harness struct {
 	runtime     *fakeRuntime
 	routes      *fakeRoutes
 	project     core.Project
+	notified    []core.Notification
 }
 
 func newHarness(t *testing.T) *harness {
@@ -35,7 +36,12 @@ func newHarness(t *testing.T) *harness {
 	h.project = h.projects.add("team")
 	var err error
 	h.svc, err = NewTaskService(h.runtime, h.tasks, h.projects, h.credentials, h.routes, nil,
-		Config{DefaultPort: 8080, PollInterval: time.Millisecond, ReadinessTimeout: time.Second})
+		Config{
+			DefaultPort: 8080, PollInterval: time.Millisecond, ReadinessTimeout: time.Second,
+			Notify: func(_ context.Context, n core.Notification) {
+				h.notified = append(h.notified, n)
+			},
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,6 +398,52 @@ func TestDeployUnknownTask(t *testing.T) {
 	h := newHarness(t)
 	if _, err := h.svc.Deploy(context.Background(), "team", "absent", deployDigestA); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team",
+		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notified) != 0 {
+		t.Fatalf("creating a task notified: %+v", h.notified)
+	}
+
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notified) != 1 {
+		t.Fatalf("want 1 notification, got %+v", h.notified)
+	}
+	success := h.notified[0]
+	if success.Status != core.NotificationSuccess || success.ProjectID != h.project.ID ||
+		success.TaskName != "web" || success.Body != deployDigestB {
+		t.Fatalf("unexpected success notification: %+v", success)
+	}
+	if !strings.Contains(success.Title, "team/web") {
+		t.Fatalf("title lost the target: %q", success.Title)
+	}
+
+	// A retried callback for the running image is not a deployment.
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notified) != 1 {
+		t.Fatalf("a redeploy of the same image notified: %+v", h.notified)
+	}
+
+	h.runtime.pullErr = errors.New("registry unavailable")
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA); err == nil {
+		t.Fatal("expected pull failure")
+	}
+	if len(h.notified) != 2 {
+		t.Fatalf("a failed deploy did not notify: %+v", h.notified)
+	}
+	failure := h.notified[1]
+	if failure.Status != core.NotificationFailure || !strings.Contains(failure.Body, "registry unavailable") {
+		t.Fatalf("unexpected failure notification: %+v", failure)
 	}
 }
 

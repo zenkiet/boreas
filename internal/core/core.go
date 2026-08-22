@@ -65,6 +65,15 @@ const (
 
 func (RegistryKind) Enum() []any { return []any{RegistryGHCR, RegistryDockerHub} }
 
+type NotificationStatus string
+
+const (
+	NotificationSuccess NotificationStatus = "success"
+	NotificationFailure NotificationStatus = "failure"
+)
+
+func (NotificationStatus) Enum() []any { return []any{NotificationSuccess, NotificationFailure} }
+
 var (
 	taskNamePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
 	projectSlugRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
@@ -202,6 +211,16 @@ func (t Task) Clone() Task {
 	return t
 }
 
+type Notification struct {
+	ID        uuid.UUID
+	ProjectID uuid.UUID
+	TaskName  string
+	Status    NotificationStatus
+	Title     string
+	Body      string
+	CreatedAt time.Time
+}
+
 type ContainerSpec struct {
 	Project string
 	Name    string
@@ -311,6 +330,11 @@ type ProjectStore interface {
 	GetMember(ctx context.Context, projectID, userID uuid.UUID) (ProjectMember, error)
 	AddMember(context.Context, ProjectMember) error
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
+}
+
+type NotificationStore interface {
+	Create(context.Context, Notification) (Notification, error)
+	List(ctx context.Context, projectID uuid.UUID, limit int) ([]Notification, error)
 }
 
 type CredentialStore interface {

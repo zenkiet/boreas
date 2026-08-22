@@ -647,6 +647,67 @@ paths:
       summary: Remove a member
       tags:
       - projects
+  /api/v1/projects/{project}/notifications:
+    get:
+      description: Newest first. Recorded when a deploy succeeds or fails; a retried
+        callback for the image a task already runs records nothing.
+      operationId: get-projects-project-notifications
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          default: 50
+          maximum: 200
+          minimum: 1
+          type: integer
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationsResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List deploy notifications
+      tags:
+      - projects
   /api/v1/projects/{project}/tasks:
     get:
       operationId: get-projects-project-tasks
@@ -1867,6 +1928,48 @@ components:
           type: integer
       required:
       - members
+      - total
+      type: object
+    Notification:
+      properties:
+        body:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+        task_name:
+          example: web
+          type: string
+        title:
+          example: 'Deployed: demo/web'
+          type: string
+      required:
+      - id
+      - task_name
+      - status
+      - title
+      - created_at
+      type: object
+    NotificationStatus:
+      enum:
+      - success
+      - failure
+      type: string
+    NotificationsResponse:
+      properties:
+        notifications:
+          items:
+            $ref: '#/components/schemas/Notification'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - notifications
       - total
       type: object
     NullableUUID:

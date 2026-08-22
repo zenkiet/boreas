@@ -57,7 +57,9 @@ func (s stubTasks) Deploy(c context.Context, project, name, image string) (core.
 }
 
 func (stubTasks) Start(context.Context, string, string) (core.Task, error) { return core.Task{}, nil }
-func (stubTasks) Stop(context.Context, string, string) (core.Task, error)  { return core.Task{}, nil }
+
+func (stubTasks) Stop(context.Context, string, string) (core.Task, error) { return core.Task{}, nil }
+
 func (stubTasks) Restart(context.Context, string, string) (core.Task, error) {
 	return core.Task{}, nil
 }
@@ -152,6 +154,7 @@ type stubProjects struct {
 	accessErr       error
 	update          func(context.Context, string, service.UpdateProjectInput) (core.Project, error)
 	listCredentials func(context.Context) ([]core.RegistryCredential, error)
+	notifications   func(context.Context, string, int) ([]core.Notification, error)
 }
 
 func (s *stubProjects) Access(_ context.Context, actor core.User, _ string) (core.ProjectRole, error) {
@@ -169,6 +172,7 @@ func (s *stubProjects) Access(_ context.Context, actor core.User, _ string) (cor
 
 func (*stubProjects) List(context.Context, core.User) ([]core.Project, error) { return nil, nil }
 func (*stubProjects) Get(context.Context, string) (core.Project, error)       { return core.Project{}, nil }
+
 func (*stubProjects) Create(context.Context, core.User, service.CreateProjectInput) (core.Project, error) {
 	return core.Project{}, nil
 }
@@ -178,6 +182,13 @@ func (s *stubProjects) Update(c context.Context, slug string, in service.UpdateP
 		return s.update(c, slug, in)
 	}
 	return core.Project{}, nil
+}
+
+func (s *stubProjects) Notifications(c context.Context, slug string, limit int) ([]core.Notification, error) {
+	if s.notifications != nil {
+		return s.notifications(c, slug, limit)
+	}
+	return nil, nil
 }
 
 func (*stubProjects) Delete(context.Context, string) error { return nil }

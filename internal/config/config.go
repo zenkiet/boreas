@@ -11,9 +11,10 @@ import (
 )
 
 type Config struct {
-	Port     int
-	Postgres PostgresConfig
-	Admin    AdminConfig
+	Port      int
+	Postgres  PostgresConfig
+	Admin     AdminConfig
+	NotifyURL string
 }
 
 type PostgresConfig struct {
@@ -72,6 +73,7 @@ func Load() (*Config, error) {
 	setString("BOREAS_ADMIN_USERNAME", &cfg.Admin.Username)
 	setString("BOREAS_ADMIN_EMAIL", &cfg.Admin.Email)
 	setString("BOREAS_ADMIN_PASSWORD", &cfg.Admin.Password)
+	setString("BOREAS_NOTIFY_URL", &cfg.NotifyURL)
 
 	if value, ok := os.LookupEnv("BOREAS_PORT"); ok {
 		port, err := strconv.Atoi(value)

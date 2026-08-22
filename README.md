@@ -144,6 +144,7 @@ All API routes are under `/api/v1`.
 | `GET` | `/projects/{project}/members` | owner | List members |
 | `POST` | `/projects/{project}/members` | owner | Add or promote a member |
 | `DELETE` | `/projects/{project}/members/{userID}` | owner | Remove a member |
+| `GET` | `/projects/{project}/notifications` | member | List deploy notifications |
 | `GET` | `/projects/{project}/tasks` | member | List tasks |
 | `POST` | `/projects/{project}/tasks` | member | Create a task |
 | `GET` | `/projects/{project}/tasks/{name}` | member | Get a task |
@@ -246,6 +247,36 @@ curl -N -H "Authorization: Bearer $TOKEN" \
   http://localhost:8080/api/v1/projects/demo/tasks/web/logs/stream
 ```
 
+## Deploy notifications
+
+Every deploy records a notification, successful or failed, and Boreas serves
+them newest-first for an in-app feed:
+
+```bash
+curl -H "$AUTH" \
+  'http://localhost:8080/api/v1/projects/demo/notifications?limit=20'
+```
+
+A retried callback for the image a task already runs records nothing, so it
+does not repeat a notification a pipeline has already produced.
+
+Setting `BOREAS_NOTIFY_URL` additionally forwards each one to an
+[Apprise](https://github.com/caronc/apprise-api) instance, which fans it out to
+every service listed in its configuration. Compose runs one as `boreas-noti`,
+reachable only from `boreas-net`, so no notification port is exposed. List your
+destinations in `apprise/boreas.yml`:
+
+```yaml
+urls:
+  - slack://TokenA/TokenB/TokenC/#staging
+  - ntfy://ntfy.example.com/boreas
+```
+
+That file holds credentials and is gitignored. Adding a platform means editing
+it and restarting `boreas-noti`; Boreas itself never changes. Delivery is
+fire-and-forget: an unreachable Apprise instance is logged and never delays or
+fails a deploy, and the feed above still records the notification.
+
 ## OpenAPI specification
 
 Every route above is described by an OpenAPI 3.0 document generated from the
@@ -292,6 +323,7 @@ the database connection and the initial administrator.
 | `BOREAS_ADMIN_USERNAME` | `admin` | Seed administrator username |
 | `BOREAS_ADMIN_EMAIL` | `admin@localhost` | Seed administrator email |
 | `BOREAS_ADMIN_PASSWORD` | unset | Seed administrator password; required only on an empty database |
+| `BOREAS_NOTIFY_URL` | unset | Apprise notify endpoint; unset records notifications without forwarding them |
 
 Registry credentials are no longer configuration. Store them once through
 `/api/v1/registry-credentials` and attach one to a project; Boreas uses it when

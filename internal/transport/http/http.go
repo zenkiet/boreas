@@ -48,6 +48,7 @@ type ProjectService interface {
 	ListMembers(ctx context.Context, slug string) ([]core.ProjectMember, error)
 	AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error
 	RemoveMember(ctx context.Context, slug string, userID uuid.UUID) error
+	Notifications(ctx context.Context, slug string, limit int) ([]core.Notification, error)
 	Access(ctx context.Context, actor core.User, slug string) (core.ProjectRole, error)
 	ListCredentials(context.Context) ([]core.RegistryCredential, error)
 	CreateCredential(ctx context.Context, actor core.User, in service.CreateCredentialInput) (core.RegistryCredential, error)

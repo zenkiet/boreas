@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/zenkiet/boreas/internal/config"
+	"github.com/zenkiet/boreas/internal/core"
+	"github.com/zenkiet/boreas/internal/infra/apprise"
 	dockerinfra "github.com/zenkiet/boreas/internal/infra/docker"
 	pginfra "github.com/zenkiet/boreas/internal/infra/postgres"
 	proxyinfra "github.com/zenkiet/boreas/internal/infra/proxy"
@@ -28,6 +30,7 @@ const (
 	readinessPoll    = 200 * time.Millisecond
 	dialTimeout      = 5 * time.Second
 	responseTimeout  = 30 * time.Second
+	notifyTimeout    = 5 * time.Second
 	startupTimeout   = 30 * time.Second
 	shutdownTimeout  = 10 * time.Second
 )
@@ -63,6 +66,7 @@ func run() error {
 	projectStore := pginfra.NewProjectStore(pool)
 	taskStore := pginfra.NewTaskStore(pool)
 	credentials := pginfra.NewCredentialStore(pool)
+	notifications := pginfra.NewNotificationStore(pool)
 
 	auth, err := service.NewAuthService(users, tokens)
 	if err != nil {
@@ -84,10 +88,11 @@ func run() error {
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	defer routes.CloseIdleConnections()
 
-	projects, err := service.NewProjectService(projectStore, credentials)
+	projects, err := service.NewProjectService(projectStore, credentials, notifications)
 	if err != nil {
 		return err
 	}
+	sender := apprise.New(cfg.NotifyURL, notifyTimeout)
 	tasks, err := service.NewTaskService(
 		runtime, taskStore, projectStore, credentials, routes,
 		dockerinfra.TCPReadyChecker{DialTimeout: time.Second}.Ready,
@@ -95,6 +100,7 @@ func run() error {
 			DefaultPort:      80,
 			ReadinessTimeout: readinessTimeout,
 			PollInterval:     readinessPoll,
+			Notify:           notifier(notifications, sender, logger),
 		},
 	)
 	if err != nil {
@@ -141,6 +147,22 @@ func run() error {
 		return fmt.Errorf("HTTP server: %w", err)
 	}
 	return nil
+}
+
+func notifier(store *pginfra.NotificationStore, sender *apprise.Sender, logger *log.Logger) func(context.Context, core.Notification) {
+	return func(ctx context.Context, n core.Notification) {
+		ctx = context.WithoutCancel(ctx)
+		go func() {
+			ctx, cancel := context.WithTimeout(ctx, notifyTimeout)
+			defer cancel()
+			if _, err := store.Create(ctx, n); err != nil {
+				logger.Printf("record notification: %v", err)
+			}
+			if err := sender.Send(ctx, n); err != nil {
+				logger.Printf("push notification: %v", err)
+			}
+		}()
+	}
 }
 
 // seedAdmin fails startup rather than leave an empty installation unreachable.

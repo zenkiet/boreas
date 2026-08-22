@@ -205,6 +205,16 @@ var routeTable = [...]route{
 	},
 
 	{
+		method: http.MethodGet, path: "/api/v1/projects/{project}/notifications", access: accessMember,
+		handler: (*Handler).listNotifications,
+		tag:     "projects", summary: "List deploy notifications",
+		description: "Newest first. Recorded when a deploy succeeds or fails; a retried callback for " +
+			"the image a task already runs records nothing.",
+		req: new(notificationsRequest), resp: new(notificationsResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest},
+	},
+
+	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks", access: accessMember,
 		handler: (*Handler).listTasks,
 		tag:     "tasks", summary: "List tasks",

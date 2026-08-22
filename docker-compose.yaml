@@ -39,9 +39,22 @@ services:
       BOREAS_ADMIN_USERNAME: ${BOREAS_ADMIN_USERNAME:-admin}
       BOREAS_ADMIN_EMAIL: ${BOREAS_ADMIN_EMAIL:-admin@example.com}
       BOREAS_ADMIN_PASSWORD: ${BOREAS_ADMIN_PASSWORD:-LoveAngular123}
+      BOREAS_NOTIFY_URL: http://boreas-noti:8000/notify/boreas
     depends_on:
       boreas-db:
         condition: service_healthy
+    restart: ${RESTART_POLICY:-unless-stopped}
+
+  boreas-noti:
+    image: caronc/apprise:latest
+    container_name: boreas-noti
+    networks:
+      - boreas-net
+    environment:
+      APPRISE_STATEFUL_MODE: simple
+      APPRISE_WORKER_COUNT: "1"
+    volumes:
+      - ${APPRISE_PATH:-./apprise}:/config
     restart: ${RESTART_POLICY:-unless-stopped}
 
 networks:

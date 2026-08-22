@@ -12,15 +12,29 @@ import (
 )
 
 type ProjectService struct {
-	projects    core.ProjectStore
-	credentials core.CredentialStore
+	projects      core.ProjectStore
+	credentials   core.CredentialStore
+	notifications core.NotificationStore
 }
 
-func NewProjectService(projects core.ProjectStore, credentials core.CredentialStore) (*ProjectService, error) {
-	if projects == nil || credentials == nil {
-		return nil, errors.Join(core.ErrInvalidInput, errors.New("project and credential stores are required"))
+func NewProjectService(projects core.ProjectStore, credentials core.CredentialStore, notifications core.NotificationStore) (*ProjectService, error) {
+	if projects == nil || credentials == nil || notifications == nil {
+		return nil, errors.Join(core.ErrInvalidInput,
+			errors.New("project, credential, and notification stores are required"))
 	}
-	return &ProjectService{projects: projects, credentials: credentials}, nil
+	return &ProjectService{projects: projects, credentials: credentials, notifications: notifications}, nil
+}
+
+func (s *ProjectService) Notifications(ctx context.Context, slug string, limit int) ([]core.Notification, error) {
+	project, err := s.Get(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	notifications, err := s.notifications.List(ctx, project.ID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list notifications: %w", err)
+	}
+	return notifications, nil
 }
 
 // List scopes non-admin results to memberships to enforce project visibility.

@@ -139,6 +139,87 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNotificationStoreRoundTrip(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	project := seedProject(t, pool)
+	store := NewNotificationStore(pool)
+
+	for _, n := range []core.Notification{
+		{ProjectID: project.ID, TaskName: "web", Status: core.NotificationSuccess, Title: "first", Body: "image-a"},
+		{ProjectID: project.ID, TaskName: "web", Status: core.NotificationFailure, Title: "second", Body: "boom"},
+	} {
+		created, err := store.Create(ctx, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if created.ID == uuid.Nil || created.CreatedAt.IsZero() {
+			t.Fatalf("database defaults were not returned: %+v", created)
+		}
+	}
+
+	listed, err := store.List(ctx, project.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 2 || listed[0].Title != "second" {
+		t.Fatalf("want newest first, got %+v", listed)
+	}
+	if listed[0].Status != core.NotificationFailure || listed[0].Body != "boom" {
+		t.Fatalf("round trip lost fields: %+v", listed[0])
+	}
+
+	limited, err := store.List(ctx, project.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 1 || limited[0].Title != "second" {
+		t.Fatalf("limit ignored: %+v", limited)
+	}
+
+	if _, err := store.List(ctx, uuid.New(), 10); err != nil {
+		t.Fatalf("an unknown project must list empty, got %v", err)
+	}
+	if _, err := store.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: "web", Status: "bogus", Title: "rejected",
+	}); err == nil {
+		t.Fatal("the database must reject an unknown status")
+	}
+}
+
+func TestNotificationsSurviveTaskDeletion(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	project := seedProject(t, pool)
+	tasks := NewTaskStore(pool)
+	store := NewNotificationStore(pool)
+
+	task, err := tasks.Create(ctx, core.Task{
+		ProjectID: project.ID, Name: "web", Image: "nginx:alpine",
+		Status: core.StatusRunning, Port: 80,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: task.Name,
+		Status: core.NotificationSuccess, Title: "deployed", Body: "nginx:alpine",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tasks.Delete(ctx, task.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	listed, err := store.List(ctx, project.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].TaskName != "web" {
+		t.Fatalf("deleting a task erased its deploy history: %+v", listed)
+	}
+}
+
 func TestTaskStoreErrorMapping(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()

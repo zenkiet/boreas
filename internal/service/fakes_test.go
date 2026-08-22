@@ -231,6 +231,27 @@ func (f *fakeCredentialStore) Delete(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+type fakeNotificationStore struct{ notifications []core.Notification }
+
+func newFakeNotificationStore() *fakeNotificationStore { return &fakeNotificationStore{} }
+
+func (f *fakeNotificationStore) Create(_ context.Context, n core.Notification) (core.Notification, error) {
+	n.ID, n.CreatedAt = uuid.New(), time.Now()
+	f.notifications = append(f.notifications, n)
+	return n, nil
+}
+
+func (f *fakeNotificationStore) List(_ context.Context, projectID uuid.UUID, limit int) ([]core.Notification, error) {
+	result := make([]core.Notification, 0, len(f.notifications))
+	// Newest first, matching the SQL store's ordering.
+	for i := len(f.notifications) - 1; i >= 0 && len(result) < limit; i-- {
+		if f.notifications[i].ProjectID == projectID {
+			result = append(result, f.notifications[i])
+		}
+	}
+	return result, nil
+}
+
 type fakeUserStore struct{ users map[uuid.UUID]core.User }
 
 func newFakeUserStore() *fakeUserStore { return &fakeUserStore{users: map[uuid.UUID]core.User{}} }

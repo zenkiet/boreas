@@ -274,6 +274,25 @@ type membersResponse struct {
 	Total   int         `json:"total"`
 }
 
+type notificationsRequest struct {
+	Project string `json:"-" path:"project" example:"demo"`
+	Limit   int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
+type notificationDTO struct {
+	ID        uuid.UUID               `json:"id"`
+	TaskName  string                  `json:"task_name" example:"web"`
+	Status    core.NotificationStatus `json:"status"`
+	Title     string                  `json:"title" example:"Deployed: demo/web"`
+	Body      string                  `json:"body,omitempty"`
+	CreatedAt time.Time               `json:"created_at"`
+}
+
+type notificationsResponse struct {
+	Notifications []notificationDTO `json:"notifications"`
+	Total         int               `json:"total"`
+}
+
 type userDTO struct {
 	ID        uuid.UUID     `json:"id"`
 	Username  string        `json:"username" example:"admin"`

@@ -303,6 +303,31 @@ func (h *Handler) listMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, membersResponse{Members: result, Total: len(result)})
 }
 
+func (h *Handler) listNotifications(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			writeBadRequest(w)
+			return
+		}
+		limit = parsed
+	}
+	notifications, err := h.projects.Notifications(r.Context(), r.PathValue("project"), limit)
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	result := make([]notificationDTO, len(notifications))
+	for i, n := range notifications {
+		result[i] = notificationDTO{
+			ID: n.ID, TaskName: n.TaskName, Status: n.Status,
+			Title: n.Title, Body: n.Body, CreatedAt: n.CreatedAt,
+		}
+	}
+	writeJSON(w, http.StatusOK, notificationsResponse{Notifications: result, Total: len(result)})
+}
+
 func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {
 	var req addMemberRequest
 	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
