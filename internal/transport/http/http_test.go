@@ -136,11 +136,95 @@ func TestOwnerOnlyRoutesRejectMembers(t *testing.T) {
 	}
 }
 
-func TestNonMemberForbiddenFromProject(t *testing.T) {
-	projects := &stubProjects{accessErr: core.ErrForbidden}
+// An unreachable project must look missing, or its existence leaks through the status code.
+func TestNonMemberSeesProjectAsMissing(t *testing.T) {
+	projects := &stubProjects{accessErr: core.ErrNotFound}
 	h := testHandler(stubTasks{}, &stubAuth{user: testMember}, projects)
-	if rr := do(h, authed(http.MethodGet, "/api/v1/projects/team/tasks", nil)); rr.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", rr.Code)
+	if rr := do(h, authed(http.MethodGet, "/api/v1/projects/team/tasks", nil)); rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rr.Code)
+	}
+}
+
+func TestRouteAccessLadder(t *testing.T) {
+	cases := []struct {
+		role   core.ProjectRole
+		method string
+		path   string
+		want   int
+	}{
+		{core.ProjectRoleViewer, http.MethodGet, "/api/v1/projects/team/tasks", http.StatusOK},
+		{core.ProjectRoleViewer, http.MethodGet, "/api/v1/projects/team/tasks/web", http.StatusOK},
+		{core.ProjectRoleViewer, http.MethodPut, "/api/v1/projects/team/tasks/web/state", http.StatusForbidden},
+		{core.ProjectRoleViewer, http.MethodDelete, "/api/v1/projects/team/tasks/web", http.StatusForbidden},
+
+		{core.ProjectRoleOperator, http.MethodGet, "/api/v1/projects/team/tasks", http.StatusOK},
+		{core.ProjectRoleOperator, http.MethodPut, "/api/v1/projects/team/tasks/web/state", http.StatusOK},
+		{core.ProjectRoleOperator, http.MethodPost, "/api/v1/projects/team/tasks", http.StatusForbidden},
+
+		{core.ProjectRoleMember, http.MethodDelete, "/api/v1/projects/team/tasks/web", http.StatusOK},
+		{core.ProjectRoleMember, http.MethodGet, "/api/v1/projects/team/members", http.StatusForbidden},
+
+		{core.ProjectRoleOwner, http.MethodGet, "/api/v1/projects/team/members", http.StatusOK},
+		{core.ProjectRoleOwner, http.MethodGet, "/api/v1/projects/team/tasks/web/grants", http.StatusOK},
+		{core.ProjectRoleMember, http.MethodGet, "/api/v1/projects/team/tasks/web/grants", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		h := testHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{role: tc.role})
+		body := io.Reader(nil)
+		if tc.method == http.MethodPut {
+			body = strings.NewReader(`{"action":"start"}`)
+		}
+		rr := do(h, authed(tc.method, tc.path, body))
+		if rr.Code != tc.want {
+			t.Fatalf("%s %s as %s = %d, want %d", tc.method, tc.path, tc.role, rr.Code, tc.want)
+		}
+	}
+}
+
+// Task form defaults may carry project secrets, so only members receive them.
+func TestGranteeDoesNotReceiveProjectDefaultEnv(t *testing.T) {
+	project := core.Project{Slug: "team", DefaultEnv: map[string]string{"API_KEY": "s3cret"}}
+	grantee := false
+	h := testHandler(stubTasks{}, &stubAuth{user: testMember},
+		&stubProjects{role: core.ProjectRoleViewer, project: project, allTasks: &grantee})
+	body := do(h, authed(http.MethodGet, "/api/v1/projects/team", nil)).Body.String()
+	if strings.Contains(body, "s3cret") || strings.Contains(body, "API_KEY") {
+		t.Fatalf("project defaults leaked to a grantee: %s", body)
+	}
+
+	member := true
+	h = testHandler(stubTasks{}, &stubAuth{user: testMember},
+		&stubProjects{role: core.ProjectRoleMember, project: project, allTasks: &member})
+	body = do(h, authed(http.MethodGet, "/api/v1/projects/team", nil)).Body.String()
+	if !strings.Contains(body, "s3cret") {
+		t.Fatalf("a member must still see task form defaults: %s", body)
+	}
+}
+
+// The middleware resolves access once; handlers must use it rather than re-querying.
+func TestListRoutesReceiveResolvedAccess(t *testing.T) {
+	var gotTasks, gotNotifications core.ProjectAccess
+	grantee := false
+	projects := &stubProjects{
+		role: core.ProjectRoleViewer, allTasks: &grantee,
+		project: core.Project{Slug: "team"},
+		notifications: func(_ context.Context, acc core.ProjectAccess, _ int) ([]core.Notification, error) {
+			gotNotifications = acc
+			return nil, nil
+		},
+	}
+	tasks := stubTasks{list: func(_ context.Context, acc core.ProjectAccess) ([]core.Task, error) {
+		gotTasks = acc
+		return nil, nil
+	}}
+	h := testHandler(tasks, &stubAuth{user: testMember}, projects)
+	do(h, authed(http.MethodGet, "/api/v1/projects/team/tasks", nil))
+	do(h, authed(http.MethodGet, "/api/v1/projects/team/notifications", nil))
+
+	for name, acc := range map[string]core.ProjectAccess{"tasks": gotTasks, "notifications": gotNotifications} {
+		if acc.AllTasks || acc.UserID != testMember.ID {
+			t.Fatalf("%s got %+v; a grantee must be scoped by identity", name, acc)
+		}
 	}
 }
 

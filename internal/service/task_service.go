@@ -81,12 +81,8 @@ type CreateTaskInput struct {
 	Env         map[string]string
 }
 
-func (s *TaskService) List(ctx context.Context, slug string) ([]core.Task, error) {
-	project, err := s.project(ctx, slug)
-	if err != nil {
-		return nil, err
-	}
-	tasks, err := s.tasks.List(ctx, project.ID)
+func (s *TaskService) List(ctx context.Context, acc core.ProjectAccess) ([]core.Task, error) {
+	tasks, err := s.tasks.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}

@@ -28,7 +28,7 @@ Boreas has no cgo dependencies and builds with `CGO_ENABLED=0`.
 
 ## Requirements
 
-- Go 1.26
+- Go 1.27
 - Docker Engine
 - PostgreSQL 16 or newer
 
@@ -100,60 +100,92 @@ Task names are unique per project, so two projects may each have a `web`.
 
 ## Access control
 
-| Role | Scope | Grants |
-|---|---|---|
-| `admin` | global | Everything, including implicit ownership of every project |
-| `user` | global | Access only to projects they belong to |
-| `owner` | project | Project settings and membership, plus member rights |
-| `member` | project | Task read and lifecycle operations |
+Two global roles decide who administers the installation:
 
-Add an existing user to a project as a member:
+| Role    | Grants                                                                       |
+| ------- | ---------------------------------------------------------------------------- |
+| `admin` | Users, registry credentials, project creation, and ownership of every project |
+| `user`  | Only the projects they are a member of, or hold a task grant in               |
+
+Within a project, four roles stack, each adding to the one before it:
+
+| Role       | Adds                                              |
+| ---------- | ------------------------------------------------- |
+| `viewer`   | Read tasks, logs, and deploy notifications        |
+| `operator` | Start, stop, restart, and deploy                  |
+| `member`   | Create, update, and delete tasks                  |
+| `owner`    | Project settings, membership, and task grants     |
+
+Add an existing user to a project:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/projects/demo/members \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"user_id":"<id>","role":"member"}'
+  -d '{"user_id":"<id>","role":"viewer"}'
 ```
+
+### Task grants
+
+A grant raises a user's role on one task above whatever the project gives them.
+It never lowers it: the effective role is the higher of the two. Grant `owner`
+is rejected, since it only means something at project scope.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/projects/demo/tasks/web/grants \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"user_id":"<id>","role":"operator"}'
+```
+
+A grant is enough to reach the project without being a member. Such a user sees
+only the tasks they hold grants on, only those tasks' deploy notifications, and
+never the project's task form defaults, which may carry secrets.
+
+Grants are deleted with the task they point at, so access cannot outlive its
+subject. A project or task the caller cannot reach answers `404`, not `403`, so
+that names do not leak. `403` means the caller can see it but ranks too low.
 
 ## API
 
 All API routes are under `/api/v1`.
 
-| Method | Route | Access | Purpose |
-|---|---|---|---|
-| `GET` | `/health` | public | Health check |
-| `POST` | `/auth/login` | public | Exchange credentials for a token |
-| `POST` | `/auth/logout` | user | Revoke the current token |
-| `GET` | `/auth/me` | user | Current user |
-| `GET` | `/auth/tokens` | login session | List your API tokens |
-| `POST` | `/auth/tokens` | login session | Create an API token |
-| `DELETE` | `/auth/tokens/{id}` | login session | Revoke one of your API tokens |
-| `GET` | `/stats` | user | Service statistics |
-| `GET` | `/users` | admin | List users |
-| `POST` | `/users` | admin | Create a user |
-| `PATCH` | `/users/{id}` | admin | Update a user |
-| `DELETE` | `/users/{id}` | admin | Delete a user |
-| `GET` | `/registry-credentials` | admin | List registry credentials |
-| `POST` | `/registry-credentials` | admin | Create a registry credential |
-| `DELETE` | `/registry-credentials/{id}` | admin | Delete a registry credential |
-| `GET` | `/projects` | user | List reachable projects |
-| `POST` | `/projects` | user | Create a project; the creator becomes owner |
-| `GET` | `/projects/{project}` | member | Get a project |
-| `PATCH` | `/projects/{project}` | owner | Update a project |
-| `DELETE` | `/projects/{project}` | owner | Delete a project |
-| `GET` | `/projects/{project}/members` | owner | List members |
-| `POST` | `/projects/{project}/members` | owner | Add or promote a member |
-| `DELETE` | `/projects/{project}/members/{userID}` | owner | Remove a member |
-| `GET` | `/projects/{project}/notifications` | member | List deploy notifications |
-| `GET` | `/projects/{project}/tasks` | member | List tasks |
-| `POST` | `/projects/{project}/tasks` | member | Create a task |
-| `GET` | `/projects/{project}/tasks/{name}` | member | Get a task |
-| `PATCH` | `/projects/{project}/tasks/{name}` | member | Update image, port, labels, env, or description |
-| `POST` | `/projects/{project}/tasks/{name}/deploy` | member | Deploy an image built elsewhere |
-| `PUT` | `/projects/{project}/tasks/{name}/state` | member | Start, stop, or restart |
-| `DELETE` | `/projects/{project}/tasks/{name}` | member | Delete a task and its container |
-| `GET` | `/projects/{project}/tasks/{name}/logs` | member | Read task logs |
-| `GET` | `/projects/{project}/tasks/{name}/logs/stream` | member | Stream logs over SSE |
+| Method   | Route                                          | Access        | Purpose                                         |
+| -------- | ---------------------------------------------- | ------------- | ----------------------------------------------- |
+| `GET`    | `/health`                                      | public        | Health check                                    |
+| `POST`   | `/auth/login`                                  | public        | Exchange credentials for a token                |
+| `POST`   | `/auth/logout`                                 | user          | Revoke the current token                        |
+| `GET`    | `/auth/me`                                     | user          | Current user                                    |
+| `GET`    | `/auth/tokens`                                 | login session | List your API tokens                            |
+| `POST`   | `/auth/tokens`                                 | login session | Create an API token                             |
+| `DELETE` | `/auth/tokens/{id}`                            | login session | Revoke one of your API tokens                   |
+| `GET`    | `/stats`                                       | user          | Service statistics                              |
+| `GET`    | `/users`                                       | admin         | List users                                      |
+| `POST`   | `/users`                                       | admin         | Create a user                                   |
+| `PATCH`  | `/users/{id}`                                  | admin         | Update a user                                   |
+| `DELETE` | `/users/{id}`                                  | admin         | Delete a user                                   |
+| `GET`    | `/registry-credentials`                        | admin         | List registry credentials                       |
+| `POST`   | `/registry-credentials`                        | admin         | Create a registry credential                    |
+| `DELETE` | `/registry-credentials/{id}`                   | admin         | Delete a registry credential                    |
+| `GET`    | `/projects`                                    | user          | List reachable projects                         |
+| `POST`   | `/projects`                                    | admin         | Create a project; the creator becomes owner     |
+| `GET`    | `/projects/{project}`                          | viewer        | Get a project                                   |
+| `PATCH`  | `/projects/{project}`                          | owner         | Update a project                                |
+| `DELETE` | `/projects/{project}`                          | owner         | Delete a project                                |
+| `GET`    | `/projects/{project}/members`                  | owner         | List members                                    |
+| `POST`   | `/projects/{project}/members`                  | owner         | Add or promote a member                         |
+| `DELETE` | `/projects/{project}/members/{userID}`         | owner         | Remove a member                                 |
+| `GET`    | `/projects/{project}/notifications`            | viewer        | List deploy notifications                       |
+| `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
+| `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
+| `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
+| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, or description |
+| `POST`   | `/projects/{project}/tasks/{name}/deploy`      | operator      | Deploy an image built elsewhere                 |
+| `PUT`    | `/projects/{project}/tasks/{name}/state`       | operator      | Start, stop, or restart                         |
+| `DELETE` | `/projects/{project}/tasks/{name}`             | member        | Delete a task and its container                 |
+| `GET`    | `/projects/{project}/tasks/{name}/logs`        | viewer        | Read task logs                                  |
+| `GET`    | `/projects/{project}/tasks/{name}/logs/stream` | viewer        | Stream logs over SSE                            |
+| `GET`    | `/projects/{project}/tasks/{name}/grants`      | owner         | List task grants                                |
+| `POST`   | `/projects/{project}/tasks/{name}/grants`      | owner         | Grant a user access to one task                 |
+| `DELETE` | `/projects/{project}/tasks/{name}/grants/{userID}` | owner     | Revoke a task grant                             |
 
 Only the fields present in a `PATCH` body are changed. Editing just the
 description leaves a running container alone; changing `image`, `port`,
@@ -212,8 +244,9 @@ curl -X POST -H "$AUTH" -H "$JSON" \
 
 The plaintext token is returned only by this response. Store it immediately in
 the CI secret manager; Boreas keeps only its SHA-256 hash and cannot show it
-again. API tokens inherit their user's role and project memberships, but cannot
-create, list, or revoke API tokens. Use a non-admin project member for CI.
+again. API tokens inherit their user's role, project memberships, and task
+grants, but cannot create, list, or revoke API tokens. For CI, a task grant of
+`operator` on the one task the pipeline deploys is the narrowest useful setup.
 
 A pipeline that has just pushed an image then tells Boreas to run it:
 
@@ -282,11 +315,11 @@ fails a deploy, and the feed above still records the notification.
 Every route above is described by an OpenAPI 3.0 document generated from the
 same route table the server routes with, so the two cannot drift.
 
-| Location | Purpose |
-|---|---|
-| `api/openapi.yaml` | Committed contract; generate clients from this |
-| `GET /api/v1/openapi.json` | The running server's own specification |
-| `GET /api/v1/docs` | Browsable reference (Scalar) |
+| Location                   | Purpose                                        |
+| -------------------------- | ---------------------------------------------- |
+| `api/openapi.yaml`         | Committed contract; generate clients from this |
+| `GET /api/v1/openapi.json` | The running server's own specification         |
+| `GET /api/v1/docs`         | Browsable reference (Scalar)                   |
 
 ```bash
 make openapi        # Regenerate api/openapi.yaml after changing routes or DTOs
@@ -310,20 +343,20 @@ Boreas is configured entirely through environment variables. Everything that is
 not deployment-specific is a built-in default, so a normal deployment only sets
 the database connection and the initial administrator.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `BOREAS_PORT` | `8080` | HTTP listen port |
-| `BOREAS_DATABASE_URL` | unset | Full connection string; overrides the `BOREAS_DB_*` variables |
-| `BOREAS_DB_HOST` | `localhost` | Database host |
-| `BOREAS_DB_PORT` | `5432` | Database port |
-| `BOREAS_DB_USER` | `postgres` | Database user |
-| `BOREAS_DB_PASSWORD` | `postgres` | Database password |
-| `BOREAS_DB_NAME` | `boreas` | Database name |
-| `BOREAS_DB_SSLMODE` | `disable` | `sslmode` for the connection |
-| `BOREAS_ADMIN_USERNAME` | `admin` | Seed administrator username |
-| `BOREAS_ADMIN_EMAIL` | `admin@localhost` | Seed administrator email |
-| `BOREAS_ADMIN_PASSWORD` | unset | Seed administrator password; required only on an empty database |
-| `BOREAS_NOTIFY_URL` | unset | Apprise notify endpoint; unset records notifications without forwarding them |
+| Variable                | Default           | Purpose                                                                      |
+| ----------------------- | ----------------- | ---------------------------------------------------------------------------- |
+| `BOREAS_PORT`           | `8080`            | HTTP listen port                                                             |
+| `BOREAS_DATABASE_URL`   | unset             | Full connection string; overrides the `BOREAS_DB_*` variables                |
+| `BOREAS_DB_HOST`        | `localhost`       | Database host                                                                |
+| `BOREAS_DB_PORT`        | `5432`            | Database port                                                                |
+| `BOREAS_DB_USER`        | `postgres`        | Database user                                                                |
+| `BOREAS_DB_PASSWORD`    | `postgres`        | Database password                                                            |
+| `BOREAS_DB_NAME`        | `boreas`          | Database name                                                                |
+| `BOREAS_DB_SSLMODE`     | `disable`         | `sslmode` for the connection                                                 |
+| `BOREAS_ADMIN_USERNAME` | `admin`           | Seed administrator username                                                  |
+| `BOREAS_ADMIN_EMAIL`    | `admin@localhost` | Seed administrator email                                                     |
+| `BOREAS_ADMIN_PASSWORD` | unset             | Seed administrator password; required only on an empty database              |
+| `BOREAS_NOTIFY_URL`     | unset             | Apprise notify endpoint; unset records notifications without forwarding them |
 
 Registry credentials are no longer configuration. Store them once through
 `/api/v1/registry-credentials` and attach one to a project; Boreas uses it when

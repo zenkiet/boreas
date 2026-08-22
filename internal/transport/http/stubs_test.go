@@ -24,9 +24,15 @@ type stubTasks struct {
 	deploy func(context.Context, string, string, string) (core.Task, error)
 	logs   func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
 	stats  func(context.Context) (core.SystemStats, error)
+	list   func(context.Context, core.ProjectAccess) ([]core.Task, error)
 }
 
-func (stubTasks) List(context.Context, string) ([]core.Task, error) { return nil, nil }
+func (s stubTasks) List(c context.Context, acc core.ProjectAccess) ([]core.Task, error) {
+	if s.list != nil {
+		return s.list(c, acc)
+	}
+	return nil, nil
+}
 
 func (s stubTasks) Get(c context.Context, project, name string) (core.Task, error) {
 	if s.get != nil {
@@ -151,23 +157,34 @@ func (*stubAuth) DeleteUser(context.Context, uuid.UUID) error { return nil }
 
 type stubProjects struct {
 	role            core.ProjectRole
+	project         core.Project
+	allTasks        *bool
 	accessErr       error
 	update          func(context.Context, string, service.UpdateProjectInput) (core.Project, error)
 	listCredentials func(context.Context) ([]core.RegistryCredential, error)
-	notifications   func(context.Context, string, int) ([]core.Notification, error)
+	notifications   func(context.Context, core.ProjectAccess, int) ([]core.Notification, error)
+	grant           func(context.Context, string, string, uuid.UUID, core.ProjectRole) error
+	listGrants      func(context.Context, string, string) ([]core.TaskGrant, error)
+	revoke          func(context.Context, string, string, uuid.UUID) error
 }
 
-func (s *stubProjects) Access(_ context.Context, actor core.User, _ string) (core.ProjectRole, error) {
+func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (core.ProjectAccess, error) {
 	if s.accessErr != nil {
-		return "", s.accessErr
+		return core.ProjectAccess{}, s.accessErr
 	}
-	if actor.IsAdmin() {
-		return core.ProjectRoleOwner, nil
+	acc := core.ProjectAccess{Project: s.project, UserID: actor.ID, AllTasks: true}
+	switch {
+	case actor.IsAdmin():
+		acc.Role = core.ProjectRoleOwner
+	case s.role == "":
+		acc.Role = core.ProjectRoleMember
+	default:
+		acc.Role = s.role
 	}
-	if s.role == "" {
-		return core.ProjectRoleMember, nil
+	if s.allTasks != nil {
+		acc.AllTasks = *s.allTasks
 	}
-	return s.role, nil
+	return acc, nil
 }
 
 func (*stubProjects) List(context.Context, core.User) ([]core.Project, error) { return nil, nil }
@@ -184,11 +201,32 @@ func (s *stubProjects) Update(c context.Context, slug string, in service.UpdateP
 	return core.Project{}, nil
 }
 
-func (s *stubProjects) Notifications(c context.Context, slug string, limit int) ([]core.Notification, error) {
+func (s *stubProjects) Notifications(c context.Context, acc core.ProjectAccess, limit int) ([]core.Notification, error) {
 	if s.notifications != nil {
-		return s.notifications(c, slug, limit)
+		return s.notifications(c, acc, limit)
 	}
 	return nil, nil
+}
+
+func (s *stubProjects) ListGrants(c context.Context, slug, name string) ([]core.TaskGrant, error) {
+	if s.listGrants != nil {
+		return s.listGrants(c, slug, name)
+	}
+	return nil, nil
+}
+
+func (s *stubProjects) Grant(c context.Context, slug, name string, userID uuid.UUID, role core.ProjectRole) error {
+	if s.grant != nil {
+		return s.grant(c, slug, name, userID, role)
+	}
+	return nil
+}
+
+func (s *stubProjects) Revoke(c context.Context, slug, name string, userID uuid.UUID) error {
+	if s.revoke != nil {
+		return s.revoke(c, slug, name, userID)
+	}
+	return nil
 }
 
 func (*stubProjects) Delete(context.Context, string) error { return nil }

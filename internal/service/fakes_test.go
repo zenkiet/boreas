@@ -10,13 +10,25 @@ import (
 	"github.com/zenkiet/boreas/internal/core"
 )
 
+// grantKey mirrors the task_grants primary key.
+type grantKey struct {
+	taskID uuid.UUID
+	userID uuid.UUID
+}
+
 type fakeTaskStore struct {
 	tasks map[uuid.UUID]core.Task
-	now   time.Time
+	// granted and roles stand in for task_grants; Delete clears them the way the FK cascade does.
+	granted map[grantKey]bool
+	roles   map[grantKey]core.ProjectRole
+	now     time.Time
 }
 
 func newFakeTaskStore() *fakeTaskStore {
-	return &fakeTaskStore{tasks: map[uuid.UUID]core.Task{}, now: time.Unix(1000, 0).UTC()}
+	return &fakeTaskStore{
+		tasks: map[uuid.UUID]core.Task{}, granted: map[grantKey]bool{},
+		roles: map[grantKey]core.ProjectRole{}, now: time.Unix(1000, 0).UTC(),
+	}
 }
 
 func (f *fakeTaskStore) tick() time.Time {
@@ -24,12 +36,18 @@ func (f *fakeTaskStore) tick() time.Time {
 	return f.now
 }
 
-func (f *fakeTaskStore) List(_ context.Context, projectID uuid.UUID) ([]core.Task, error) {
+func (f *fakeTaskStore) List(
+	_ context.Context, projectID, userID uuid.UUID, allTasks bool,
+) ([]core.Task, error) {
 	result := make([]core.Task, 0, len(f.tasks))
 	for _, task := range f.tasks {
-		if task.ProjectID == projectID {
-			result = append(result, task.Clone())
+		if task.ProjectID != projectID {
+			continue
 		}
+		if !allTasks && !f.granted[grantKey{task.ID, userID}] {
+			continue
+		}
+		result = append(result, task.Clone())
 	}
 	return result, nil
 }
@@ -79,6 +97,12 @@ func (f *fakeTaskStore) Delete(_ context.Context, id uuid.UUID) error {
 		return core.ErrNotFound
 	}
 	delete(f.tasks, id)
+	for key := range f.granted {
+		if key.taskID == id {
+			delete(f.granted, key)
+			delete(f.roles, key)
+		}
+	}
 	return nil
 }
 
@@ -231,9 +255,14 @@ func (f *fakeCredentialStore) Delete(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-type fakeNotificationStore struct{ notifications []core.Notification }
+type fakeNotificationStore struct {
+	notifications []core.Notification
+	tasks         *fakeTaskStore // resolves task names to grants, as the SQL join does
+}
 
-func newFakeNotificationStore() *fakeNotificationStore { return &fakeNotificationStore{} }
+func newFakeNotificationStore(tasks *fakeTaskStore) *fakeNotificationStore {
+	return &fakeNotificationStore{tasks: tasks}
+}
 
 func (f *fakeNotificationStore) Create(_ context.Context, n core.Notification) (core.Notification, error) {
 	n.ID, n.CreatedAt = uuid.New(), time.Now()
@@ -241,15 +270,83 @@ func (f *fakeNotificationStore) Create(_ context.Context, n core.Notification) (
 	return n, nil
 }
 
-func (f *fakeNotificationStore) List(_ context.Context, projectID uuid.UUID, limit int) ([]core.Notification, error) {
+func (f *fakeNotificationStore) List(
+	_ context.Context, projectID, userID uuid.UUID, allTasks bool, limit int,
+) ([]core.Notification, error) {
 	result := make([]core.Notification, 0, len(f.notifications))
 	// Newest first, matching the SQL store's ordering.
 	for i := len(f.notifications) - 1; i >= 0 && len(result) < limit; i-- {
-		if f.notifications[i].ProjectID == projectID {
-			result = append(result, f.notifications[i])
+		n := f.notifications[i]
+		if n.ProjectID != projectID {
+			continue
+		}
+		if !allTasks && (f.tasks == nil || !f.tasks.grantedName(projectID, userID, n.TaskName)) {
+			continue
+		}
+		result = append(result, n)
+	}
+	return result, nil
+}
+
+// grantedName resolves a notification's task name to a grant the way the SQL join does.
+func (f *fakeTaskStore) grantedName(projectID, userID uuid.UUID, name string) bool {
+	for _, task := range f.tasks {
+		if task.ProjectID == projectID && task.Name == name {
+			return f.granted[grantKey{task.ID, userID}]
+		}
+	}
+	return false
+}
+
+type fakeGrantStore struct{ tasks *fakeTaskStore }
+
+func newFakeGrantStore(tasks *fakeTaskStore) *fakeGrantStore { return &fakeGrantStore{tasks: tasks} }
+
+func (f *fakeGrantStore) Role(
+	_ context.Context, projectID, userID uuid.UUID, taskName string,
+) (core.ProjectRole, error) {
+	for _, task := range f.tasks.tasks {
+		if task.ProjectID == projectID && task.Name == taskName {
+			return f.tasks.roles[grantKey{task.ID, userID}], nil
+		}
+	}
+	return "", nil
+}
+
+func (f *fakeGrantStore) AnyInProject(_ context.Context, projectID, userID uuid.UUID) (bool, error) {
+	for _, task := range f.tasks.tasks {
+		if task.ProjectID == projectID && f.tasks.granted[grantKey{task.ID, userID}] {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeGrantStore) ListForTask(_ context.Context, taskID uuid.UUID) ([]core.TaskGrant, error) {
+	var result []core.TaskGrant
+	for key, role := range f.tasks.roles {
+		if key.taskID == taskID {
+			result = append(result, core.TaskGrant{TaskID: taskID, UserID: key.userID, Role: role})
 		}
 	}
 	return result, nil
+}
+
+func (f *fakeGrantStore) Grant(_ context.Context, grant core.TaskGrant) error {
+	key := grantKey{grant.TaskID, grant.UserID}
+	f.tasks.granted[key] = true
+	f.tasks.roles[key] = grant.Role
+	return nil
+}
+
+func (f *fakeGrantStore) Revoke(_ context.Context, taskID, userID uuid.UUID) error {
+	key := grantKey{taskID, userID}
+	if !f.tasks.granted[key] {
+		return core.ErrNotFound
+	}
+	delete(f.tasks.granted, key)
+	delete(f.tasks.roles, key)
+	return nil
 }
 
 type fakeUserStore struct{ users map[uuid.UUID]core.User }

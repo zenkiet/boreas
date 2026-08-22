@@ -274,6 +274,31 @@ type membersResponse struct {
 	Total   int         `json:"total"`
 }
 
+type grantRequest struct {
+	Project string           `json:"-" path:"project" example:"demo"`
+	Name    string           `json:"-" path:"name" example:"web"`
+	UserID  uuid.UUID        `json:"user_id"`
+	Role    core.ProjectRole `json:"role,omitempty"`
+}
+
+type grantPath struct {
+	Project string    `json:"-" path:"project" example:"demo"`
+	Name    string    `json:"-" path:"name" example:"web"`
+	UserID  uuid.UUID `json:"-" path:"userID"`
+}
+
+type grantDTO struct {
+	UserID    uuid.UUID        `json:"user_id"`
+	Username  string           `json:"username"`
+	Role      core.ProjectRole `json:"role"`
+	CreatedAt time.Time        `json:"created_at"`
+}
+
+type grantsResponse struct {
+	Grants []grantDTO `json:"grants"`
+	Total  int        `json:"total"`
+}
+
 type notificationsRequest struct {
 	Project string `json:"-" path:"project" example:"demo"`
 	Limit   int    `query:"limit" minimum:"1" maximum:"200" default:"50"`

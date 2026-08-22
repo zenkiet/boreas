@@ -2,6 +2,8 @@ package httptransport
 
 import (
 	"net/http"
+
+	"github.com/zenkiet/boreas/internal/core"
 )
 
 type access int
@@ -11,9 +13,26 @@ const (
 	accessAuthed
 	accessSession
 	accessAdmin
+	accessViewer
+	accessOperator
 	accessMember
 	accessOwner
 )
+
+// projectRole reports the least project role an access level accepts, or "" when the level is not project-scoped.
+func (a access) projectRole() core.ProjectRole {
+	switch a {
+	case accessViewer:
+		return core.ProjectRoleViewer
+	case accessOperator:
+		return core.ProjectRoleOperator
+	case accessMember:
+		return core.ProjectRoleMember
+	case accessOwner:
+		return core.ProjectRoleOwner
+	}
+	return ""
+}
 
 type route struct {
 	method      string
@@ -149,17 +168,18 @@ var routeTable = [...]route{
 		resp:        new(projectsResponse), status: http.StatusOK,
 	},
 	{
-		method: http.MethodPost, path: "/api/v1/projects", access: accessAuthed,
+		method: http.MethodPost, path: "/api/v1/projects", access: accessAdmin,
 		handler: (*Handler).createProject,
 		tag:     "projects", summary: "Create a project",
-		description: "The creator becomes the project owner. The slugs api, health, metrics, static and admin are reserved. " +
+		description: "Administrators only. The creator becomes the project owner. " +
+			"The slugs api, health, metrics, static and admin are reserved. " +
 			"default_image, default_port and default_env only prefill the task creation form; " +
 			"task creation never applies them on its own.",
 		req: new(createProjectRequest), resp: new(projectResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}", access: accessMember,
+		method: http.MethodGet, path: "/api/v1/projects/{project}", access: accessViewer,
 		handler: (*Handler).getProject,
 		tag:     "projects", summary: "Get a project",
 		req: new(projectPath), resp: new(projectResponse), status: http.StatusOK,
@@ -205,7 +225,7 @@ var routeTable = [...]route{
 	},
 
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}/notifications", access: accessMember,
+		method: http.MethodGet, path: "/api/v1/projects/{project}/notifications", access: accessViewer,
 		handler: (*Handler).listNotifications,
 		tag:     "projects", summary: "List deploy notifications",
 		description: "Newest first. Recorded when a deploy succeeds or fails; a retried callback for " +
@@ -215,7 +235,7 @@ var routeTable = [...]route{
 	},
 
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks", access: accessMember,
+		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks", access: accessViewer,
 		handler: (*Handler).listTasks,
 		tag:     "tasks", summary: "List tasks",
 		req: new(projectPath), resp: new(tasksResponse), status: http.StatusOK,
@@ -229,7 +249,7 @@ var routeTable = [...]route{
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}", access: accessMember,
+		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}", access: accessViewer,
 		handler: (*Handler).getTask,
 		tag:     "tasks", summary: "Get a task",
 		req: new(taskPath), resp: new(taskResponse), status: http.StatusOK,
@@ -253,7 +273,7 @@ var routeTable = [...]route{
 		req:         new(taskPath), resp: new(taskDeletedResponse), status: http.StatusOK,
 	},
 	{
-		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks/{name}/deploy", access: accessMember,
+		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks/{name}/deploy", access: accessOperator,
 		handler: (*Handler).deployTask,
 		tag:     "tasks", summary: "Deploy an image built elsewhere",
 		description: "For a build pipeline to call once it has pushed an image. The image must be " +
@@ -265,21 +285,21 @@ var routeTable = [...]route{
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
-		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/state", access: accessMember,
+		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/state", access: accessOperator,
 		handler: (*Handler).updateState,
 		tag:     "tasks", summary: "Start, stop, or restart a task",
 		req: new(updateStateRequest), resp: new(taskStateResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest},
 	},
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/logs", access: accessMember,
+		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/logs", access: accessViewer,
 		handler: (*Handler).logs,
 		tag:     "tasks", summary: "Read task logs",
 		req: new(logsRequest), resp: new(string), status: http.StatusOK,
 		contentType: "text/plain", extraErrors: []int{http.StatusBadRequest},
 	},
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/logs/stream", access: accessMember,
+		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/logs/stream", access: accessViewer,
 		handler: (*Handler).streamLogs,
 		tag:     "tasks", summary: "Stream task logs",
 		description: "Server-Sent Events. Each event carries a JSON object " +
@@ -288,6 +308,30 @@ var routeTable = [...]route{
 		req: new(streamLogsRequest), resp: new(string), status: http.StatusOK,
 		contentType: "text/event-stream", extraErrors: []int{http.StatusBadRequest},
 	},
+
+	{
+		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/grants", access: accessOwner,
+		handler: (*Handler).listGrants,
+		tag:     "tasks", summary: "List task grants",
+		req: new(taskPath), resp: new(grantsResponse), status: http.StatusOK,
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks/{name}/grants", access: accessOwner,
+		handler: (*Handler).grantTask,
+		tag:     "tasks", summary: "Grant a user access to one task",
+		description: "Raises the user's role on this task above whatever the project gives them; " +
+			"it never lowers it. A grant is enough to reach the project without being a member, " +
+			"and it is deleted with the task. Owner cannot be granted here.",
+		req: new(grantRequest), resp: new(successResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest},
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/projects/{project}/tasks/{name}/grants/{userID}", access: accessOwner,
+		handler: (*Handler).revokeGrant,
+		tag:     "tasks", summary: "Revoke a task grant",
+		req: new(grantPath), resp: new(successResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest},
+	},
 }
 
 func (r route) errorStatuses() []int {
@@ -295,12 +339,12 @@ func (r route) errorStatuses() []int {
 	if r.access != accessPublic {
 		statuses = append(statuses, http.StatusUnauthorized)
 	}
-	switch r.access {
-	case accessSession, accessAdmin, accessMember, accessOwner:
+	projectScoped := r.access.projectRole() != ""
+	if projectScoped || r.access == accessSession || r.access == accessAdmin {
 		statuses = append(statuses, http.StatusForbidden)
 	}
 	statuses = append(statuses, r.extraErrors...)
-	if r.access == accessMember || r.access == accessOwner {
+	if projectScoped {
 		statuses = append(statuses, http.StatusNotFound)
 	}
 	statuses = append(statuses, http.StatusInternalServerError)

@@ -252,12 +252,13 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
-	project, err := h.projects.Get(r.Context(), r.PathValue("project"))
-	if err != nil {
-		writeServiceError(w, h.logger, err)
-		return
+	acc := accessFrom(r.Context())
+	dto := projectFromCore(acc.Project)
+	if !acc.AllTasks {
+		// Task form defaults may carry project secrets, so grantees do not receive them.
+		dto.DefaultEnv = map[string]string{}
 	}
-	writeJSON(w, http.StatusOK, projectResponse{Project: projectFromCore(project)})
+	writeJSON(w, http.StatusOK, projectResponse{Project: dto})
 }
 
 func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +314,7 @@ func (h *Handler) listNotifications(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	notifications, err := h.projects.Notifications(r.Context(), r.PathValue("project"), limit)
+	notifications, err := h.projects.Notifications(r.Context(), accessFrom(r.Context()), limit)
 	if err != nil {
 		writeServiceError(w, h.logger, err)
 		return
@@ -358,8 +359,56 @@ func (h *Handler) removeMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
+func (h *Handler) listGrants(w http.ResponseWriter, r *http.Request) {
+	grants, err := h.projects.ListGrants(r.Context(), r.PathValue("project"), r.PathValue("name"))
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	result := make([]grantDTO, len(grants))
+	for i := range grants {
+		grant := grants[i]
+		result[i] = grantDTO{
+			UserID: grant.UserID, Username: grant.Username,
+			Role: grant.Role, CreatedAt: grant.CreatedAt,
+		}
+	}
+	writeJSON(w, http.StatusOK, grantsResponse{Grants: result, Total: len(result)})
+}
+
+func (h *Handler) grantTask(w http.ResponseWriter, r *http.Request) {
+	var req grantRequest
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
+		writeBadRequest(w)
+		return
+	}
+	role := req.Role
+	if role == "" {
+		role = core.ProjectRoleViewer
+	}
+	err := h.projects.Grant(r.Context(), r.PathValue("project"), r.PathValue("name"), req.UserID, role)
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
+}
+
+func (h *Handler) revokeGrant(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(r.PathValue("userID"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	if err := h.projects.Revoke(r.Context(), r.PathValue("project"), r.PathValue("name"), userID); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
+}
+
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
-	tasks, err := h.tasks.List(r.Context(), r.PathValue("project"))
+	tasks, err := h.tasks.List(r.Context(), accessFrom(r.Context()))
 	if err != nil {
 		writeServiceError(w, h.logger, err)
 		return

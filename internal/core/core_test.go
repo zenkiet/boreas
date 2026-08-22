@@ -21,6 +21,24 @@ func TestValidateTaskName(t *testing.T) {
 	}
 }
 
+func TestProjectRoleRank(t *testing.T) {
+	ordered := []ProjectRole{ProjectRoleViewer, ProjectRoleOperator, ProjectRoleMember, ProjectRoleOwner}
+	for i := 1; i < len(ordered); i++ {
+		if ordered[i-1].Rank() >= ordered[i].Rank() {
+			t.Fatalf("%q must rank below %q", ordered[i-1], ordered[i])
+		}
+	}
+	// An unknown or absent role must never satisfy a requirement.
+	for _, role := range []ProjectRole{"", "root", "Owner"} {
+		if role.Rank() != 0 {
+			t.Fatalf("Rank(%q) = %d, want 0", role, role.Rank())
+		}
+	}
+	if len(ProjectRole("").Enum()) != len(ordered) {
+		t.Fatal("Enum must list every ranked role")
+	}
+}
+
 func TestValidateProjectSlug(t *testing.T) {
 	valid := []string{"a", "team-alpha", "a1-b2", strings.Repeat("x", 63)}
 	for _, slug := range valid {

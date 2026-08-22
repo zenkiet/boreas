@@ -33,10 +33,16 @@ func (s *NotificationStore) Create(ctx context.Context, n core.Notification) (co
 	return created, nil
 }
 
-func (s *NotificationStore) List(ctx context.Context, projectID uuid.UUID, limit int) ([]core.Notification, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+notificationColumns+` FROM notifications
-		 WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2`, projectID, limit)
+func (s *NotificationStore) List(
+	ctx context.Context, projectID, userID uuid.UUID, allTasks bool, limit int,
+) ([]core.Notification, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+notificationColumns+` FROM notifications n
+		WHERE n.project_id = $1 AND ($3 OR EXISTS (
+			SELECT 1 FROM task_grants g
+			JOIN tasks t ON t.id = g.task_id
+			WHERE g.user_id = $2 AND t.project_id = n.project_id AND t.name = n.task_name))
+		ORDER BY n.created_at DESC LIMIT $4`, projectID, userID, allTasks, limit)
 	if err != nil {
 		return nil, mapError("list notifications", err)
 	}

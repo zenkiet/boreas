@@ -278,10 +278,10 @@ paths:
       tags:
       - projects
     post:
-      description: The creator becomes the project owner. The slugs api, health, metrics,
-        static and admin are reserved. default_image, default_port and default_env
-        only prefill the task creation form; task creation never applies them on its
-        own.
+      description: Administrators only. The creator becomes the project owner. The
+        slugs api, health, metrics, static and admin are reserved. default_image,
+        default_port and default_env only prefill the task creation form; task creation
+        never applies them on its own.
       operationId: post-projects
       requestBody:
         content:
@@ -307,6 +307,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
         "409":
           content:
             application/json:
@@ -1065,6 +1071,186 @@ paths:
       security:
       - bearerAuth: []
       summary: Deploy an image built elsewhere
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/grants:
+    get:
+      operationId: get-projects-project-tasks-name-grants
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantsResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List task grants
+      tags:
+      - tasks
+    post:
+      description: Raises the user's role on this task above whatever the project
+        gives them; it never lowers it. A grant is enough to reach the project without
+        being a member, and it is deleted with the task. Owner cannot be granted here.
+      operationId: post-projects-project-tasks-name-grants
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Grant a user access to one task
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/grants/{userID}:
+    delete:
+      operationId: delete-projects-project-tasks-name-grants-userID
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      - in: path
+        name: userID
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Revoke a task grant
       tags:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/logs:
@@ -1866,6 +2052,45 @@ components:
       required:
       - error
       type: object
+    Grant:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+      required:
+      - user_id
+      - username
+      - role
+      - created_at
+      type: object
+    GrantRequest:
+      properties:
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        user_id:
+          $ref: '#/components/schemas/UUID'
+      required:
+      - user_id
+      type: object
+    GrantsResponse:
+      properties:
+        grants:
+          items:
+            $ref: '#/components/schemas/Grant'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - grants
+      - total
+      type: object
     HealthResponse:
       properties:
         service:
@@ -2024,8 +2249,10 @@ components:
       type: object
     ProjectRole:
       enum:
-      - owner
+      - viewer
+      - operator
       - member
+      - owner
       type: string
     ProjectsResponse:
       properties:

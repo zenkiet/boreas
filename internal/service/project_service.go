@@ -15,22 +15,26 @@ type ProjectService struct {
 	projects      core.ProjectStore
 	credentials   core.CredentialStore
 	notifications core.NotificationStore
+	grants        core.GrantStore
+	tasks         core.TaskStore
 }
 
-func NewProjectService(projects core.ProjectStore, credentials core.CredentialStore, notifications core.NotificationStore) (*ProjectService, error) {
-	if projects == nil || credentials == nil || notifications == nil {
+func NewProjectService(
+	projects core.ProjectStore, credentials core.CredentialStore,
+	notifications core.NotificationStore, grants core.GrantStore, tasks core.TaskStore,
+) (*ProjectService, error) {
+	if projects == nil || credentials == nil || notifications == nil || grants == nil || tasks == nil {
 		return nil, errors.Join(core.ErrInvalidInput,
-			errors.New("project, credential, and notification stores are required"))
+			errors.New("project, credential, notification, grant, and task stores are required"))
 	}
-	return &ProjectService{projects: projects, credentials: credentials, notifications: notifications}, nil
+	return &ProjectService{
+		projects: projects, credentials: credentials,
+		notifications: notifications, grants: grants, tasks: tasks,
+	}, nil
 }
 
-func (s *ProjectService) Notifications(ctx context.Context, slug string, limit int) ([]core.Notification, error) {
-	project, err := s.Get(ctx, slug)
-	if err != nil {
-		return nil, err
-	}
-	notifications, err := s.notifications.List(ctx, project.ID, limit)
+func (s *ProjectService) Notifications(ctx context.Context, acc core.ProjectAccess, limit int) ([]core.Notification, error) {
+	notifications, err := s.notifications.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list notifications: %w", err)
 	}
@@ -183,8 +187,9 @@ func (s *ProjectService) ListMembers(ctx context.Context, slug string) ([]core.P
 }
 
 func (s *ProjectService) AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error {
-	if role != core.ProjectRoleOwner && role != core.ProjectRoleMember {
-		return errors.Join(core.ErrInvalidInput, errors.New("role must be owner or member"))
+	if role.Rank() == 0 {
+		return errors.Join(core.ErrInvalidInput,
+			errors.New("role must be viewer, operator, member, or owner"))
 	}
 	project, err := s.Get(ctx, slug)
 	if err != nil {
@@ -227,23 +232,113 @@ func (s *ProjectService) RemoveMember(ctx context.Context, slug string, userID u
 	return nil
 }
 
-// Access treats administrators as owners of every project.
-func (s *ProjectService) Access(ctx context.Context, actor core.User, slug string) (core.ProjectRole, error) {
+// Access resolves the caller's effective role, taking the higher of their project
+// membership and any grant on the requested task. Administrators own every project.
+func (s *ProjectService) Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error) {
 	project, err := s.Get(ctx, slug)
 	if err != nil {
-		return "", err
+		return core.ProjectAccess{}, err
 	}
+	acc := core.ProjectAccess{Project: project, UserID: actor.ID}
 	if actor.IsAdmin() {
-		return core.ProjectRoleOwner, nil
+		acc.Role, acc.AllTasks = core.ProjectRoleOwner, true
+		return acc, nil
 	}
 	member, err := s.projects.GetMember(ctx, project.ID, actor.ID)
-	if err != nil {
-		if errors.Is(err, core.ErrNotFound) {
-			return "", core.ErrForbidden
-		}
-		return "", fmt.Errorf("get project member: %w", err)
+	switch {
+	case err == nil:
+		acc.Role, acc.AllTasks = member.Role, true
+	case !errors.Is(err, core.ErrNotFound):
+		return core.ProjectAccess{}, fmt.Errorf("get project member: %w", err)
 	}
-	return member.Role, nil
+	granted, err := s.grantedRole(ctx, project.ID, actor.ID, taskName)
+	if err != nil {
+		return core.ProjectAccess{}, err
+	}
+	if granted.Rank() > acc.Role.Rank() {
+		acc.Role = granted
+	}
+	// An unreachable project or task must be indistinguishable from one that does not exist.
+	if acc.Role == "" {
+		return core.ProjectAccess{}, core.ErrNotFound
+	}
+	return acc, nil
+}
+
+// grantedRole reports what task grants alone give the caller. Routes without a task in
+// their path get viewer, because holding any grant proves the caller belongs in the project.
+func (s *ProjectService) grantedRole(
+	ctx context.Context, projectID, userID uuid.UUID, taskName string,
+) (core.ProjectRole, error) {
+	if taskName == "" {
+		granted, err := s.grants.AnyInProject(ctx, projectID, userID)
+		if err != nil {
+			return "", fmt.Errorf("check task grants: %w", err)
+		}
+		if granted {
+			return core.ProjectRoleViewer, nil
+		}
+		return "", nil
+	}
+	role, err := s.grants.Role(ctx, projectID, userID, taskName)
+	if err != nil {
+		return "", fmt.Errorf("get task grant: %w", err)
+	}
+	return role, nil
+}
+
+func (s *ProjectService) ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error) {
+	task, err := s.task(ctx, slug, taskName)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := s.grants.ListForTask(ctx, task.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list task grants: %w", err)
+	}
+	return grants, nil
+}
+
+// Grant raises a user's role on one task. Owner is rejected because it only means
+// something at project scope.
+func (s *ProjectService) Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error {
+	if role.Rank() < core.ProjectRoleViewer.Rank() || role.Rank() > core.ProjectRoleMember.Rank() {
+		return errors.Join(core.ErrInvalidInput, errors.New("role must be viewer, operator, or member"))
+	}
+	task, err := s.task(ctx, slug, taskName)
+	if err != nil {
+		return err
+	}
+	if err := s.grants.Grant(ctx, core.TaskGrant{TaskID: task.ID, UserID: userID, Role: role}); err != nil {
+		return fmt.Errorf("grant task: %w", err)
+	}
+	return nil
+}
+
+func (s *ProjectService) Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error {
+	task, err := s.task(ctx, slug, taskName)
+	if err != nil {
+		return err
+	}
+	if err := s.grants.Revoke(ctx, task.ID, userID); err != nil {
+		return fmt.Errorf("revoke task grant: %w", err)
+	}
+	return nil
+}
+
+func (s *ProjectService) task(ctx context.Context, slug, taskName string) (core.Task, error) {
+	if err := core.ValidateTaskName(taskName); err != nil {
+		return core.Task{}, err
+	}
+	project, err := s.Get(ctx, slug)
+	if err != nil {
+		return core.Task{}, err
+	}
+	task, err := s.tasks.GetByName(ctx, project.ID, taskName)
+	if err != nil {
+		return core.Task{}, fmt.Errorf("get task %q: %w", taskName, err)
+	}
+	return task, nil
 }
 
 func (s *ProjectService) ListCredentials(ctx context.Context) ([]core.RegistryCredential, error) {

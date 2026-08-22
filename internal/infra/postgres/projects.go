@@ -28,10 +28,13 @@ func (s *ProjectStore) List(ctx context.Context) ([]core.Project, error) {
 	return projects, nil
 }
 
+// ListForUser also returns projects reached only through a task grant, which carry no membership row.
 func (s *ProjectStore) ListForUser(ctx context.Context, userID uuid.UUID) ([]core.Project, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects
-		WHERE id IN (SELECT project_id FROM project_members WHERE user_id = $1)
-		ORDER BY slug`, userID)
+	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects p
+		WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = $1)
+		   OR EXISTS (SELECT 1 FROM task_grants g JOIN tasks t ON t.id = g.task_id
+		              WHERE g.user_id = $1 AND t.project_id = p.id)
+		ORDER BY p.slug`, userID)
 	if err != nil {
 		return nil, mapError("list user projects", err)
 	}

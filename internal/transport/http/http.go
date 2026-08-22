@@ -13,7 +13,7 @@ import (
 )
 
 type TaskService interface {
-	List(ctx context.Context, project string) ([]core.Task, error)
+	List(ctx context.Context, acc core.ProjectAccess) ([]core.Task, error)
 	Get(ctx context.Context, project, name string) (core.Task, error)
 	Create(ctx context.Context, project string, in service.CreateTaskInput) (core.Task, error)
 	Update(ctx context.Context, project, name string, in service.UpdateTaskInput, recreate bool) (core.Task, error)
@@ -48,8 +48,11 @@ type ProjectService interface {
 	ListMembers(ctx context.Context, slug string) ([]core.ProjectMember, error)
 	AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error
 	RemoveMember(ctx context.Context, slug string, userID uuid.UUID) error
-	Notifications(ctx context.Context, slug string, limit int) ([]core.Notification, error)
-	Access(ctx context.Context, actor core.User, slug string) (core.ProjectRole, error)
+	Notifications(ctx context.Context, acc core.ProjectAccess, limit int) ([]core.Notification, error)
+	Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error)
+	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
+	Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error
+	Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error
 	ListCredentials(context.Context) ([]core.RegistryCredential, error)
 	CreateCredential(ctx context.Context, actor core.User, in service.CreateCredentialInput) (core.RegistryCredential, error)
 	DeleteCredential(ctx context.Context, id uuid.UUID) error

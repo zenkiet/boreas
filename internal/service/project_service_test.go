@@ -11,12 +11,20 @@ import (
 
 func newProjects(t *testing.T) (*ProjectService, *fakeProjectStore, *fakeCredentialStore) {
 	t.Helper()
+	svc, projects, credentials, _ := newProjectsWithTasks(t)
+	return svc, projects, credentials
+}
+
+func newProjectsWithTasks(t *testing.T) (*ProjectService, *fakeProjectStore, *fakeCredentialStore, *fakeTaskStore) {
+	t.Helper()
 	projects, credentials := newFakeProjectStore(), newFakeCredentialStore()
-	svc, err := NewProjectService(projects, credentials, newFakeNotificationStore())
+	tasks := newFakeTaskStore()
+	svc, err := NewProjectService(
+		projects, credentials, newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return svc, projects, credentials
+	return svc, projects, credentials, tasks
 }
 
 func admin() core.User { return core.User{ID: uuid.New(), Username: "admin", Role: core.RoleAdmin} }
@@ -130,27 +138,127 @@ func TestAccessRules(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	role, err := svc.Access(context.Background(), owner, "team")
-	if err != nil || role != core.ProjectRoleOwner {
-		t.Fatalf("owner access = %q, %v", role, err)
+	acc, err := svc.Access(context.Background(), owner, "team", "")
+	if err != nil || acc.Role != core.ProjectRoleOwner || !acc.AllTasks {
+		t.Fatalf("owner access = %+v, %v", acc, err)
 	}
 
+	// An unreachable project must look missing rather than merely forbidden.
 	outsider := member()
-	if _, err := svc.Access(context.Background(), outsider, "team"); !errors.Is(err, core.ErrForbidden) {
-		t.Fatalf("outsider access: got %v, want ErrForbidden", err)
+	if _, err := svc.Access(context.Background(), outsider, "team", ""); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("outsider access: got %v, want ErrNotFound", err)
 	}
 
-	role, err = svc.Access(context.Background(), admin(), "team")
-	if err != nil || role != core.ProjectRoleOwner {
-		t.Fatalf("admin access = %q, %v", role, err)
+	acc, err = svc.Access(context.Background(), admin(), "team", "")
+	if err != nil || acc.Role != core.ProjectRoleOwner || !acc.AllTasks {
+		t.Fatalf("admin access = %+v, %v", acc, err)
 	}
 
 	if err := svc.AddMember(context.Background(), "team", outsider.ID, core.ProjectRoleMember); err != nil {
 		t.Fatal(err)
 	}
-	role, err = svc.Access(context.Background(), outsider, "team")
-	if err != nil || role != core.ProjectRoleMember {
-		t.Fatalf("added member access = %q, %v", role, err)
+	acc, err = svc.Access(context.Background(), outsider, "team", "")
+	if err != nil || acc.Role != core.ProjectRoleMember || !acc.AllTasks {
+		t.Fatalf("added member access = %+v, %v", acc, err)
+	}
+}
+
+// seedTask puts a task in the store directly; ProjectService only reads them.
+func seedTask(t *testing.T, tasks *fakeTaskStore, projectID uuid.UUID, name string) core.Task {
+	t.Helper()
+	task, err := tasks.Create(context.Background(), core.Task{
+		ProjectID: projectID, Name: name, Image: "img", Status: core.StatusRunning, Port: 80,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return task
+}
+
+func TestGrantRaisesRoleButNeverLowersIt(t *testing.T) {
+	svc, _, _, tasks := newProjectsWithTasks(t)
+	ctx := context.Background()
+	owner := member()
+	project, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTask(t, tasks, project.ID, "web")
+	seedTask(t, tasks, project.ID, "db")
+
+	// A project viewer granted operator on one task deploys that task and only that one.
+	viewer := member()
+	if err := svc.AddMember(ctx, "team", viewer.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Grant(ctx, "team", "web", viewer.ID, core.ProjectRoleOperator); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := svc.Access(ctx, viewer, "team", "web")
+	if err != nil || acc.Role != core.ProjectRoleOperator {
+		t.Fatalf("granted task role = %+v, %v; want operator", acc, err)
+	}
+	acc, err = svc.Access(ctx, viewer, "team", "db")
+	if err != nil || acc.Role != core.ProjectRoleViewer {
+		t.Fatalf("ungranted task role = %+v, %v; want the project role", acc, err)
+	}
+
+	// A weaker grant must not take anything away from a stronger membership.
+	if err := svc.Grant(ctx, "team", "web", owner.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	acc, err = svc.Access(ctx, owner, "team", "web")
+	if err != nil || acc.Role != core.ProjectRoleOwner {
+		t.Fatalf("grant lowered an owner: %+v, %v", acc, err)
+	}
+}
+
+func TestGranteeReachesOnlyGrantedTasks(t *testing.T) {
+	svc, _, _, tasks := newProjectsWithTasks(t)
+	ctx := context.Background()
+	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	web := seedTask(t, tasks, project.ID, "web")
+	seedTask(t, tasks, project.ID, "db")
+
+	grantee := member()
+	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	// A grant alone reaches the project envelope, but only as a viewer of what was granted.
+	acc, err := svc.Access(ctx, grantee, "team", "")
+	if err != nil || acc.Role != core.ProjectRoleViewer || acc.AllTasks {
+		t.Fatalf("envelope access = %+v, %v", acc, err)
+	}
+	// An ungranted task must look missing, not merely forbidden, or its name leaks.
+	if _, err := svc.Access(ctx, grantee, "team", "db"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("ungranted task: got %v, want ErrNotFound", err)
+	}
+
+	// Deleting the task drops the grant, and with it every trace of access.
+	if err := tasks.Delete(ctx, web.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Access(ctx, grantee, "team", ""); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("access outlived the task it pointed at: %v", err)
+	}
+}
+
+func TestGrantRejectsOwner(t *testing.T) {
+	svc, _, _, tasks := newProjectsWithTasks(t)
+	ctx := context.Background()
+	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTask(t, tasks, project.ID, "web")
+	for _, role := range []core.ProjectRole{core.ProjectRoleOwner, "", "root"} {
+		err := svc.Grant(ctx, "team", "web", member().ID, role)
+		if !errors.Is(err, core.ErrInvalidInput) {
+			t.Fatalf("Grant(%q): got %v, want ErrInvalidInput", role, err)
+		}
 	}
 }
 
@@ -255,7 +363,10 @@ func TestCreateProjectRejectsUnknownCredential(t *testing.T) {
 }
 
 func TestNewProjectServiceRequiresCredentialStore(t *testing.T) {
-	if _, err := NewProjectService(newFakeProjectStore(), nil, newFakeNotificationStore()); !errors.Is(err, core.ErrInvalidInput) {
+	tasks := newFakeTaskStore()
+	_, err := NewProjectService(
+		newFakeProjectStore(), nil, newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks)
+	if !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("got %v, want ErrInvalidInput", err)
 	}
 }

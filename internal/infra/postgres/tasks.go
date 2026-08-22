@@ -16,9 +16,12 @@ func NewTaskStore(pool *pgxpool.Pool) *TaskStore { return &TaskStore{pool: pool}
 const taskColumns = `id, project_id, name, description, image, status, port,
 	container_id, container_ip, labels, env, pending_recreate, error, created_at, updated_at`
 
-func (s *TaskStore) List(ctx context.Context, projectID uuid.UUID) ([]core.Task, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+taskColumns+` FROM tasks WHERE project_id = $1 ORDER BY created_at, name`, projectID)
+func (s *TaskStore) List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool) ([]core.Task, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+taskColumns+` FROM tasks t
+		WHERE t.project_id = $1 AND ($3 OR EXISTS (
+			SELECT 1 FROM task_grants g WHERE g.task_id = t.id AND g.user_id = $2))
+		ORDER BY t.created_at, t.name`, projectID, userID, allTasks)
 	if err != nil {
 		return nil, mapError("list tasks", err)
 	}

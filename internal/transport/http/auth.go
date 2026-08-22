@@ -11,11 +11,20 @@ import (
 
 type contextKey int
 
-const userContextKey contextKey = iota
+const (
+	userContextKey contextKey = iota
+	accessContextKey
+)
 
 func userFrom(ctx context.Context) core.User {
 	user, _ := ctx.Value(userContextKey).(core.User)
 	return user
+}
+
+// accessFrom returns what authorize resolved; only project-scoped routes populate it.
+func accessFrom(ctx context.Context) core.ProjectAccess {
+	acc, _ := ctx.Value(accessContextKey).(core.ProjectAccess)
+	return acc
 }
 
 func bearerToken(r *http.Request) string {
@@ -50,18 +59,20 @@ func (h *Handler) authorize(required access, next http.HandlerFunc) http.Handler
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 			return
 		}
-		if required == accessMember || required == accessOwner {
-			role, err := h.projects.Access(r.Context(), user, r.PathValue("project"))
+		ctx := context.WithValue(r.Context(), userContextKey, user)
+		if need := required.projectRole(); need != "" {
+			acc, err := h.projects.Access(ctx, user, r.PathValue("project"), r.PathValue("name"))
 			if err != nil {
 				writeServiceError(w, h.logger, err)
 				return
 			}
-			if required == accessOwner && role != core.ProjectRoleOwner {
+			if acc.Role.Rank() < need.Rank() {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 				return
 			}
+			ctx = context.WithValue(ctx, accessContextKey, acc)
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), userContextKey, user)))
+		next(w, r.WithContext(ctx))
 	}
 }
 

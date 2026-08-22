@@ -50,11 +50,30 @@ func (UserRole) Enum() []any { return []any{RoleAdmin, RoleUser} }
 type ProjectRole string
 
 const (
-	ProjectRoleOwner  ProjectRole = "owner"
-	ProjectRoleMember ProjectRole = "member"
+	ProjectRoleViewer   ProjectRole = "viewer"
+	ProjectRoleOperator ProjectRole = "operator"
+	ProjectRoleMember   ProjectRole = "member"
+	ProjectRoleOwner    ProjectRole = "owner"
 )
 
-func (ProjectRole) Enum() []any { return []any{ProjectRoleOwner, ProjectRoleMember} }
+func (ProjectRole) Enum() []any {
+	return []any{ProjectRoleViewer, ProjectRoleOperator, ProjectRoleMember, ProjectRoleOwner}
+}
+
+// Rank orders roles so authorization is one comparison; 0 marks an unknown or absent role.
+func (r ProjectRole) Rank() int {
+	switch r {
+	case ProjectRoleViewer:
+		return 1
+	case ProjectRoleOperator:
+		return 2
+	case ProjectRoleMember:
+		return 3
+	case ProjectRoleOwner:
+		return 4
+	}
+	return 0
+}
 
 type RegistryKind string
 
@@ -175,6 +194,23 @@ type ProjectMember struct {
 	CreatedAt time.Time
 }
 
+// TaskGrant raises one user's role on a single task above whatever the project gives them.
+type TaskGrant struct {
+	TaskID    uuid.UUID
+	UserID    uuid.UUID
+	Username  string
+	Role      ProjectRole
+	CreatedAt time.Time
+}
+
+// ProjectAccess is one caller's effective reach in one project.
+type ProjectAccess struct {
+	Project  Project
+	UserID   uuid.UUID
+	Role     ProjectRole // effective role for the requested task, or for the project envelope
+	AllTasks bool        // members and admins; grantees reach only what they were granted
+}
+
 type Task struct {
 	ID              uuid.UUID
 	ProjectID       uuid.UUID
@@ -290,7 +326,7 @@ type ContainerRuntime interface {
 
 // TaskStore persists tasks whose names are unique only within a project.
 type TaskStore interface {
-	List(ctx context.Context, projectID uuid.UUID) ([]Task, error)
+	List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool) ([]Task, error)
 	ListAll(ctx context.Context) ([]Task, error)
 	GetByName(ctx context.Context, projectID uuid.UUID, name string) (Task, error)
 	Create(context.Context, Task) (Task, error)
@@ -334,7 +370,15 @@ type ProjectStore interface {
 
 type NotificationStore interface {
 	Create(context.Context, Notification) (Notification, error)
-	List(ctx context.Context, projectID uuid.UUID, limit int) ([]Notification, error)
+	List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool, limit int) ([]Notification, error)
+}
+
+type GrantStore interface {
+	Role(ctx context.Context, projectID, userID uuid.UUID, taskName string) (ProjectRole, error)
+	AnyInProject(ctx context.Context, projectID, userID uuid.UUID) (bool, error)
+	ListForTask(ctx context.Context, taskID uuid.UUID) ([]TaskGrant, error)
+	Grant(context.Context, TaskGrant) error
+	Revoke(ctx context.Context, taskID, userID uuid.UUID) error
 }
 
 type CredentialStore interface {

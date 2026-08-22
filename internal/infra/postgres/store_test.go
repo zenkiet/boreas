@@ -158,7 +158,7 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 		}
 	}
 
-	listed, err := store.List(ctx, project.ID, 10)
+	listed, err := store.List(ctx, project.ID, uuid.Nil, true, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 		t.Fatalf("round trip lost fields: %+v", listed[0])
 	}
 
-	limited, err := store.List(ctx, project.ID, 1)
+	limited, err := store.List(ctx, project.ID, uuid.Nil, true, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 		t.Fatalf("limit ignored: %+v", limited)
 	}
 
-	if _, err := store.List(ctx, uuid.New(), 10); err != nil {
+	if _, err := store.List(ctx, uuid.New(), uuid.Nil, true, 10); err != nil {
 		t.Fatalf("an unknown project must list empty, got %v", err)
 	}
 	if _, err := store.Create(ctx, core.Notification{
@@ -211,7 +211,7 @@ func TestNotificationsSurviveTaskDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	listed, err := store.List(ctx, project.ID, 10)
+	listed, err := store.List(ctx, project.ID, uuid.Nil, true, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestTaskNameUniquePerProject(t *testing.T) {
 		}
 	}
 
-	tasks, err := store.List(ctx, first.ID)
+	tasks, err := store.List(ctx, first.ID, uuid.Nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,6 +443,127 @@ func TestProjectMembership(t *testing.T) {
 	}
 	if err := projects.RemoveMember(ctx, project.ID, user.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+func TestTaskGrantsDieWithTheirTask(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	project := seedProject(t, pool)
+	users, tasks := NewUserStore(pool), NewTaskStore(pool)
+	grants, notifications := NewGrantStore(pool), NewNotificationStore(pool)
+
+	user, err := users.Create(ctx, core.User{
+		Username: "grantee-" + uuid.New().String()[:8],
+		Email:    uuid.New().String()[:8] + "@example.com",
+		Role:     core.RoleUser,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+
+	web, err := tasks.Create(ctx, core.Task{
+		ProjectID: project.ID, Name: "web", Image: "img", Status: core.StatusRunning, Port: 80,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tasks.Create(ctx, core.Task{
+		ProjectID: project.ID, Name: "db", Image: "img", Status: core.StatusRunning, Port: 80,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"web", "db"} {
+		if _, err := notifications.Create(ctx, core.Notification{
+			ProjectID: project.ID, TaskName: name, Status: core.NotificationSuccess, Title: name,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := grants.Grant(ctx, core.TaskGrant{
+		TaskID: web.ID, UserID: user.ID, Role: core.ProjectRoleOperator,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	role, err := grants.Role(ctx, project.ID, user.ID, "web")
+	if err != nil || role != core.ProjectRoleOperator {
+		t.Fatalf("granted role = %q, %v", role, err)
+	}
+	if role, err := grants.Role(ctx, project.ID, user.ID, "db"); err != nil || role != "" {
+		t.Fatalf("ungranted task must yield no role, got %q, %v", role, err)
+	}
+
+	// Filtering happens in SQL, so a grantee's list and feed carry only what was granted.
+	scoped, err := tasks.List(ctx, project.ID, user.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scoped) != 1 || scoped[0].Name != "web" {
+		t.Fatalf("task list ignored grants: %+v", scoped)
+	}
+	feed, err := notifications.List(ctx, project.ID, user.ID, false, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feed) != 1 || feed[0].TaskName != "web" {
+		t.Fatalf("notification feed ignored grants: %+v", feed)
+	}
+
+	if err := tasks.Delete(ctx, web.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := grants.AnyInProject(ctx, project.ID, user.ID); err != nil || ok {
+		t.Fatalf("the grant outlived its task: any=%v err=%v", ok, err)
+	}
+	// The row survives for members, but no longer reaches the grantee whose grant is gone.
+	feed, err = notifications.List(ctx, project.ID, user.ID, false, 10)
+	if err != nil || len(feed) != 0 {
+		t.Fatalf("deploy history stayed visible after the grant died: %+v, %v", feed, err)
+	}
+	if all, err := notifications.List(ctx, project.ID, user.ID, true, 10); err != nil || len(all) != 2 {
+		t.Fatalf("members must still see the full history: %+v, %v", all, err)
+	}
+}
+
+func TestGrantedProjectIsListedWithoutMembership(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	project := seedProject(t, pool)
+	users, tasks, grants := NewUserStore(pool), NewTaskStore(pool), NewGrantStore(pool)
+	projects := NewProjectStore(pool)
+
+	user, err := users.Create(ctx, core.User{
+		Username: "grantee-" + uuid.New().String()[:8],
+		Email:    uuid.New().String()[:8] + "@example.com",
+		Role:     core.RoleUser,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+
+	if mine, err := projects.ListForUser(ctx, user.ID); err != nil || len(mine) != 0 {
+		t.Fatalf("a stranger must see nothing: %+v, %v", mine, err)
+	}
+	task, err := tasks.Create(ctx, core.Task{
+		ProjectID: project.ID, Name: "web", Image: "img", Status: core.StatusRunning, Port: 80,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.Grant(ctx, core.TaskGrant{
+		TaskID: task.ID, UserID: user.ID, Role: core.ProjectRoleViewer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	mine, err := projects.ListForUser(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mine) != 1 || mine[0].ID != project.ID {
+		t.Fatalf("a grant must reveal its project without a membership row: %+v", mine)
 	}
 }
 

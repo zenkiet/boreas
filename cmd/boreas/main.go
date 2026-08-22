@@ -67,6 +67,7 @@ func run() error {
 	taskStore := pginfra.NewTaskStore(pool)
 	credentials := pginfra.NewCredentialStore(pool)
 	notifications := pginfra.NewNotificationStore(pool)
+	grants := pginfra.NewGrantStore(pool)
 
 	auth, err := service.NewAuthService(users, tokens)
 	if err != nil {
@@ -88,7 +89,7 @@ func run() error {
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	defer routes.CloseIdleConnections()
 
-	projects, err := service.NewProjectService(projectStore, credentials, notifications)
+	projects, err := service.NewProjectService(projectStore, credentials, notifications, grants, taskStore)
 	if err != nil {
 		return err
 	}
