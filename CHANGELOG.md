@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.3.0 - 2026-08-22
+#### 🚀 Features
+- ✨ implement notification gateway router - (2d57495) - Zen Kiet
+
+- - -
+
 ## v1.2.0 - 2026-08-19
 #### 🚀 Features
 - ✨ add project task form defaults - (09cb533) - Zen Kiet
