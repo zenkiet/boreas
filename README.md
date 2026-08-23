@@ -174,6 +174,7 @@ All API routes are under `/api/v1`.
 | `POST`   | `/projects/{project}/members`                  | owner         | Add or promote a member                         |
 | `DELETE` | `/projects/{project}/members/{userID}`         | owner         | Remove a member                                 |
 | `GET`    | `/projects/{project}/notifications`            | viewer        | List deploy notifications                       |
+| `GET`    | `/projects/{project}/metrics/stream`           | viewer        | Stream metrics for every running task over SSE  |
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
@@ -183,6 +184,7 @@ All API routes are under `/api/v1`.
 | `DELETE` | `/projects/{project}/tasks/{name}`             | member        | Delete a task and its container                 |
 | `GET`    | `/projects/{project}/tasks/{name}/logs`        | viewer        | Read task logs                                  |
 | `GET`    | `/projects/{project}/tasks/{name}/logs/stream` | viewer        | Stream logs over SSE                            |
+| `GET`    | `/projects/{project}/tasks/{name}/metrics/stream` | viewer     | Stream CPU, memory, and network over SSE        |
 | `GET`    | `/projects/{project}/tasks/{name}/grants`      | owner         | List task grants                                |
 | `POST`   | `/projects/{project}/tasks/{name}/grants`      | owner         | Grant a user access to one task                 |
 | `DELETE` | `/projects/{project}/tasks/{name}/grants/{userID}` | owner     | Revoke a task grant                             |
@@ -279,6 +281,35 @@ For live logs, use an SSE-capable client:
 curl -N -H "Authorization: Bearer $TOKEN" \
   http://localhost:8080/api/v1/projects/demo/tasks/web/logs/stream
 ```
+
+## Resource metrics
+
+Boreas streams live CPU, memory, and network usage straight from the Docker
+socket, roughly one sample per task per second. Nothing is stored, so the stream
+only reports what is happening while a client is listening.
+
+```bash
+# every running task in the project
+curl -N -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/projects/demo/metrics/stream
+
+# one task
+curl -N -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/projects/demo/tasks/web/metrics/stream
+```
+
+Each event carries one sample:
+
+```json
+{"task":"web","cpu_percent":12.4,"memory_bytes":52428800,"memory_limit":536870912,
+ "network_rx_bytes":1024,"network_tx_bytes":2048,"observed_at":"2026-01-02T03:04:05Z"}
+```
+
+`cpu_percent` is a rate, so the first event for each task reports `0`: Docker
+reports cumulative counters and the first sample has nothing to compare against.
+`memory_bytes` excludes page cache, matching what `docker stats` shows rather
+than the larger raw cgroup figure. Tasks that are not running are omitted, and a
+grantee sees only the tasks they were granted.
 
 ## Deploy notifications
 

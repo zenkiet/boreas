@@ -29,8 +29,17 @@ func (s *ProjectStore) List(ctx context.Context) ([]core.Project, error) {
 }
 
 // ListForUser also returns projects reached only through a task grant, which carry no membership row.
+// Those rows arrive with default_env emptied, because task form defaults may carry project secrets
+// and a grantee is not entitled to them. Masking happens here rather than in a handler so that
+// every caller of this query is covered by construction.
 func (s *ProjectStore) ListForUser(ctx context.Context, userID uuid.UUID) ([]core.Project, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+projectColumns+` FROM projects p
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.id, p.slug, p.name, p.registry_credential_id, p.default_image, p.default_port,
+			CASE WHEN EXISTS (
+				SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = $1)
+			THEN p.default_env ELSE '{}'::jsonb END,
+			p.created_by, p.created_at, p.updated_at
+		FROM projects p
 		WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = $1)
 		   OR EXISTS (SELECT 1 FROM task_grants g JOIN tasks t ON t.id = g.task_id
 		              WHERE g.user_id = $1 AND t.project_id = p.id)

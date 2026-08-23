@@ -18,13 +18,14 @@ var (
 )
 
 type stubTasks struct {
-	get    func(context.Context, string, string) (core.Task, error)
-	create func(context.Context, string, service.CreateTaskInput) (core.Task, error)
-	update func(context.Context, string, string, service.UpdateTaskInput, bool) (core.Task, error)
-	deploy func(context.Context, string, string, string) (core.Task, error)
-	logs   func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
-	stats  func(context.Context) (core.SystemStats, error)
-	list   func(context.Context, core.ProjectAccess) ([]core.Task, error)
+	get     func(context.Context, string, string) (core.Task, error)
+	create  func(context.Context, string, service.CreateTaskInput) (core.Task, error)
+	update  func(context.Context, string, string, service.UpdateTaskInput, bool) (core.Task, error)
+	deploy  func(context.Context, string, string, string) (core.Task, error)
+	logs    func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
+	stats   func(context.Context) (core.SystemStats, error)
+	list    func(context.Context, core.ProjectAccess) ([]core.Task, error)
+	metrics func(context.Context, core.ProjectAccess, string) (<-chan core.TaskMetric, error)
 }
 
 func (s stubTasks) List(c context.Context, acc core.ProjectAccess) ([]core.Task, error) {
@@ -76,6 +77,15 @@ func (s stubTasks) Logs(c context.Context, project, name string, opts core.LogOp
 		return s.logs(c, project, name, opts)
 	}
 	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (s stubTasks) Metrics(c context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error) {
+	if s.metrics != nil {
+		return s.metrics(c, acc, name)
+	}
+	closed := make(chan core.TaskMetric)
+	close(closed)
+	return closed, nil
 }
 
 func (s stubTasks) SystemStats(c context.Context) (core.SystemStats, error) {

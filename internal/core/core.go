@@ -312,6 +312,18 @@ type SystemStats struct {
 	TotalMemoryBytes int64
 }
 
+// TaskMetric is one live sample. CPUPercent is a rate, so the first sample of a stream
+// reports 0; MemoryBytes excludes page cache to match `docker stats`.
+type TaskMetric struct {
+	TaskName       string
+	CPUPercent     float64
+	MemoryBytes    int64
+	MemoryLimit    int64
+	NetworkRXBytes int64
+	NetworkTXBytes int64
+	ObservedAt     time.Time
+}
+
 type ContainerRuntime interface {
 	Pull(context.Context, string, *RegistryCredential) error
 	Create(context.Context, ContainerSpec) (string, error)
@@ -322,6 +334,7 @@ type ContainerRuntime interface {
 	Inspect(context.Context, string) (ContainerState, error)
 	Logs(context.Context, string, LogOptions) (io.ReadCloser, error)
 	TotalMemory(context.Context) (int64, error)
+	Stats(ctx context.Context, containerID string) (<-chan TaskMetric, error)
 }
 
 // TaskStore persists tasks whose names are unique only within a project.

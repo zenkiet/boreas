@@ -19,6 +19,7 @@ func newProjectsWithTasks(t *testing.T) (*ProjectService, *fakeProjectStore, *fa
 	t.Helper()
 	projects, credentials := newFakeProjectStore(), newFakeCredentialStore()
 	tasks := newFakeTaskStore()
+	projects.tasks = tasks
 	svc, err := NewProjectService(
 		projects, credentials, newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks)
 	if err != nil {
@@ -243,6 +244,49 @@ func TestGranteeReachesOnlyGrantedTasks(t *testing.T) {
 	}
 	if _, err := svc.Access(ctx, grantee, "team", ""); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("access outlived the task it pointed at: %v", err)
+	}
+}
+
+// The project list fans out to every reachable project, so it must mask exactly what the
+// single-project route masks. Leaking there is worse: no caller can guard against it.
+func TestProjectListHidesDefaultEnvFromGrantees(t *testing.T) {
+	svc, store, _, tasks := newProjectsWithTasks(t)
+	ctx := context.Background()
+	owner := member()
+	project, err := svc.Create(ctx, owner, CreateProjectInput{
+		Slug: "team", DefaultEnv: map[string]string{"SECRET_KEY": "top-secret"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTask(t, tasks, project.ID, "web")
+
+	grantee := member()
+	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := svc.List(ctx, grantee)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("a grant must reveal its project: %+v", listed)
+	}
+	if len(listed[0].DefaultEnv) != 0 {
+		t.Fatalf("default_env leaked through the project list: %+v", listed[0].DefaultEnv)
+	}
+
+	// Masking must not cost members their defaults, nor corrupt the stored row.
+	mine, err := svc.List(ctx, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mine) != 1 || mine[0].DefaultEnv["SECRET_KEY"] != "top-secret" {
+		t.Fatalf("a member lost the task form defaults: %+v", mine)
+	}
+	stored, err := store.GetBySlug(ctx, "team")
+	if err != nil || stored.DefaultEnv["SECRET_KEY"] != "top-secret" {
+		t.Fatalf("masking must not mutate the stored project: %+v, %v", stored, err)
 	}
 }
 

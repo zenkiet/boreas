@@ -310,6 +310,29 @@ var routeTable = [...]route{
 	},
 
 	{
+		method: http.MethodGet, path: "/api/v1/projects/{project}/metrics/stream", access: accessViewer,
+		handler: (*Handler).streamMetrics,
+		tag:     "projects", summary: "Stream resource metrics for every running task",
+		description: "Server-Sent Events, roughly one event per task per second. Each event carries " +
+			`{"task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit": integer, ` +
+			`"network_rx_bytes": integer, "network_tx_bytes": integer, "observed_at": string}. ` +
+			"Tasks that are not running are omitted, and the server sends a comment heartbeat while idle. " +
+			"Use EventSource rather than a generated client method.",
+		req: new(projectPath), resp: new(string), status: http.StatusOK,
+		contentType: "text/event-stream",
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/metrics/stream", access: accessViewer,
+		handler: (*Handler).streamMetrics,
+		tag:     "tasks", summary: "Stream resource metrics for one task",
+		description: "Server-Sent Events with the same payload as the project-wide stream, " +
+			"limited to this task. Returns 409 when the task has no container yet. " +
+			"Use EventSource rather than a generated client method.",
+		req: new(taskPath), resp: new(string), status: http.StatusOK,
+		contentType: "text/event-stream", extraErrors: []int{http.StatusConflict},
+	},
+
+	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/grants", access: accessOwner,
 		handler: (*Handler).listGrants,
 		tag:     "tasks", summary: "List task grants",

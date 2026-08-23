@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"time"
@@ -109,6 +110,7 @@ func (f *fakeTaskStore) Delete(_ context.Context, id uuid.UUID) error {
 type fakeProjectStore struct {
 	projects map[uuid.UUID]core.Project
 	members  map[uuid.UUID]map[uuid.UUID]core.ProjectMember
+	tasks    *fakeTaskStore // resolves task grants, as the SQL query's second EXISTS does
 }
 
 func newFakeProjectStore() *fakeProjectStore {
@@ -132,14 +134,31 @@ func (f *fakeProjectStore) List(context.Context) ([]core.Project, error) {
 	return result, nil
 }
 
+// ListForUser mirrors the SQL query: memberships and task grants both reveal a project,
+// but only a membership carries the task form defaults.
 func (f *fakeProjectStore) ListForUser(_ context.Context, userID uuid.UUID) ([]core.Project, error) {
 	result := make([]core.Project, 0)
-	for id, members := range f.members {
-		if _, ok := members[userID]; ok {
-			result = append(result, f.projects[id])
+	for id, project := range f.projects {
+		_, isMember := f.members[id][userID]
+		if isMember {
+			result = append(result, project)
+			continue
+		}
+		if f.tasks != nil && f.tasks.anyGrantIn(id, userID) {
+			project.DefaultEnv = map[string]string{}
+			result = append(result, project)
 		}
 	}
 	return result, nil
+}
+
+func (f *fakeTaskStore) anyGrantIn(projectID, userID uuid.UUID) bool {
+	for _, task := range f.tasks {
+		if task.ProjectID == projectID && f.granted[grantKey{task.ID, userID}] {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeProjectStore) GetBySlug(_ context.Context, slug string) (core.Project, error) {
@@ -490,6 +509,8 @@ type fakeRuntime struct {
 	pullErr                   error
 	totalMemory               int64
 	calls                     []string
+	// One scripted stream per container id; a missing id makes Stats fail.
+	statsFor map[string][]core.TaskMetric
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -554,6 +575,26 @@ func (f *fakeRuntime) Logs(context.Context, string, core.LogOptions) (io.ReadClo
 }
 
 func (f *fakeRuntime) TotalMemory(context.Context) (int64, error) { return f.totalMemory, nil }
+
+func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (<-chan core.TaskMetric, error) {
+	samples, ok := f.statsFor[containerID]
+	if !ok {
+		return nil, errors.New("no stats for " + containerID)
+	}
+	// Unbuffered like the real stream, so an abandoned consumer parks this goroutine.
+	out := make(chan core.TaskMetric)
+	go func() {
+		defer close(out)
+		for _, s := range samples {
+			select {
+			case out <- s:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, nil
+}
 
 type fakeRoutes struct {
 	registered   map[string]string

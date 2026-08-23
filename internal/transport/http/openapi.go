@@ -17,6 +17,7 @@ const bearerScheme = "bearerAuth"
 // OpenAPISpec rejects unmatched path parameters so the generated contract cannot drift from routing.
 func OpenAPISpec() (*openapi3.Spec, error) {
 	reflector := openapi3.NewReflector()
+	reflector.Spec = &openapi3.Spec{Openapi: "3.2.0"}
 	spec := reflector.SpecEns()
 	spec.Info.
 		WithTitle("Boreas API").
@@ -137,7 +138,7 @@ const docsPage = `<!DOCTYPE html>
 </head>
 <body>
 <div id="docs"></div>
-<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1"></script>
+<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 <script>
 Scalar.createApiReference("#docs", {
   url: "/api/v1/openapi.json",

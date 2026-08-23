@@ -534,6 +534,11 @@ func TestGrantedProjectIsListedWithoutMembership(t *testing.T) {
 	users, tasks, grants := NewUserStore(pool), NewTaskStore(pool), NewGrantStore(pool)
 	projects := NewProjectStore(pool)
 
+	project.DefaultEnv = map[string]string{"SECRET_KEY": "top-secret"}
+	if _, err := projects.Update(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+
 	user, err := users.Create(ctx, core.User{
 		Username: "grantee-" + uuid.New().String()[:8],
 		Email:    uuid.New().String()[:8] + "@example.com",
@@ -564,6 +569,24 @@ func TestGrantedProjectIsListedWithoutMembership(t *testing.T) {
 	}
 	if len(mine) != 1 || mine[0].ID != project.ID {
 		t.Fatalf("a grant must reveal its project without a membership row: %+v", mine)
+	}
+	// The list must mask what the single-project route masks, or secrets leak through the fan-out.
+	if len(mine[0].DefaultEnv) != 0 {
+		t.Fatalf("default_env leaked to a grantee through the project list: %+v", mine[0].DefaultEnv)
+	}
+
+	// A member of the same project must still receive the defaults.
+	if err := projects.AddMember(ctx, core.ProjectMember{
+		ProjectID: project.ID, UserID: user.ID, Role: core.ProjectRoleViewer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	mine, err = projects.ListForUser(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mine) != 1 || mine[0].DefaultEnv["SECRET_KEY"] != "top-secret" {
+		t.Fatalf("a member must still see task form defaults: %+v", mine)
 	}
 }
 

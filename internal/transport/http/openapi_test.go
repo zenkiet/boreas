@@ -126,7 +126,7 @@ func TestDocsEndpoints(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &spec); err != nil {
 		t.Fatalf("openapi.json is not valid JSON: %v", err)
 	}
-	if spec["openapi"] != "3.0.3" {
+	if spec["openapi"] != "3.2.0" {
 		t.Fatalf("openapi field = %v", spec["openapi"])
 	}
 

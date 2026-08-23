@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -452,6 +453,61 @@ func (s *TaskService) Logs(ctx context.Context, slug, name string, opts core.Log
 		return nil, fmt.Errorf("read logs: %w", err)
 	}
 	return r, nil
+}
+
+// Metrics streams samples for one task, or for every running task when name is empty.
+// The channel closes once ctx is done and every source has drained.
+func (s *TaskService) Metrics(ctx context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error) {
+	var sources []core.Task
+	if name != "" {
+		task, _, err := s.get(ctx, acc.Project.Slug, name)
+		if err != nil {
+			return nil, err
+		}
+		if task.ContainerID == "" {
+			return nil, fmt.Errorf("task has no container: %w", core.ErrConflict)
+		}
+		sources = []core.Task{task}
+	} else {
+		tasks, err := s.tasks.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks)
+		if err != nil {
+			return nil, fmt.Errorf("list tasks for metrics: %w", err)
+		}
+		// Skipped rather than refused, so a project streams while some tasks are down.
+		sources = slices.DeleteFunc(tasks, func(t core.Task) bool {
+			return t.ContainerID == "" || t.Status != core.StatusRunning
+		})
+	}
+
+	out := make(chan core.TaskMetric)
+	var wg sync.WaitGroup
+	for _, task := range sources {
+		samples, err := s.runtime.Stats(ctx, task.ContainerID)
+		if err != nil {
+			// One unreadable container must not sink a whole project's stream.
+			if name == "" {
+				continue
+			}
+			return nil, fmt.Errorf("stream metrics: %w", err)
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for sample := range samples {
+				sample.TaskName = task.Name
+				select {
+				case out <- sample:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out, nil
 }
 
 // Reconcile repairs state and routes because Docker may change while Boreas is offline.

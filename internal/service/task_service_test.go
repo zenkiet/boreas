@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -782,4 +783,149 @@ func TestInvalidNamesRejected(t *testing.T) {
 	if _, err := h.svc.Get(context.Background(), "API", "task"); !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("got %v, want ErrInvalidInput", err)
 	}
+}
+
+// Drains a stream into a per-task sample count.
+func metricsFor(t *testing.T, h *harness, acc core.ProjectAccess, name string) map[string]int {
+	t.Helper()
+	stream, err := h.svc.Metrics(context.Background(), acc, name)
+	if err != nil {
+		t.Fatalf("Metrics: %v", err)
+	}
+	seen := map[string]int{}
+	for sample := range stream {
+		seen[sample.TaskName]++
+	}
+	return seen
+}
+
+func TestMetricsSkipsTasksThatAreNotRunning(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.tasks.Create(ctx, core.Task{
+		ProjectID: h.project.ID, Name: "web", Image: "img", Port: 80,
+		Status: core.StatusRunning, ContainerID: "c-web",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.tasks.Create(ctx, core.Task{
+		ProjectID: h.project.ID, Name: "db", Image: "img", Port: 80,
+		Status: core.StatusStopped, ContainerID: "c-db",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A stopped container has no scripted stream, so asking for it would fail.
+	h.runtime.statsFor = map[string][]core.TaskMetric{
+		"c-web": {{CPUPercent: 1}, {CPUPercent: 2}},
+	}
+
+	seen := metricsFor(t, h, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
+	if seen["web"] != 2 || len(seen) != 1 {
+		t.Fatalf("project stream = %v, want two samples for web only", seen)
+	}
+}
+
+func TestMetricsFansInEveryRunningTask(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for _, name := range []string{"web", "api"} {
+		if _, err := h.tasks.Create(ctx, core.Task{
+			ProjectID: h.project.ID, Name: name, Image: "img", Port: 80,
+			Status: core.StatusRunning, ContainerID: "c-" + name,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.runtime.statsFor = map[string][]core.TaskMetric{
+		"c-web": {{CPUPercent: 1}},
+		"c-api": {{CPUPercent: 2}, {CPUPercent: 3}},
+	}
+
+	seen := metricsFor(t, h, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
+	if seen["web"] != 1 || seen["api"] != 2 {
+		t.Fatalf("fan-in = %v, want web 1 and api 2", seen)
+	}
+}
+
+func TestMetricsForOneTaskRequiresAContainer(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.tasks.Create(context.Background(), core.Task{
+		ProjectID: h.project.ID, Name: "web", Image: "img", Port: 80, Status: core.StatusStopped,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := h.svc.Metrics(context.Background(),
+		core.ProjectAccess{Project: h.project, AllTasks: true}, "web")
+	if !errors.Is(err, core.ErrConflict) {
+		t.Fatalf("got %v, want ErrConflict", err)
+	}
+}
+
+func TestMetricsRespectsTaskGrants(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	grantee := uuid.New()
+	for _, name := range []string{"web", "secret"} {
+		task, err := h.tasks.Create(ctx, core.Task{
+			ProjectID: h.project.ID, Name: name, Image: "img", Port: 80,
+			Status: core.StatusRunning, ContainerID: "c-" + name,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name == "web" {
+			h.tasks.granted[grantKey{taskID: task.ID, userID: grantee}] = true
+		}
+	}
+	h.runtime.statsFor = map[string][]core.TaskMetric{
+		"c-web": {{CPUPercent: 1}}, "c-secret": {{CPUPercent: 9}},
+	}
+
+	seen := metricsFor(t, h,
+		core.ProjectAccess{Project: h.project, UserID: grantee, AllTasks: false}, "")
+	if seen["web"] != 1 || len(seen) != 1 {
+		t.Fatalf("grantee stream = %v, want web only", seen)
+	}
+}
+
+func TestMetricsStopsWhenTheClientLeaves(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.tasks.Create(context.Background(), core.Task{
+		ProjectID: h.project.ID, Name: "web", Image: "img", Port: 80,
+		Status: core.StatusRunning, ContainerID: "c-web",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// More samples than the consumer reads, so the fan-in goroutine is mid-send.
+	h.runtime.statsFor = map[string][]core.TaskMetric{
+		"c-web": {{CPUPercent: 1}, {CPUPercent: 2}, {CPUPercent: 3}, {CPUPercent: 4}},
+	}
+
+	before := runtime.NumGoroutine()
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := h.svc.Metrics(ctx, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-stream // read one, abandon the rest
+
+	// Wait for the sender to park, or the assertion races the goroutines into existence.
+	waitUntil(func() bool { return runtime.NumGoroutine() > before })
+	cancel()
+
+	// Without the ctx.Done() escape the sender and the closer never return.
+	if !waitUntil(func() bool { return runtime.NumGoroutine() <= before }) {
+		t.Fatalf("abandoning the stream leaked %d goroutines", runtime.NumGoroutine()-before)
+	}
+}
+
+// Polls cond for up to two seconds, reporting whether it ever held.
+func waitUntil(cond func() bool) bool {
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if cond() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
 }

@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.2.0
 info:
   description: Per-task staging environments. Tasks belong to projects and are served
     at /{project}/{task}/. Proxied task traffic is public; this API is not.
@@ -651,6 +651,58 @@ paths:
       security:
       - bearerAuth: []
       summary: Remove a member
+      tags:
+      - projects
+  /api/v1/projects/{project}/metrics/stream:
+    get:
+      description: 'Server-Sent Events, roughly one event per task per second. Each
+        event carries {"task": string, "cpu_percent": number, "memory_bytes": integer,
+        "memory_limit": integer, "network_rx_bytes": integer, "network_tx_bytes":
+        integer, "observed_at": string}. Tasks that are not running are omitted, and
+        the server sends a comment heartbeat while idle. Use EventSource rather than
+        a generated client method.'
+      operationId: get-projects-project-metrics-stream
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Stream resource metrics for every running task
       tags:
       - projects
   /api/v1/projects/{project}/notifications:
@@ -1387,6 +1439,67 @@ paths:
       security:
       - bearerAuth: []
       summary: Stream task logs
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/metrics/stream:
+    get:
+      description: Server-Sent Events with the same payload as the project-wide stream,
+        limited to this task. Returns 409 when the task has no container yet. Use
+        EventSource rather than a generated client method.
+      operationId: get-projects-project-tasks-name-metrics-stream
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Stream resource metrics for one task
       tags:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/state:

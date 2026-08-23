@@ -154,6 +154,8 @@ func TestRouteAccessLadder(t *testing.T) {
 	}{
 		{core.ProjectRoleViewer, http.MethodGet, "/api/v1/projects/team/tasks", http.StatusOK},
 		{core.ProjectRoleViewer, http.MethodGet, "/api/v1/projects/team/tasks/web", http.StatusOK},
+		{core.ProjectRoleViewer, http.MethodGet, "/api/v1/projects/team/metrics/stream", http.StatusOK},
+		{core.ProjectRoleViewer, http.MethodGet, "/api/v1/projects/team/tasks/web/metrics/stream", http.StatusOK},
 		{core.ProjectRoleViewer, http.MethodPut, "/api/v1/projects/team/tasks/web/state", http.StatusForbidden},
 		{core.ProjectRoleViewer, http.MethodDelete, "/api/v1/projects/team/tasks/web", http.StatusForbidden},
 
@@ -941,5 +943,84 @@ func TestPathParamsAreNotBodyFields(t *testing.T) {
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("body %s: status = %d, want 400", body, rr.Code)
 		}
+	}
+}
+
+func TestSSEMetricEntries(t *testing.T) {
+	var gotTask string
+	h := testHandler(stubTasks{
+		metrics: func(_ context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error) {
+			gotTask = name
+			// Must forward what the middleware resolved, not re-derive it.
+			if acc.Role != core.ProjectRoleOwner || !acc.AllTasks {
+				t.Fatalf("handler passed the wrong access: %+v", acc)
+			}
+			out := make(chan core.TaskMetric, 1)
+			out <- core.TaskMetric{
+				TaskName: "web", CPUPercent: 12.5, MemoryBytes: 1024, MemoryLimit: 4096,
+				NetworkRXBytes: 7, NetworkTXBytes: 9,
+				ObservedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			}
+			close(out)
+			return out, nil
+		},
+	}, nil, nil)
+
+	rr := do(h, authed(http.MethodGet, "/api/v1/projects/team/tasks/web/metrics/stream", nil))
+	if rr.Header().Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("content type = %q", rr.Header().Get("Content-Type"))
+	}
+	if gotTask != "web" {
+		t.Fatalf("task name = %q, want web", gotTask)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`"task":"web"`, `"cpu_percent":12.5`, `"memory_bytes":1024`,
+		`"memory_limit":4096`, `"network_rx_bytes":7`, `"network_tx_bytes":9`,
+		`"observed_at":"2026-01-02T03:04:05Z"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SSE body missing %s: %q", want, body)
+		}
+	}
+	if !strings.HasPrefix(body, "data: ") || !strings.HasSuffix(body, "\n\n") {
+		t.Fatalf("body is not SSE framed: %q", body)
+	}
+}
+
+// The empty wildcard is what widens the stream; a regression here silently narrows it.
+func TestProjectMetricsStreamAsksForEveryTask(t *testing.T) {
+	name := "unset"
+	h := testHandler(stubTasks{
+		metrics: func(_ context.Context, _ core.ProjectAccess, n string) (<-chan core.TaskMetric, error) {
+			name = n
+			out := make(chan core.TaskMetric)
+			close(out)
+			return out, nil
+		},
+	}, nil, nil)
+
+	rr := do(h, authed(http.MethodGet, "/api/v1/projects/team/metrics/stream", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if name != "" {
+		t.Fatalf("project stream asked for task %q, want the empty wildcard", name)
+	}
+}
+
+func TestMetricsStreamPropagatesServiceErrors(t *testing.T) {
+	h := testHandler(stubTasks{
+		metrics: func(_ context.Context, _ core.ProjectAccess, _ string) (<-chan core.TaskMetric, error) {
+			return nil, errors.Join(core.ErrConflict, errors.New("task has no container"))
+		},
+	}, nil, nil)
+
+	rr := do(h, authed(http.MethodGet, "/api/v1/projects/team/tasks/web/metrics/stream", nil))
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); strings.Contains(ct, "event-stream") {
+		t.Fatalf("a failed stream must not claim to be SSE: %q", ct)
 	}
 }
