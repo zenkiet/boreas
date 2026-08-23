@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.5.0 - 2026-08-23
+#### 🚀 Features
+- ✨ implement metrics monitor - (5d02ba4) - Zen Kiet
+
+- - -
+
 ## v1.4.0 - 2026-08-22
 #### 🚀 Features
 - ✨ implement RBAC feature - (cd7025c) - Zen Kiet
