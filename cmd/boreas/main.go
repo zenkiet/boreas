@@ -68,6 +68,7 @@ func run() error {
 	credentials := pginfra.NewCredentialStore(pool)
 	notifications := pginfra.NewNotificationStore(pool)
 	grants := pginfra.NewGrantStore(pool)
+	push := pginfra.NewPushStore(pool)
 
 	auth, err := service.NewAuthService(users, tokens)
 	if err != nil {
@@ -94,6 +95,19 @@ func run() error {
 		return err
 	}
 	sender := apprise.New(cfg.NotifyURL, notifyTimeout)
+	if cfg.FCM.Enabled() {
+		sender.Targets = func(ctx context.Context, n core.Notification) []string {
+			tokens, err := push.Tokens(ctx, n.ProjectID, n.TaskName)
+			if err != nil {
+				logger.Printf("list push subscriptions: %v", err)
+				return nil
+			}
+			for i, token := range tokens {
+				tokens[i] = apprise.FCMURL(cfg.FCM.Project, cfg.FCM.Keyfile, token)
+			}
+			return tokens
+		}
+	}
 	tasks, err := service.NewTaskService(
 		runtime, taskStore, projectStore, credentials, routes,
 		dockerinfra.TCPReadyChecker{DialTimeout: time.Second}.Ready,
@@ -112,7 +126,7 @@ func run() error {
 	}
 
 	handler := httptransport.ApplicationHandler(
-		httptransport.APIHandler(tasks, auth, projects, logger),
+		httptransport.APIHandler(tasks, auth, projects, push, logger),
 		routes,
 		logger,
 	)

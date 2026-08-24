@@ -15,6 +15,16 @@ type Config struct {
 	Postgres  PostgresConfig
 	Admin     AdminConfig
 	NotifyURL string
+	FCM       FCMConfig
+}
+
+type FCMConfig struct {
+	Project string
+	Keyfile string
+}
+
+func (c FCMConfig) Enabled() bool {
+	return c.Project != "" && c.Keyfile != ""
 }
 
 type PostgresConfig struct {
@@ -74,6 +84,8 @@ func Load() (*Config, error) {
 	setString("BOREAS_ADMIN_EMAIL", &cfg.Admin.Email)
 	setString("BOREAS_ADMIN_PASSWORD", &cfg.Admin.Password)
 	setString("BOREAS_NOTIFY_URL", &cfg.NotifyURL)
+	setString("BOREAS_FCM_PROJECT", &cfg.FCM.Project)
+	setString("BOREAS_FCM_KEYFILE", &cfg.FCM.Keyfile)
 
 	if value, ok := os.LookupEnv("BOREAS_PORT"); ok {
 		port, err := strconv.Atoi(value)
@@ -106,7 +118,24 @@ func (c Config) validate() error {
 			result = errors.Join(result, errors.New("database host, port, user, and name are required"))
 		}
 	}
+	if (c.FCM.Project == "") != (c.FCM.Keyfile == "") {
+		result = errors.Join(result, errors.New("BOREAS_FCM_PROJECT and BOREAS_FCM_KEYFILE must be set together"))
+	}
+	if c.FCM.Enabled() && !statelessNotifyURL(c.NotifyURL) {
+		result = errors.Join(result, errors.New(
+			"BOREAS_FCM_PROJECT and BOREAS_FCM_KEYFILE require BOREAS_NOTIFY_URL to end in /notify, "+
+				"without an Apprise configuration key: the keyed endpoint ignores per-request targets, "+
+				"so every subscribed browser would be dropped without an error"))
+	}
 	return result
+}
+
+func statelessNotifyURL(notifyURL string) bool {
+	parsed, err := url.Parse(notifyURL)
+	if err != nil {
+		return false
+	}
+	return strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/notify")
 }
 
 // ListenAddr binds all interfaces; deployment controls external exposure.

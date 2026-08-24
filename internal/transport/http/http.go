@@ -59,14 +59,19 @@ type ProjectService interface {
 	DeleteCredential(ctx context.Context, id uuid.UUID) error
 }
 
+type PushStore interface {
+	Create(ctx context.Context, userID uuid.UUID, token string) error
+	Delete(ctx context.Context, userID uuid.UUID, token string) error
+}
+
 const maxRequestBytes = 1 << 20
 
 // APIHandler serves the API and applies each route's declared access policy.
-func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, logger *log.Logger) http.Handler {
+func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, logger *log.Logger) http.Handler {
 	if logger == nil {
 		logger = log.Default()
 	}
-	h := &Handler{tasks: tasks, auth: auth, projects: projects, logger: logger}
+	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, logger: logger}
 
 	mux := http.NewServeMux()
 	for _, r := range routeTable {

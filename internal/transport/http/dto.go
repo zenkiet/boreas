@@ -318,6 +318,14 @@ type notificationsResponse struct {
 	Total         int               `json:"total"`
 }
 
+type pushSubscriptionRequest struct {
+	Token string `json:"token" example:"fJ9x2Qk7RtqB:APA91bH-x9Kd2QwErTyUiOp"`
+}
+
+type pushSubscriptionPath struct {
+	Token string `json:"-" path:"token" example:"fJ9x2Qk7RtqB:APA91bH-x9Kd2QwErTyUiOp"`
+}
+
 type userDTO struct {
 	ID        uuid.UUID     `json:"id"`
 	Username  string        `json:"username" example:"admin"`

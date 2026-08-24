@@ -26,7 +26,7 @@ func testHandler(tasks TaskService, auth AuthService, projects ProjectService) h
 	if projects == nil {
 		projects = &stubProjects{}
 	}
-	return APIHandler(tasks, auth, projects, log.New(io.Discard, "", 0))
+	return APIHandler(tasks, auth, projects, &stubPush{}, log.New(io.Discard, "", 0))
 }
 
 func authed(method, target string, body io.Reader) *http.Request {
@@ -774,7 +774,7 @@ func TestUpdateTaskRejectsUnknownFields(t *testing.T) {
 
 // Preflight must advertise every routed method because browsers reject missing methods.
 func TestCORSAdvertisesEveryRoutedMethod(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, log.New(io.Discard, "", 0))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, log.New(io.Discard, "", 0))
 	r := httptest.NewRequest(http.MethodOptions, "/api/v1/projects/team/tasks/T", nil)
 	r.Header.Set("Origin", "http://localhost:4200")
 	headers := do(h, r).Header()

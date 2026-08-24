@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -651,5 +652,153 @@ func TestAPITokenSchemaConstraints(t *testing.T) {
 				t.Fatal("database constraint accepted invalid token")
 			}
 		})
+	}
+}
+
+// seedUser returns a throwaway account that is removed when the test ends.
+func seedUser(t *testing.T, pool *pgxpool.Pool, prefix string, role core.UserRole) core.User {
+	t.Helper()
+	users := NewUserStore(pool)
+	user, err := users.Create(context.Background(), core.User{
+		Username: prefix + "-" + uuid.New().String()[:8],
+		Email:    uuid.New().String()[:8] + "@example.com",
+		Role:     role,
+	})
+	if err != nil {
+		t.Fatalf("create %s: %v", prefix, err)
+	}
+	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+	return user
+}
+
+// Push delivery must reach exactly the audience that the notification feed already
+// shows, or a browser would leak deploys the same account cannot list over the API.
+func TestPushTokensMatchNotificationAudience(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	project := seedProject(t, pool)
+	tasks, grants := NewTaskStore(pool), NewGrantStore(pool)
+	projects, users, push := NewProjectStore(pool), NewUserStore(pool), NewPushStore(pool)
+
+	web, err := tasks.Create(ctx, core.Task{
+		ProjectID: project.ID, Name: "web", Image: "img", Status: core.StatusRunning, Port: 80,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	admin := seedUser(t, pool, "push-admin", core.RoleAdmin)
+	member := seedUser(t, pool, "push-member", core.RoleUser)
+	grantee := seedUser(t, pool, "push-grantee", core.RoleUser)
+	outsider := seedUser(t, pool, "push-outsider", core.RoleUser)
+	disabled := seedUser(t, pool, "push-disabled", core.RoleAdmin)
+
+	if err := projects.AddMember(ctx, core.ProjectMember{
+		ProjectID: project.ID, UserID: member.ID, Role: core.ProjectRoleMember,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.Grant(ctx, core.TaskGrant{
+		TaskID: web.ID, UserID: grantee.ID, Role: core.ProjectRoleViewer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	disabled.DisabledAt = &now
+	if _, err := users.Update(ctx, disabled); err != nil {
+		t.Fatal(err)
+	}
+
+	token := map[string]string{}
+	for name, user := range map[string]core.User{
+		"admin": admin, "member": member, "grantee": grantee,
+		"outsider": outsider, "disabled": disabled,
+	} {
+		token[name] = "tok-" + uuid.New().String()
+		if err := push.Create(ctx, user.ID, token[name]); err != nil {
+			t.Fatalf("subscribe %s: %v", name, err)
+		}
+	}
+
+	tokens, err := push.Tokens(ctx, project.ID, web.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"admin", "member", "grantee"} {
+		if !slices.Contains(tokens, token[name]) {
+			t.Errorf("%s must receive deploys of a task they can list", name)
+		}
+	}
+	for _, name := range []string{"outsider", "disabled"} {
+		if slices.Contains(tokens, token[name]) {
+			t.Errorf("%s must not receive deploys they cannot list", name)
+		}
+	}
+
+	// A grant covers one task, so a sibling task must not reach the grantee.
+	api, err := tasks.Create(ctx, core.Task{
+		ProjectID: project.ID, Name: "api", Image: "img", Status: core.StatusRunning, Port: 81,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokens, err = push.Tokens(ctx, project.ID, api.Name); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(tokens, token["grantee"]) {
+		t.Error("a task grant must not widen to the whole project")
+	}
+	if !slices.Contains(tokens, token["member"]) {
+		t.Error("a project member must receive every task in the project")
+	}
+
+	// The subscription dies with its user, so a deleted account leaves no target behind.
+	if err := users.Delete(ctx, admin.ID); err != nil {
+		t.Fatal(err)
+	}
+	if tokens, err = push.Tokens(ctx, project.ID, web.Name); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(tokens, token["admin"]) {
+		t.Error("deleting a user must cascade to their subscriptions")
+	}
+}
+
+func TestPushSubscriptionMovesToItsLatestOwner(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	push := NewPushStore(pool)
+
+	first := seedUser(t, pool, "push-first", core.RoleAdmin)
+	second := seedUser(t, pool, "push-second", core.RoleAdmin)
+	shared := "tok-" + uuid.New().String()
+
+	if err := push.Create(ctx, first.ID, shared); err != nil {
+		t.Fatal(err)
+	}
+	var createdAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT created_at FROM push_subscriptions WHERE token = $1`, shared,
+	).Scan(&createdAt); err != nil {
+		t.Fatal(err)
+	}
+	// A browser handed to another user must stop notifying the previous one.
+	if err := push.Create(ctx, second.ID, shared); err != nil {
+		t.Fatalf("re-registering a device must not conflict: %v", err)
+	}
+	var movedAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT created_at FROM push_subscriptions WHERE token = $1`, shared,
+	).Scan(&movedAt); err != nil {
+		t.Fatal(err)
+	}
+	if !movedAt.Equal(createdAt) {
+		t.Fatalf("re-registering changed created_at: %v -> %v", createdAt, movedAt)
+	}
+	if err := push.Delete(ctx, first.ID, shared); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("the previous owner must no longer own the token, got %v", err)
+	}
+	if err := push.Delete(ctx, second.ID, shared); err != nil {
+		t.Fatalf("the current owner must be able to unsubscribe: %v", err)
 	}
 }

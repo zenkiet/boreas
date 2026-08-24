@@ -17,6 +17,7 @@ type Handler struct {
 	tasks    TaskService
 	auth     AuthService
 	projects ProjectService
+	push     PushStore
 	logger   *log.Logger
 }
 
@@ -106,6 +107,36 @@ func (h *Handler) revokeAPIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.auth.RevokeAPIToken(r.Context(), userFrom(r.Context()).ID, id); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
+}
+
+func (h *Handler) subscribePush(w http.ResponseWriter, r *http.Request) {
+	var req pushSubscriptionRequest
+	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
+		writeBadRequest(w)
+		return
+	}
+	if err := core.ValidatePushToken(req.Token); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	if err := h.push.Create(r.Context(), userFrom(r.Context()).ID, req.Token); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, successResponse{Success: true})
+}
+
+func (h *Handler) unsubscribePush(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+	if err := core.ValidatePushToken(token); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	if err := h.push.Delete(r.Context(), userFrom(r.Context()).ID, token); err != nil {
 		writeServiceError(w, h.logger, err)
 		return
 	}

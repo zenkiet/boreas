@@ -261,3 +261,22 @@ func (*stubProjects) CreateCredential(context.Context, core.User, service.Create
 }
 
 func (*stubProjects) DeleteCredential(context.Context, uuid.UUID) error { return nil }
+
+type stubPush struct {
+	create func(context.Context, uuid.UUID, string) error
+	delete func(context.Context, uuid.UUID, string) error
+}
+
+func (s *stubPush) Create(c context.Context, userID uuid.UUID, token string) error {
+	if s.create != nil {
+		return s.create(c, userID, token)
+	}
+	return nil
+}
+
+func (s *stubPush) Delete(c context.Context, userID uuid.UUID, token string) error {
+	if s.delete != nil {
+		return s.delete(c, userID, token)
+	}
+	return nil
+}

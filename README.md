@@ -341,6 +341,48 @@ it and restarting `boreas-noti`; Boreas itself never changes. Delivery is
 fire-and-forget: an unreachable Apprise instance is logged and never delays or
 fails a deploy, and the feed above still records the notification.
 
+### Browser push (FCM)
+
+Setting both `BOREAS_FCM_PROJECT` and `BOREAS_FCM_KEYFILE` lets users subscribe
+their own browsers instead of a destination being hand-written into
+`apprise/boreas.yml`. A device receives exactly the deploys its owner can list
+from the notification feed, so push carries no more than the API already shows:
+
+```bash
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"token":"<FCM registration token>"}' \
+  http://localhost:8080/api/v1/push/subscriptions
+
+curl -X DELETE -H "$AUTH" \
+  "http://localhost:8080/api/v1/push/subscriptions/<FCM registration token>"
+```
+
+The client obtains the token from the Firebase Web SDK. A browser is identified
+by its token, so re-registering one moves the subscription to whoever is logged
+in now — a shared machine never keeps notifying the previous user — and a user
+can delete only tokens they currently own.
+
+Two deployment details matter. `BOREAS_FCM_KEYFILE` is the service-account JSON
+path **inside the `boreas-noti` container** (mount it under `./apprise`), because
+Apprise, not Boreas, talks to Google. And `BOREAS_NOTIFY_URL` must then point at
+`http://boreas-noti:8000/notify` without a configuration key: only Apprise's
+stateless endpoint accepts per-request destinations, so `/notify/boreas` would
+ignore the subscribed devices and deliver to `boreas.yml` alone. Boreas refuses
+to start on that combination rather than drop every subscriber silently.
+Legacy FCM was shut down in June 2024, so a service-account keyfile is the only
+supported credential.
+
+Browser push therefore **replaces** the destinations in `apprise/boreas.yml`
+rather than adding to them: the stateless endpoint delivers only to the devices
+in each request, so a deployment cannot run FCM and a hand-written Slack or ntfy
+destination at the same time.
+
+Delivery follows the same rules as `GET /api/v1/projects/{slug}/notifications`:
+administrators and project members receive every task in a project, a task
+grantee receives only the tasks they hold, and everyone else receives nothing.
+Disabling a user stops their devices along with their login, and deleting the
+account removes its subscriptions.
+
 ## OpenAPI specification
 
 Every route above is described by an OpenAPI 3.0 document generated from the
@@ -388,6 +430,8 @@ the database connection and the initial administrator.
 | `BOREAS_ADMIN_EMAIL`    | `admin@localhost` | Seed administrator email                                                     |
 | `BOREAS_ADMIN_PASSWORD` | unset             | Seed administrator password; required only on an empty database              |
 | `BOREAS_NOTIFY_URL`     | unset             | Apprise notify endpoint; unset records notifications without forwarding them |
+| `BOREAS_FCM_PROJECT`    | unset             | Firebase project ID; with the keyfile, enables browser push subscriptions    |
+| `BOREAS_FCM_KEYFILE`    | unset             | Service-account JSON path *inside the Apprise container*                     |
 
 Registry credentials are no longer configuration. Store them once through
 `/api/v1/registry-credentials` and attach one to a project; Boreas uses it when

@@ -119,6 +119,14 @@ func ValidateEnv(env map[string]string) error {
 	return nil
 }
 
+func ValidatePushToken(token string) error {
+	if token == "" || len(token) > 4096 || strings.ContainsAny(token, ",/? \t\r\n") {
+		return errors.Join(ErrInvalidInput,
+			errors.New("push token must be 1-4096 bytes and contain no comma, slash, question mark, or whitespace"))
+	}
+	return nil
+}
+
 func ValidateProjectSlug(slug string) error {
 	if !projectSlugRegexp.MatchString(slug) {
 		return errors.Join(ErrInvalidInput, errors.New("project slug must match ^[a-z0-9][a-z0-9-]{0,62}$"))

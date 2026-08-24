@@ -1565,6 +1565,94 @@ paths:
       summary: Start, stop, or restart a task
       tags:
       - tasks
+  /api/v1/push/subscriptions:
+    post:
+      description: Registers an FCM registration token. The device then receives the
+        same deploys the caller can list, and re-registering it moves the subscription
+        to the current caller.
+      operationId: post-push-subscriptions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Subscribe this device to deploy notifications
+      tags:
+      - push
+  /api/v1/push/subscriptions/{token}:
+    delete:
+      description: Users can remove only tokens they registered themselves.
+      operationId: delete-push-subscriptions-token
+      parameters:
+      - in: path
+        name: token
+        required: true
+        schema:
+          example: fJ9x2Qk7RtqB:APA91bH-x9Kd2QwErTyUiOp
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Unsubscribe this device
+      tags:
+      - push
   /api/v1/registry-credentials:
     get:
       description: Credential tokens are never returned.
@@ -2379,6 +2467,14 @@ components:
       required:
       - projects
       - total
+      type: object
+    PushSubscriptionRequest:
+      properties:
+        token:
+          example: fJ9x2Qk7RtqB:APA91bH-x9Kd2QwErTyUiOp
+          type: string
+      required:
+      - token
       type: object
     RegistryKind:
       enum:

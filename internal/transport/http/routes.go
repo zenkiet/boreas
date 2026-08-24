@@ -109,6 +109,24 @@ var routeTable = [...]route{
 	},
 
 	{
+		method: http.MethodPost, path: "/api/v1/push/subscriptions", access: accessAuthed,
+		handler: (*Handler).subscribePush,
+		tag:     "push", summary: "Subscribe this device to deploy notifications",
+		description: "Registers an FCM registration token. The device then receives the same deploys the caller " +
+			"can list, and re-registering it moves the subscription to the current caller.",
+		req: new(pushSubscriptionRequest), resp: new(successResponse), status: http.StatusCreated,
+		extraErrors: []int{http.StatusBadRequest},
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/push/subscriptions/{token}", access: accessAuthed,
+		handler: (*Handler).unsubscribePush,
+		tag:     "push", summary: "Unsubscribe this device",
+		description: "Users can remove only tokens they registered themselves.",
+		req:         new(pushSubscriptionPath), resp: new(successResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+	},
+
+	{
 		method: http.MethodGet, path: "/api/v1/users", access: accessAdmin,
 		handler: (*Handler).listUsers,
 		tag:     "users", summary: "List users",
