@@ -337,21 +337,23 @@ func (s *TaskService) Deploy(ctx context.Context, slug, name, image string) (cor
 		return task.Clone(), nil
 	}
 	deployed, err := s.update(ctx, task, project, UpdateTaskInput{Image: &trimmed}, true)
-	s.cfg.Notify(ctx, deployNotification(project, name, trimmed, err))
+	s.cfg.Notify(ctx, deployNotification(project, name, time.Now(), err))
 	return deployed, err
 }
 
-func deployNotification(project core.Project, name, image string, cause error) core.Notification {
-	target := project.Slug + "/" + name
+func deployNotification(project core.Project, name string, completedAt time.Time, cause error) core.Notification {
+	completed := completedAt.In(time.Local).Format("02 Jan 2006, 15:04 MST")
 	if cause != nil {
 		return core.Notification{
 			ProjectID: project.ID, TaskName: name, Status: core.NotificationFailure,
-			Title: "Deploy failed: " + target, Body: image + ": " + cause.Error(),
+			Title: project.Name + ": Deployment failed",
+			Body:  fmt.Sprintf("Task %s failed at %s: %v.", name, completed, cause),
 		}
 	}
 	return core.Notification{
 		ProjectID: project.ID, TaskName: name, Status: core.NotificationSuccess,
-		Title: "Deployed: " + target, Body: image,
+		Title: project.Name + ": Deployment succeeded",
+		Body:  fmt.Sprintf("Task %s completed at %s.", name, completed),
 	}
 }
 

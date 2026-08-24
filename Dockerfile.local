@@ -8,7 +8,7 @@ RUN CGO_ENABLED=0 go build -o /boreas ./cmd/boreas
 
 FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /boreas /app/boreas
 

@@ -32,6 +32,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      TZ: ${TZ:-Etc/UTC}
       BOREAS_DB_HOST: boreas-db
       BOREAS_DB_USER: ${POSTGRES_USER:-postgres}
       BOREAS_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -39,9 +40,9 @@ services:
       BOREAS_ADMIN_USERNAME: ${BOREAS_ADMIN_USERNAME:-admin}
       BOREAS_ADMIN_EMAIL: ${BOREAS_ADMIN_EMAIL:-admin@example.com}
       BOREAS_ADMIN_PASSWORD: ${BOREAS_ADMIN_PASSWORD:-LoveAngular123}
-      BOREAS_NOTIFY_URL: ${BOREAS_NOTIFY_URL:-http://boreas-noti:8000/notify/boreas}
-      BOREAS_FCM_PROJECT: ${BOREAS_FCM_PROJECT:-}
-      BOREAS_FCM_KEYFILE: ${BOREAS_FCM_KEYFILE:-}
+      BOREAS_NOTIFY_URL: ${BOREAS_NOTIFY_URL:-http://boreas-noti:8000/notify}
+      BOREAS_FCM_PROJECT: ${BOREAS_FCM_PROJECT:-zen-boreas}
+      BOREAS_FCM_KEYFILE: ${BOREAS_FCM_KEYFILE:-./config/fcm-service-account.json}
     depends_on:
       boreas-db:
         condition: service_healthy

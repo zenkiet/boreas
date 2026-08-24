@@ -420,11 +420,9 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 	}
 	success := h.notified[0]
 	if success.Status != core.NotificationSuccess || success.ProjectID != h.project.ID ||
-		success.TaskName != "web" || success.Body != deployDigestB {
+		success.TaskName != "web" || success.Title != "team: Deployment succeeded" ||
+		!strings.HasPrefix(success.Body, "Task web completed at ") || strings.Contains(success.Body, deployDigestB) {
 		t.Fatalf("unexpected success notification: %+v", success)
-	}
-	if !strings.Contains(success.Title, "team/web") {
-		t.Fatalf("title lost the target: %q", success.Title)
 	}
 
 	// A retried callback for the running image is not a deployment.
@@ -443,8 +441,30 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 		t.Fatalf("a failed deploy did not notify: %+v", h.notified)
 	}
 	failure := h.notified[1]
-	if failure.Status != core.NotificationFailure || !strings.Contains(failure.Body, "registry unavailable") {
+	if failure.Status != core.NotificationFailure || failure.Title != "team: Deployment failed" ||
+		!strings.Contains(failure.Body, "Task web failed at ") ||
+		!strings.Contains(failure.Body, "registry unavailable") || strings.Contains(failure.Body, deployDigestA) {
 		t.Fatalf("unexpected failure notification: %+v", failure)
+	}
+}
+
+func TestDeployNotificationMessages(t *testing.T) {
+	project := core.Project{ID: uuid.New(), Name: "Online Ordering", Slug: "online-ordering"}
+	originalLocal := time.Local
+	time.Local = time.FixedZone("ICT", 7*60*60)
+	t.Cleanup(func() { time.Local = originalLocal })
+	completedAt := time.Date(2026, time.August, 25, 10, 9, 0, 0, time.UTC)
+
+	success := deployNotification(project, "wo-705", completedAt, nil)
+	if success.Title != "Online Ordering: Deployment succeeded" ||
+		success.Body != "Task wo-705 completed at 25 Aug 2026, 17:09 ICT." {
+		t.Fatalf("unexpected success message: %+v", success)
+	}
+
+	failure := deployNotification(project, "wo-705", completedAt, errors.New("registry unavailable"))
+	if failure.Title != "Online Ordering: Deployment failed" ||
+		failure.Body != "Task wo-705 failed at 25 Aug 2026, 17:09 ICT: registry unavailable." {
+		t.Fatalf("unexpected failure message: %+v", failure)
 	}
 }
 
