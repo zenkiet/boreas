@@ -178,7 +178,7 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
-| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, or description |
+| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, description, or dev status |
 | `POST`   | `/projects/{project}/tasks/{name}/deploy`      | operator      | Deploy an image built elsewhere                 |
 | `PUT`    | `/projects/{project}/tasks/{name}/state`       | operator      | Start, stop, or restart                         |
 | `DELETE` | `/projects/{project}/tasks/{name}`             | member        | Delete a task and its container                 |
@@ -190,8 +190,8 @@ All API routes are under `/api/v1`.
 | `DELETE` | `/projects/{project}/tasks/{name}/grants/{userID}` | owner     | Revoke a task grant                             |
 
 Only the fields present in a `PATCH` body are changed. Editing just the
-description leaves a running container alone; changing `image`, `port`,
-`labels`, or `env` needs a new container, which `auto_restart` applies
+description or dev status leaves a running container alone; changing `image`,
+`port`, `labels`, or `env` needs a new container, which `auto_restart` applies
 immediately (the default) or defers to the next start or restart. A task is
 renamed by recreating it, because its name is part of its public URL.
 
@@ -212,6 +212,31 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
 
 The former dedicated `GET` and `PUT` `/tasks/{name}/env` endpoints have been
 removed. Clients should read `task.env` and use `PATCH /tasks/{name}` instead.
+
+## Development status
+
+`status` reports the container; `dev_status` reports the code. A task can run
+while it is not yet worth testing, so the two are tracked separately.
+
+| `dev_status`  | Meaning                                | Suggested colour |
+| ------------- | -------------------------------------- | ---------------- |
+| `in_progress` | Normal development, the default        | Yellow           |
+| `blocked`     | Broken or stuck, do not hand it to QA  | Red              |
+| `ready`       | Dev is done, QA can test it            | Green            |
+
+Every task is created `in_progress`. Any member of the task, that is a project
+member or owner, a user holding a `member` grant on it, or an administrator,
+moves it between the three values. Deploys never change it, so it says what a
+person last said it says.
+
+```bash
+curl -X PATCH -H "$AUTH" -H "$JSON" \
+  -d '{"dev_status":"ready"}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/web
+```
+
+The API returns the value only; mapping the three values to colours is the
+client's business.
 
 ## Task form defaults
 

@@ -67,7 +67,7 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/auth/login", access: accessPublic,
 		handler: (*Handler).login,
 		tag:     "auth", summary: "Exchange credentials for a token",
-		description: "The token is returned once and expires after 30 days.",
+		description: "The token is returned once and expires in 30 days.",
 		req:         new(loginRequest), resp: new(loginResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest, http.StatusUnauthorized},
 	},
@@ -87,15 +87,15 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/auth/tokens", access: accessSession,
 		handler: (*Handler).listAPITokens,
 		tag:     "auth", summary: "List your API tokens",
-		description: "Returns metadata only; plaintext tokens and token hashes are never returned.",
+		description: "Metadata only; tokens and hashes are never returned.",
 		resp:        new(apiTokensResponse), status: http.StatusOK,
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/auth/tokens", access: accessSession,
 		handler: (*Handler).createAPIToken,
 		tag:     "auth", summary: "Create an API token",
-		description: "The plaintext token is returned once. Its validity window must not exceed 90 days. " +
-			"Only a login session, not another API token, can create it.",
+		description: "The token is returned once. Validity must not exceed 90 days. " +
+			"Requires a login session, not another API token.",
 		req: new(createAPITokenRequest), resp: new(createAPITokenResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest},
 	},
@@ -103,7 +103,7 @@ var routeTable = [...]route{
 		method: http.MethodDelete, path: "/api/v1/auth/tokens/{id}", access: accessSession,
 		handler: (*Handler).revokeAPIToken,
 		tag:     "auth", summary: "Revoke one of your API tokens",
-		description: "Only a login session can revoke an API token, and users can revoke only their own tokens.",
+		description: "Requires a login session. Users revoke only their own tokens.",
 		req:         new(apiTokenPath), resp: new(successResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
@@ -112,8 +112,8 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/push/subscriptions", access: accessAuthed,
 		handler: (*Handler).subscribePush,
 		tag:     "push", summary: "Subscribe this device to deploy notifications",
-		description: "Registers an FCM registration token. The device then receives the same deploys the caller " +
-			"can list, and re-registering it moves the subscription to the current caller.",
+		description: "Takes an FCM registration token. The device receives the deploys the caller can list; " +
+			"re-registering moves the subscription to the current caller.",
 		req: new(pushSubscriptionRequest), resp: new(successResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest},
 	},
@@ -121,7 +121,7 @@ var routeTable = [...]route{
 		method: http.MethodDelete, path: "/api/v1/push/subscriptions/{token}", access: accessAuthed,
 		handler: (*Handler).unsubscribePush,
 		tag:     "push", summary: "Unsubscribe this device",
-		description: "Users can remove only tokens they registered themselves.",
+		description: "Users remove only tokens they registered themselves.",
 		req:         new(pushSubscriptionPath), resp: new(successResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
@@ -143,7 +143,7 @@ var routeTable = [...]route{
 		method: http.MethodPatch, path: "/api/v1/users/{id}", access: accessAdmin,
 		handler: (*Handler).updateUser,
 		tag:     "users", summary: "Update a user",
-		description: "Changing the password or role, or disabling the account, revokes that user's tokens.",
+		description: "Changing password or role, or disabling the account, revokes that user's tokens.",
 		req:         new(updateUserRequest), resp: new(userResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict},
 	},
@@ -182,17 +182,16 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/projects", access: accessAuthed,
 		handler: (*Handler).listProjects,
 		tag:     "projects", summary: "List reachable projects",
-		description: "Administrators see every project; other users see only their memberships.",
+		description: "Administrators see every project, others only their memberships.",
 		resp:        new(projectsResponse), status: http.StatusOK,
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/projects", access: accessAdmin,
 		handler: (*Handler).createProject,
 		tag:     "projects", summary: "Create a project",
-		description: "Administrators only. The creator becomes the project owner. " +
-			"The slugs api, health, metrics, static and admin are reserved. " +
-			"default_image, default_port and default_env only prefill the task creation form; " +
-			"task creation never applies them on its own.",
+		description: "The creator becomes owner. The slugs api, health, metrics, static and admin " +
+			"are reserved. default_image, default_port and default_env only prefill the task " +
+			"creation form; task creation never applies them on its own.",
 		req: new(createProjectRequest), resp: new(projectResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
@@ -206,9 +205,9 @@ var routeTable = [...]route{
 		method: http.MethodPatch, path: "/api/v1/projects/{project}", access: accessOwner,
 		handler: (*Handler).updateProject,
 		tag:     "projects", summary: "Update a project",
-		description: "Send registry_credential_id as null to detach the credential; omit it to leave it unchanged. " +
-			"An empty default_image or default_env clears that task form default; " +
-			"existing tasks and their containers are never touched.",
+		description: "registry_credential_id null detaches the credential, omitted leaves it unchanged. " +
+			"An empty default_image or default_env clears that form default. " +
+			"Existing tasks and containers are never touched.",
 		req: new(updateProjectRequest), resp: new(projectResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest},
 	},
@@ -216,7 +215,7 @@ var routeTable = [...]route{
 		method: http.MethodDelete, path: "/api/v1/projects/{project}", access: accessOwner,
 		handler: (*Handler).deleteProject,
 		tag:     "projects", summary: "Delete a project",
-		description: "A project that still owns tasks cannot be deleted.",
+		description: "Refused while the project still owns tasks.",
 		req:         new(projectPath), resp: new(successResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusConflict},
 	},
@@ -246,8 +245,8 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/notifications", access: accessViewer,
 		handler: (*Handler).listNotifications,
 		tag:     "projects", summary: "List deploy notifications",
-		description: "Newest first. Recorded when a deploy succeeds or fails; a retried callback for " +
-			"the image a task already runs records nothing.",
+		description: "Newest first. Recorded when a deploy succeeds or fails; a retried callback " +
+			"for the image a task already runs records nothing.",
 		req: new(notificationsRequest), resp: new(notificationsResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest},
 	},
@@ -262,7 +261,7 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks", access: accessMember,
 		handler: (*Handler).createTask,
 		tag:     "tasks", summary: "Create a task",
-		description: "Task names are unique within a project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.",
+		description: "Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.",
 		req:         new(createTaskRequest), resp: new(taskResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
@@ -276,10 +275,11 @@ var routeTable = [...]route{
 		method: http.MethodPatch, path: "/api/v1/projects/{project}/tasks/{name}", access: accessMember,
 		handler: (*Handler).updateTask,
 		tag:     "tasks", summary: "Update a task",
-		description: "Only the fields sent are changed. Changing image, port, labels, or env " +
-			"needs a new container: auto_restart applies it immediately and defaults to true, " +
-			"otherwise it is applied by the next start or restart. Editing only the description " +
-			"leaves a running container untouched.",
+		description: "Only the fields sent are changed. image, port, labels and env need a new " +
+			"container: auto_restart applies it at once and defaults to true, otherwise the next " +
+			"start or restart does. description and dev_status leave a running container untouched. " +
+			"dev_status tracks the code, not the container: in_progress on create, blocked is not " +
+			"fit for QA, ready is.",
 		req: new(updateTaskRequest), resp: new(taskResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
@@ -287,18 +287,17 @@ var routeTable = [...]route{
 		method: http.MethodDelete, path: "/api/v1/projects/{project}/tasks/{name}", access: accessMember,
 		handler: (*Handler).deleteTask,
 		tag:     "tasks", summary: "Delete a task",
-		description: "Removes the task and its container.",
+		description: "The container is removed too.",
 		req:         new(taskPath), resp: new(taskDeletedResponse), status: http.StatusOK,
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks/{name}/deploy", access: accessOperator,
 		handler: (*Handler).deployTask,
 		tag:     "tasks", summary: "Deploy an image built elsewhere",
-		description: "For a build pipeline to call once it has pushed an image. The image must be " +
-			"immutable, of the form repository@sha256:<64 hex digits>, so the exact artifact that was " +
-			"built is the one that runs. Boreas pulls it and recreates the container, leaving a stopped " +
-			"task stopped. Deploying the image a task already runs changes nothing, so a callback may be " +
-			"retried safely.",
+		description: "For a build pipeline to call after pushing an image. The image must be immutable, " +
+			"of the form repository@sha256:<64 hex digits>, so the artifact that was built is the one " +
+			"that runs. Pulls it and recreates the container, leaving a stopped task stopped. " +
+			"Deploying the image a task already runs changes nothing, so callbacks are safe to retry.",
 		req: new(deployTaskRequest), resp: new(taskResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
@@ -320,9 +319,9 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/logs/stream", access: accessViewer,
 		handler: (*Handler).streamLogs,
 		tag:     "tasks", summary: "Stream task logs",
-		description: "Server-Sent Events. Each event carries a JSON object " +
+		description: "Server-Sent Events, each carrying " +
 			`{"timestamp": string, "stream": "stdout"|"stderr", "message": string}, ` +
-			"and the server sends a comment heartbeat while idle. Use EventSource rather than a generated client method.",
+			"plus a comment heartbeat while idle. Use EventSource, not a generated client method.",
 		req: new(streamLogsRequest), resp: new(string), status: http.StatusOK,
 		contentType: "text/event-stream", extraErrors: []int{http.StatusBadRequest},
 	},
@@ -331,11 +330,11 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/metrics/stream", access: accessViewer,
 		handler: (*Handler).streamMetrics,
 		tag:     "projects", summary: "Stream resource metrics for every running task",
-		description: "Server-Sent Events, roughly one event per task per second. Each event carries " +
+		description: "Server-Sent Events, roughly one per task per second, each carrying " +
 			`{"task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit": integer, ` +
 			`"network_rx_bytes": integer, "network_tx_bytes": integer, "observed_at": string}. ` +
-			"Tasks that are not running are omitted, and the server sends a comment heartbeat while idle. " +
-			"Use EventSource rather than a generated client method.",
+			"Tasks that are not running are omitted, and a comment heartbeat fills idle time. " +
+			"Use EventSource, not a generated client method.",
 		req: new(projectPath), resp: new(string), status: http.StatusOK,
 		contentType: "text/event-stream",
 	},
@@ -343,9 +342,8 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/metrics/stream", access: accessViewer,
 		handler: (*Handler).streamMetrics,
 		tag:     "tasks", summary: "Stream resource metrics for one task",
-		description: "Server-Sent Events with the same payload as the project-wide stream, " +
-			"limited to this task. Returns 409 when the task has no container yet. " +
-			"Use EventSource rather than a generated client method.",
+		description: "The project-wide stream's payload, limited to this task. 409 when the task " +
+			"has no container yet. Use EventSource, not a generated client method.",
 		req: new(taskPath), resp: new(string), status: http.StatusOK,
 		contentType: "text/event-stream", extraErrors: []int{http.StatusConflict},
 	},
@@ -360,9 +358,9 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks/{name}/grants", access: accessOwner,
 		handler: (*Handler).grantTask,
 		tag:     "tasks", summary: "Grant a user access to one task",
-		description: "Raises the user's role on this task above whatever the project gives them; " +
-			"it never lowers it. A grant is enough to reach the project without being a member, " +
-			"and it is deleted with the task. Owner cannot be granted here.",
+		description: "Raises the user's role on this task above what the project gives them, never " +
+			"lowers it. A grant reaches the project without membership and dies with the task. " +
+			"Owner cannot be granted here.",
 		req: new(grantRequest), resp: new(successResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest},
 	},

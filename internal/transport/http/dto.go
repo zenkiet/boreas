@@ -102,6 +102,7 @@ type taskDTO struct {
 	Description     string            `json:"description,omitempty"`
 	Image           string            `json:"image" example:"nginx:alpine"`
 	Status          core.TaskStatus   `json:"status"`
+	DevStatus       core.DevStatus    `json:"dev_status"`
 	Port            int               `json:"port" example:"80"`
 	ContainerID     string            `json:"container_id,omitempty"`
 	ContainerIP     string            `json:"container_ip,omitempty"`
@@ -119,7 +120,7 @@ func taskFromCore(t core.Task) taskDTO {
 	}
 	return taskDTO{
 		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description,
-		Image: t.Image, Status: t.Status, Port: t.Port,
+		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 		Labels: t.Labels, Env: t.Env, Error: t.Error, PendingRecreate: t.PendingRecreate,
@@ -149,6 +150,7 @@ type updateTaskRequest struct {
 	Project     string             `json:"-" path:"project" example:"demo"`
 	Name        string             `json:"-" path:"name" example:"web"`
 	Description *string            `json:"description,omitempty"`
+	DevStatus   *core.DevStatus    `json:"dev_status,omitempty"`
 	Image       *string            `json:"image,omitempty" example:"nginx:1.27-alpine"`
 	Port        *int               `json:"port,omitempty" example:"80"`
 	Labels      *map[string]string `json:"labels,omitempty"`

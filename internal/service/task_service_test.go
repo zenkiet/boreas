@@ -500,6 +500,95 @@ func TestUpdateDescriptionLeavesContainerAlone(t *testing.T) {
 	}
 }
 
+func TestDevStatusStartsInProgressAndMovesWithoutTouchingTheContainer(t *testing.T) {
+	h := newHarness(t)
+	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.DevStatus != core.DevInProgress {
+		t.Fatalf("dev status = %q, want in_progress", created.DevStatus)
+	}
+	stops, recreates := len(h.runtime.stopped), len(h.runtime.recreated)
+
+	for _, want := range []core.DevStatus{core.DevReady, core.DevBlocked, core.DevInProgress} {
+		updated, err := h.svc.Update(context.Background(), "team", "web",
+			UpdateTaskInput{DevStatus: &want}, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updated.DevStatus != want {
+			t.Fatalf("dev status = %q, want %q", updated.DevStatus, want)
+		}
+		if updated.Status != core.StatusRunning || updated.ContainerID != created.ContainerID {
+			t.Fatalf("running container was disturbed: %+v", updated)
+		}
+		if updated.PendingRecreate {
+			t.Fatal("a dev status change must not schedule a recreate")
+		}
+	}
+	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
+		t.Fatalf("container was touched: stops=%d recreates=%d", len(h.runtime.stopped), len(h.runtime.recreated))
+	}
+	if h.routes.registered["team/web"] != created.ContainerIP {
+		t.Fatal("route was disturbed")
+	}
+}
+
+func TestDevStatusRejectsUnknownValue(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
+		t.Fatal(err)
+	}
+	bogus := core.DevStatus("done")
+	if _, err := h.svc.Update(context.Background(), "team", "web",
+		UpdateTaskInput{DevStatus: &bogus}, true); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("got %v, want ErrInvalidInput", err)
+	}
+	task, err := h.svc.Get(context.Background(), "team", "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.DevStatus != core.DevInProgress {
+		t.Fatalf("a rejected update changed dev status to %q", task.DevStatus)
+	}
+}
+
+func TestDevStatusUnchangedIsANoOp(t *testing.T) {
+	h := newHarness(t)
+	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := core.DevInProgress
+	updated, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &same}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.UpdatedAt.Equal(created.UpdatedAt) {
+		t.Fatal("an unchanged dev status wrote to the store")
+	}
+}
+
+func TestDeployLeavesDevStatusAlone(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
+		t.Fatal(err)
+	}
+	blocked := core.DevBlocked
+	if _, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &blocked}, true); err != nil {
+		t.Fatal(err)
+	}
+	deployed, err := h.svc.Deploy(context.Background(), "team", "web",
+		"registry/app@sha256:"+strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deployed.DevStatus != core.DevBlocked {
+		t.Fatalf("deploy changed dev status to %q", deployed.DevStatus)
+	}
+}
+
 func TestUpdateImagePullsBeforeRecreating(t *testing.T) {
 	h := newHarness(t)
 	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "old"}); err != nil {

@@ -156,7 +156,8 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 
 	task, err := s.tasks.Create(ctx, core.Task{
 		ProjectID: project.ID, Name: in.Name, Description: in.Description, Image: spec.Image,
-		Status: core.StatusCreating, Port: port, Labels: spec.Labels, Env: spec.Env,
+		Status: core.StatusCreating, DevStatus: core.DevInProgress, Port: port,
+		Labels: spec.Labels, Env: spec.Env,
 	})
 	if err != nil {
 		return core.Task{}, fmt.Errorf("reserve task %q: %w", in.Name, err)
@@ -300,6 +301,7 @@ func (s *TaskService) Delete(ctx context.Context, slug, name string) error {
 // UpdateTaskInput uses pointers to preserve omitted fields during partial updates.
 type UpdateTaskInput struct {
 	Description *string
+	DevStatus   *core.DevStatus
 	Image       *string
 	Port        *int
 	Labels      *map[string]string
@@ -376,17 +378,26 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	if err := spec.Validate(); err != nil {
 		return core.Task{}, err
 	}
+	if in.DevStatus != nil {
+		if err := core.ValidateDevStatus(*in.DevStatus); err != nil {
+			return core.Task{}, err
+		}
+	}
 	descriptionChanged := in.Description != nil && *in.Description != task.Description
+	devStatusChanged := in.DevStatus != nil && *in.DevStatus != task.DevStatus
 	containerChanged := spec.Image != task.Image || spec.Port != task.Port ||
 		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env)
 	if recreate && task.PendingRecreate {
 		containerChanged = true
 	}
-	if !descriptionChanged && !containerChanged {
+	if !descriptionChanged && !devStatusChanged && !containerChanged {
 		return task.Clone(), nil
 	}
 	if descriptionChanged {
 		task.Description = *in.Description
+	}
+	if devStatusChanged {
+		task.DevStatus = *in.DevStatus
 	}
 	if !containerChanged {
 		if task, err = s.tasks.Update(ctx, task); err != nil {

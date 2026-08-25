@@ -38,6 +38,24 @@ func (TaskStatus) Enum() []any {
 	return []any{StatusCreating, StatusStarting, StatusRunning, StatusStopped, StatusError, StatusUnknown}
 }
 
+type DevStatus string
+
+const (
+	DevInProgress DevStatus = "in_progress"
+	DevBlocked    DevStatus = "blocked"
+	DevReady      DevStatus = "ready"
+)
+
+func (DevStatus) Enum() []any { return []any{DevInProgress, DevBlocked, DevReady} }
+
+func ValidateDevStatus(status DevStatus) error {
+	switch status {
+	case DevInProgress, DevBlocked, DevReady:
+		return nil
+	}
+	return errors.Join(ErrInvalidInput, errors.New("dev status must be in_progress, blocked, or ready"))
+}
+
 type UserRole string
 
 const (
@@ -226,6 +244,7 @@ type Task struct {
 	Description     string
 	Image           string
 	Status          TaskStatus
+	DevStatus       DevStatus
 	Port            int
 	ContainerID     string
 	ContainerIP     string

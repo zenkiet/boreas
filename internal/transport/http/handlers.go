@@ -486,7 +486,7 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	autoRestart := req.AutoRestart == nil || *req.AutoRestart
 	task, err := h.tasks.Update(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		service.UpdateTaskInput{
-			Description: req.Description, Image: req.Image, Port: req.Port,
+			Description: req.Description, DevStatus: req.DevStatus, Image: req.Image, Port: req.Port,
 			Labels: req.Labels, Env: req.Env,
 		}, autoRestart)
 	if err != nil {

@@ -7,7 +7,7 @@ info:
 paths:
   /api/v1/auth/login:
     post:
-      description: The token is returned once and expires after 30 days.
+      description: The token is returned once and expires in 30 days.
       operationId: post-auth-login
       requestBody:
         content:
@@ -98,8 +98,7 @@ paths:
       - auth
   /api/v1/auth/tokens:
     get:
-      description: Returns metadata only; plaintext tokens and token hashes are never
-        returned.
+      description: Metadata only; tokens and hashes are never returned.
       operationId: get-auth-tokens
       responses:
         "200":
@@ -132,9 +131,8 @@ paths:
       tags:
       - auth
     post:
-      description: The plaintext token is returned once. Its validity window must
-        not exceed 90 days. Only a login session, not another API token, can create
-        it.
+      description: The token is returned once. Validity must not exceed 90 days. Requires
+        a login session, not another API token.
       operationId: post-auth-tokens
       requestBody:
         content:
@@ -179,8 +177,7 @@ paths:
       - auth
   /api/v1/auth/tokens/{id}:
     delete:
-      description: Only a login session can revoke an API token, and users can revoke
-        only their own tokens.
+      description: Requires a login session. Users revoke only their own tokens.
       operationId: delete-auth-tokens-id
       parameters:
       - in: path
@@ -251,7 +248,7 @@ paths:
       - system
   /api/v1/projects:
     get:
-      description: Administrators see every project; other users see only their memberships.
+      description: Administrators see every project, others only their memberships.
       operationId: get-projects
       responses:
         "200":
@@ -278,10 +275,9 @@ paths:
       tags:
       - projects
     post:
-      description: Administrators only. The creator becomes the project owner. The
-        slugs api, health, metrics, static and admin are reserved. default_image,
-        default_port and default_env only prefill the task creation form; task creation
-        never applies them on its own.
+      description: The creator becomes owner. The slugs api, health, metrics, static
+        and admin are reserved. default_image, default_port and default_env only prefill
+        the task creation form; task creation never applies them on its own.
       operationId: post-projects
       requestBody:
         content:
@@ -332,7 +328,7 @@ paths:
       - projects
   /api/v1/projects/{project}:
     delete:
-      description: A project that still owns tasks cannot be deleted.
+      description: Refused while the project still owns tasks.
       operationId: delete-projects-project
       parameters:
       - in: path
@@ -429,9 +425,9 @@ paths:
       tags:
       - projects
     patch:
-      description: Send registry_credential_id as null to detach the credential; omit
-        it to leave it unchanged. An empty default_image or default_env clears that
-        task form default; existing tasks and their containers are never touched.
+      description: registry_credential_id null detaches the credential, omitted leaves
+        it unchanged. An empty default_image or default_env clears that form default.
+        Existing tasks and containers are never touched.
       operationId: patch-projects-project
       parameters:
       - in: path
@@ -655,12 +651,11 @@ paths:
       - projects
   /api/v1/projects/{project}/metrics/stream:
     get:
-      description: 'Server-Sent Events, roughly one event per task per second. Each
-        event carries {"task": string, "cpu_percent": number, "memory_bytes": integer,
-        "memory_limit": integer, "network_rx_bytes": integer, "network_tx_bytes":
-        integer, "observed_at": string}. Tasks that are not running are omitted, and
-        the server sends a comment heartbeat while idle. Use EventSource rather than
-        a generated client method.'
+      description: 'Server-Sent Events, roughly one per task per second, each carrying
+        {"task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit":
+        integer, "network_rx_bytes": integer, "network_tx_bytes": integer, "observed_at":
+        string}. Tasks that are not running are omitted, and a comment heartbeat fills
+        idle time. Use EventSource, not a generated client method.'
       operationId: get-projects-project-metrics-stream
       parameters:
       - in: path
@@ -813,7 +808,7 @@ paths:
       tags:
       - tasks
     post:
-      description: Task names are unique within a project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.
+      description: Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.
       operationId: post-projects-project-tasks
       parameters:
       - in: path
@@ -877,7 +872,7 @@ paths:
       - tasks
   /api/v1/projects/{project}/tasks/{name}:
     delete:
-      description: Removes the task and its container.
+      description: The container is removed too.
       operationId: delete-projects-project-tasks-name
       parameters:
       - in: path
@@ -980,10 +975,11 @@ paths:
       tags:
       - tasks
     patch:
-      description: 'Only the fields sent are changed. Changing image, port, labels,
-        or env needs a new container: auto_restart applies it immediately and defaults
-        to true, otherwise it is applied by the next start or restart. Editing only
-        the description leaves a running container untouched.'
+      description: 'Only the fields sent are changed. image, port, labels and env
+        need a new container: auto_restart applies it at once and defaults to true,
+        otherwise the next start or restart does. description and dev_status leave
+        a running container untouched. dev_status tracks the code, not the container:
+        in_progress on create, blocked is not fit for QA, ready is.'
       operationId: patch-projects-project-tasks-name
       parameters:
       - in: path
@@ -1053,11 +1049,11 @@ paths:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/deploy:
     post:
-      description: For a build pipeline to call once it has pushed an image. The image
-        must be immutable, of the form repository@sha256:<64 hex digits>, so the exact
-        artifact that was built is the one that runs. Boreas pulls it and recreates
-        the container, leaving a stopped task stopped. Deploying the image a task
-        already runs changes nothing, so a callback may be retried safely.
+      description: For a build pipeline to call after pushing an image. The image
+        must be immutable, of the form repository@sha256:<64 hex digits>, so the artifact
+        that was built is the one that runs. Pulls it and recreates the container,
+        leaving a stopped task stopped. Deploying the image a task already runs changes
+        nothing, so callbacks are safe to retry.
       operationId: post-projects-project-tasks-name-deploy
       parameters:
       - in: path
@@ -1178,9 +1174,9 @@ paths:
       tags:
       - tasks
     post:
-      description: Raises the user's role on this task above whatever the project
-        gives them; it never lowers it. A grant is enough to reach the project without
-        being a member, and it is deleted with the task. Owner cannot be granted here.
+      description: Raises the user's role on this task above what the project gives
+        them, never lowers it. A grant reaches the project without membership and
+        dies with the task. Owner cannot be granted here.
       operationId: post-projects-project-tasks-name-grants
       parameters:
       - in: path
@@ -1375,10 +1371,9 @@ paths:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/logs/stream:
     get:
-      description: 'Server-Sent Events. Each event carries a JSON object {"timestamp":
-        string, "stream": "stdout"|"stderr", "message": string}, and the server sends
-        a comment heartbeat while idle. Use EventSource rather than a generated client
-        method.'
+      description: 'Server-Sent Events, each carrying {"timestamp": string, "stream":
+        "stdout"|"stderr", "message": string}, plus a comment heartbeat while idle.
+        Use EventSource, not a generated client method.'
       operationId: get-projects-project-tasks-name-logs-stream
       parameters:
       - in: query
@@ -1443,9 +1438,8 @@ paths:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/metrics/stream:
     get:
-      description: Server-Sent Events with the same payload as the project-wide stream,
-        limited to this task. Returns 409 when the task has no container yet. Use
-        EventSource rather than a generated client method.
+      description: The project-wide stream's payload, limited to this task. 409 when
+        the task has no container yet. Use EventSource, not a generated client method.
       operationId: get-projects-project-tasks-name-metrics-stream
       parameters:
       - in: path
@@ -1567,9 +1561,9 @@ paths:
       - tasks
   /api/v1/push/subscriptions:
     post:
-      description: Registers an FCM registration token. The device then receives the
-        same deploys the caller can list, and re-registering it moves the subscription
-        to the current caller.
+      description: Takes an FCM registration token. The device receives the deploys
+        the caller can list; re-registering moves the subscription to the current
+        caller.
       operationId: post-push-subscriptions
       requestBody:
         content:
@@ -1608,7 +1602,7 @@ paths:
       - push
   /api/v1/push/subscriptions/{token}:
     delete:
-      description: Users can remove only tokens they registered themselves.
+      description: Users remove only tokens they registered themselves.
       operationId: delete-push-subscriptions-token
       parameters:
       - in: path
@@ -1961,8 +1955,8 @@ paths:
       tags:
       - users
     patch:
-      description: Changing the password or role, or disabling the account, revokes
-        that user's tokens.
+      description: Changing password or role, or disabling the account, revokes that
+        user's tokens.
       operationId: patch-users-id
       parameters:
       - in: path
@@ -2245,6 +2239,13 @@ components:
       required:
       - image
       type: object
+    DevStatus:
+      enum:
+      - in_progress
+      - blocked
+      - ready
+      nullable: true
+      type: string
     ErrorResponse:
       properties:
         error:
@@ -2520,6 +2521,8 @@ components:
           type: string
         description:
           type: string
+        dev_status:
+          $ref: '#/components/schemas/DevStatus'
         env:
           additionalProperties:
             type: string
@@ -2557,6 +2560,7 @@ components:
       - name
       - image
       - status
+      - dev_status
       - port
       - created_at
       - updated_at
@@ -2656,6 +2660,8 @@ components:
         description:
           nullable: true
           type: string
+        dev_status:
+          $ref: '#/components/schemas/DevStatus'
         env:
           additionalProperties:
             type: string

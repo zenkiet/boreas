@@ -640,11 +640,57 @@ func TestUpdateTaskSendsOnlySuppliedFields(t *testing.T) {
 	if got.Description == nil || *got.Description != "new" {
 		t.Fatalf("description = %v", got.Description)
 	}
-	if got.Image != nil || got.Port != nil || got.Labels != nil || got.Env != nil {
+	if got.Image != nil || got.Port != nil || got.Labels != nil || got.Env != nil || got.DevStatus != nil {
 		t.Fatalf("omitted fields were sent: %+v", got)
 	}
 	if !recreate {
 		t.Fatal("auto_restart must default to true")
+	}
+}
+
+func TestUpdateTaskForwardsDevStatus(t *testing.T) {
+	var got service.UpdateTaskInput
+	h := testHandler(stubTasks{
+		update: func(_ context.Context, _, _ string, in service.UpdateTaskInput, _ bool) (core.Task, error) {
+			got = in
+			return core.Task{Name: "T", DevStatus: core.DevReady}, nil
+		},
+	}, nil, nil)
+
+	body := strings.NewReader(`{"dev_status":"ready"}`)
+	rr := do(h, authed(http.MethodPatch, "/api/v1/projects/team/tasks/T", body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body)
+	}
+	if got.DevStatus == nil || *got.DevStatus != core.DevReady {
+		t.Fatalf("dev status = %v", got.DevStatus)
+	}
+	if got.Image != nil || got.Port != nil || got.Labels != nil || got.Env != nil {
+		t.Fatalf("omitted fields were sent: %+v", got)
+	}
+	if !strings.Contains(rr.Body.String(), `"dev_status":"ready"`) {
+		t.Fatalf("response omits dev_status: %s", rr.Body.String())
+	}
+}
+
+// Only a member of the task, or an administrator, reports development progress.
+func TestDevStatusNeedsMemberAccess(t *testing.T) {
+	cases := []struct {
+		role core.ProjectRole
+		want int
+	}{
+		{core.ProjectRoleViewer, http.StatusForbidden},
+		{core.ProjectRoleOperator, http.StatusForbidden},
+		{core.ProjectRoleMember, http.StatusOK},
+		{core.ProjectRoleOwner, http.StatusOK},
+	}
+	for _, tc := range cases {
+		h := testHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{role: tc.role})
+		rr := do(h, authed(http.MethodPatch, "/api/v1/projects/team/tasks/web",
+			strings.NewReader(`{"dev_status":"ready"}`)))
+		if rr.Code != tc.want {
+			t.Fatalf("dev status as %s = %d, want %d", tc.role, rr.Code, tc.want)
+		}
 	}
 }
 

@@ -78,6 +78,9 @@ func (f *fakeTaskStore) Create(_ context.Context, task core.Task) (core.Task, er
 	}
 	task.ID = uuid.New()
 	task.CreatedAt, task.UpdatedAt = f.tick(), f.now
+	if task.DevStatus == "" {
+		task.DevStatus = core.DevInProgress
+	}
 	f.tasks[task.ID] = task.Clone()
 	return task.Clone(), nil
 }
@@ -89,6 +92,9 @@ func (f *fakeTaskStore) Update(_ context.Context, task core.Task) (core.Task, er
 	}
 	task.CreatedAt = existing.CreatedAt
 	task.UpdatedAt = f.tick()
+	if task.DevStatus == "" {
+		task.DevStatus = core.DevInProgress
+	}
 	f.tasks[task.ID] = task.Clone()
 	return task.Clone(), nil
 }
