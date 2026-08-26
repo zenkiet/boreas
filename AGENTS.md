@@ -17,6 +17,10 @@ must be regenerated (see below).
 No cgo: the binary builds with `CGO_ENABLED=0`. Only `make test-race` needs
 CGO because the race detector requires it.
 
+Alternatively, open the repository in the dev container
+(`.devcontainer/devcontainer.json`): it provides Go, golangci-lint,
+lefthook, and an isolated Docker daemon, so all commands below work as-is.
+
 ## Setup
 
 ```bash
