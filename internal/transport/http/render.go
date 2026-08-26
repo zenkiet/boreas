@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/zenkiet/boreas/internal/core"
@@ -36,7 +36,7 @@ func writeBadRequest(w http.ResponseWriter) {
 	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 }
 
-func writeServiceError(w http.ResponseWriter, logger *log.Logger, err error) {
+func writeServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	status, message := http.StatusInternalServerError, "internal server error"
 	switch {
 	case errors.Is(err, core.ErrInvalidInput):
@@ -50,7 +50,7 @@ func writeServiceError(w http.ResponseWriter, logger *log.Logger, err error) {
 	case errors.Is(err, core.ErrAlreadyExists), errors.Is(err, core.ErrConflict):
 		status, message = http.StatusConflict, "conflict"
 	default:
-		logger.Printf("http transport: %v", err)
+		logger.Error("http transport", "error", err)
 	}
 	writeJSON(w, status, map[string]string{"error": message})
 }

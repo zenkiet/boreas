@@ -5,7 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,9 +18,9 @@ var migrationFiles embed.FS
 const migrationLockID int64 = 8021957372116418
 
 // RunMigrations commits each migration and its record atomically for safe retries.
-func RunMigrations(ctx context.Context, pool *pgxpool.Pool, logger *log.Logger) error {
+func RunMigrations(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
 	if logger == nil {
-		logger = log.Default()
+		logger = slog.Default()
 	}
 
 	conn, err := pool.Acquire(ctx)
@@ -35,7 +35,7 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool, logger *log.Logger) 
 	}
 	defer func() {
 		if _, err := conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrationLockID); err != nil {
-			logger.Printf("release migration lock: %v", err)
+			logger.Error("release migration lock", "error", err)
 		}
 	}()
 
@@ -73,7 +73,7 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool, logger *log.Logger) 
 			return fmt.Errorf("read migration file %s: %w", entry.Name(), err)
 		}
 
-		logger.Printf("applying migration %s", version)
+		logger.Info("applying migration", "version", version)
 
 		tx, err := conn.Begin(ctx)
 		if err != nil {
@@ -91,7 +91,7 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool, logger *log.Logger) 
 			return fmt.Errorf("commit migration %s: %w", version, err)
 		}
 
-		logger.Printf("applied migration %s", version)
+		logger.Info("applied migration", "version", version)
 	}
 
 	return nil
