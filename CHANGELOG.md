@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.7.0 - 2026-08-25
+#### 🚀 Features
+- ✨ implement dev status - (3d5e164) - Zen Kiet
+
+- - -
+
 ## v1.6.1 - 2026-08-24
 #### ♻️ Code Refactoring
 - ♻️ improve notification response - (86e8363) - Zen Kiet
