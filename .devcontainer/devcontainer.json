@@ -1,0 +1,33 @@
+{
+  "name": "boreas",
+  "image": "mcr.microsoft.com/devcontainers/go:1-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "forwardPorts": [8080, 5432],
+  "portsAttributes": {
+    "8080": { "label": "boreas API" },
+    "5432": { "label": "postgres" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "go.lintTool": "golangci-lint",
+        "go.formatTool": "custom",
+        "go.alternateTools": {
+          "customFormatter": "golangci-lint"
+        },
+        "go.formatFlags": ["fmt", "--stdin"]
+      }
+    }
+  },
+  "containerEnv": {
+    "GOTOOLCHAIN": "auto"
+  }
+}
