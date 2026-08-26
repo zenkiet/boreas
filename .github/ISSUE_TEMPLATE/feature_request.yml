@@ -1,0 +1,70 @@
+name: Feature request
+description: Propose new behavior or an improvement to existing behavior
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Boreas stays deliberately small: one container per task, state in
+        PostgreSQL, configuration by environment variables only. Proposals
+        that state the underlying problem get much further than ones that
+        state a solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do today, or what is needlessly painful? Who hits this and how often?
+      placeholder: >
+        Our QA team cannot tell which tasks are worth testing; they ping
+        developers on chat for every task.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: >
+        What should Boreas do? For API changes, sketch the route and payload;
+        for configuration, name the BOREAS_* variable and its default.
+      placeholder: |
+        PATCH /api/v1/projects/{project}/tasks/{name} accepts "dev_status":
+        "in_progress" | "blocked" | "ready", returned in task responses.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - HTTP API (/api/v1 routes, auth, tokens)
+        - Reverse proxy (/{project}/{task}/ traffic)
+        - Task lifecycle (create, deploy, start/stop, delete)
+        - Docker runtime (containers, images, registry pulls)
+        - Database / migrations
+        - Notifications (feed, Apprise, FCM push)
+        - Logs / metrics streaming (SSE)
+        - OpenAPI spec / docs endpoints
+        - Access control (roles, grants)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use today, or designs you rejected and why.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Fit with project constraints
+      description: The proposal should hold these; tick what you have checked.
+      options:
+        - label: Works with configuration via environment variables only (no config files)
+        - label: Keeps the API described by the generated OpenAPI contract (routes/DTOs, not ad hoc endpoints)
+        - label: Does not require cgo or break the static CGO_ENABLED=0 build

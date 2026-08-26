@@ -1,0 +1,100 @@
+name: Bug report
+description: Something in Boreas misbehaves, crashes, or answers wrong
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Fill in what you know; exact commands and log
+        lines shorten the round trip more than anything else.
+
+  - type: input
+    id: version
+    attributes:
+      label: Boreas version
+      description: >
+        Release tag or commit (`docker image inspect`, the release archive
+        name, or `git rev-parse HEAD` for a source build).
+      placeholder: v1.7.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - docker compose (repository docker-compose.yaml)
+        - Container image (ghcr.io/zenkiet/boreas)
+        - Binary / go run (make dev)
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - HTTP API (/api/v1 routes, auth, tokens)
+        - Reverse proxy (/{project}/{task}/ traffic)
+        - Task lifecycle (create, deploy, start/stop, delete)
+        - Docker runtime (containers, images, registry pulls)
+        - Database / migrations
+        - Notifications (feed, Apprise, FCM push)
+        - Logs / metrics streaming (SSE)
+        - OpenAPI spec / docs endpoints
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: >
+        The exact requests or commands, in order. curl commands like the ones
+        in the README are ideal. Redact tokens and passwords.
+      placeholder: |
+        1. BOREAS_ADMIN_PASSWORD=change-me docker compose up --build -d
+        2. curl -X POST http://localhost:8080/api/v1/projects ... -d '{"slug":"demo","name":"Demo"}'
+        3. curl -X POST http://localhost:8080/api/v1/projects/demo/tasks ... -d '{"name":"web","image":"nginx:alpine","port":80}'
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: Task is created and reachable at /demo/web/
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the HTTP status and response body when the API is involved.
+      placeholder: |
+        HTTP 500 with {"error":"internal server error"}
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >
+        Boreas log lines around the failure (`docker compose logs boreas`).
+        Redact secrets; lines are JSON, so paste them as-is.
+      render: text
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker Engine version, PostgreSQL version, and any non-default BOREAS_* configuration (names only, never values of secrets).
+      placeholder: |
+        Ubuntu 24.04, Docker 27.1, PostgreSQL 18
+        BOREAS_NOTIFY_URL set, BOREAS_FCM_* unset
