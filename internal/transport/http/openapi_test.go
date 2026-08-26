@@ -2,8 +2,7 @@ package httptransport
 
 import (
 	"encoding/json"
-	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -116,7 +115,7 @@ func TestSpecRoundTrips(t *testing.T) {
 }
 
 func TestDocsEndpoints(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, log.New(io.Discard, "", 0))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, slog.New(slog.DiscardHandler))
 
 	rr := do(h, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	if rr.Code != http.StatusOK {

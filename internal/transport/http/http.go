@@ -4,7 +4,7 @@ package httptransport
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -67,9 +67,9 @@ type PushStore interface {
 const maxRequestBytes = 1 << 20
 
 // APIHandler serves the API and applies each route's declared access policy.
-func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, logger *log.Logger) http.Handler {
+func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, logger *slog.Logger) http.Handler {
 	if logger == nil {
-		logger = log.Default()
+		logger = slog.Default()
 	}
 	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, logger: logger}
 

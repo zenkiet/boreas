@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +18,7 @@ import (
 	pginfra "github.com/zenkiet/boreas/internal/infra/postgres"
 	proxyinfra "github.com/zenkiet/boreas/internal/infra/proxy"
 	"github.com/zenkiet/boreas/internal/pkg/database"
+	"github.com/zenkiet/boreas/internal/pkg/logging"
 	"github.com/zenkiet/boreas/internal/service"
 	httptransport "github.com/zenkiet/boreas/internal/transport/http"
 )
@@ -36,14 +37,15 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Printf("boreas stopped with error: %v", err)
+	logger := logging.New(os.Stdout)
+	slog.SetDefault(logger)
+	if err := run(logger); err != nil {
+		logger.Error("boreas stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	logger := log.New(os.Stdout, "boreas ", log.LstdFlags|log.Lmicroseconds)
+func run(logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -99,7 +101,7 @@ func run() error {
 		sender.Targets = func(ctx context.Context, n core.Notification) []string {
 			tokens, err := push.Tokens(ctx, n.ProjectID, n.TaskName)
 			if err != nil {
-				logger.Printf("list push subscriptions: %v", err)
+				logger.Error("list push subscriptions", "error", err)
 				return nil
 			}
 			for i, token := range tokens {
@@ -122,7 +124,7 @@ func run() error {
 		return err
 	}
 	if err := tasks.Reconcile(startupCtx); err != nil {
-		logger.Printf("startup reconciliation completed with warnings: %v", err)
+		logger.Warn("startup reconciliation completed with warnings", "error", err)
 	}
 
 	handler := httptransport.ApplicationHandler(
@@ -143,7 +145,7 @@ func run() error {
 
 	serverErrors := make(chan error, 1)
 	go func() {
-		logger.Printf("listening on http://%s", cfg.ListenAddr())
+		logger.Info("listening", "addr", cfg.ListenAddr())
 		serverErrors <- server.ListenAndServe()
 	}()
 
@@ -164,31 +166,31 @@ func run() error {
 	return nil
 }
 
-func notifier(store *pginfra.NotificationStore, sender *apprise.Sender, logger *log.Logger) func(context.Context, core.Notification) {
+func notifier(store *pginfra.NotificationStore, sender *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
 	return func(ctx context.Context, n core.Notification) {
 		ctx = context.WithoutCancel(ctx)
 		go func() {
 			ctx, cancel := context.WithTimeout(ctx, notifyTimeout)
 			defer cancel()
 			if _, err := store.Create(ctx, n); err != nil {
-				logger.Printf("record notification: %v", err)
+				logger.Error("record notification", "error", err)
 			}
 			if err := sender.Send(ctx, n); err != nil {
-				logger.Printf("push notification: %v", err)
+				logger.Error("push notification", "error", err)
 			}
 		}()
 	}
 }
 
 // seedAdmin fails startup rather than leave an empty installation unreachable.
-func seedAdmin(ctx context.Context, auth *service.AuthService, users *pginfra.UserStore, admin config.AdminConfig, logger *log.Logger) error {
+func seedAdmin(ctx context.Context, auth *service.AuthService, users *pginfra.UserStore, admin config.AdminConfig, logger *slog.Logger) error {
 	if admin.Provided() {
 		created, err := auth.EnsureAdmin(ctx, admin.Username, admin.Email, admin.Password)
 		if err != nil {
 			return err
 		}
 		if created {
-			logger.Printf("created initial admin user %q", admin.Username)
+			logger.Info("created initial admin user", "username", admin.Username)
 		}
 		return nil
 	}

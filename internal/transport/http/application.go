@@ -1,15 +1,15 @@
 package httptransport
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 )
 
 // ApplicationHandler routes the protected API separately so proxied task traffic stays public.
-func ApplicationHandler(api, proxy http.Handler, logger *log.Logger) http.Handler {
+func ApplicationHandler(api, proxy http.Handler, logger *slog.Logger) http.Handler {
 	if logger == nil {
-		logger = log.Default()
+		logger = slog.Default()
 	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

@@ -42,7 +42,7 @@ func (h *Handler) logs(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`-logs.txt"`)
 	}
 	if _, err := stdcopy.StdCopy(w, w, reader); err != nil && !errors.Is(err, r.Context().Err()) {
-		h.logger.Printf("stream task logs: %v", err)
+		h.logger.Error("stream task logs", "error", err)
 	}
 }
 
@@ -99,7 +99,7 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 					_, _ = w.Write(append(append([]byte("data: "), payload...), '\n', '\n'))
 				default:
 					if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, r.Context().Err()) {
-						h.logger.Printf("decode task log stream: %v", err)
+						h.logger.Error("decode task log stream", "error", err)
 					}
 					_ = rc.Flush()
 					return

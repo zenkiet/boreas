@@ -444,6 +444,7 @@ the database connection and the initial administrator.
 | Variable                | Default           | Purpose                                                                      |
 | ----------------------- | ----------------- | ---------------------------------------------------------------------------- |
 | `BOREAS_PORT`           | `8080`            | HTTP listen port                                                             |
+| `BOREAS_LOG_LEVEL`      | `info`            | Minimum log level: `debug`, `info`, `warn`, or `error`; logs are JSON lines  |
 | `BOREAS_DATABASE_URL`   | unset             | Full connection string; overrides the `BOREAS_DB_*` variables                |
 | `BOREAS_DB_HOST`        | `localhost`       | Database host                                                                |
 | `BOREAS_DB_PORT`        | `5432`            | Database port                                                                |

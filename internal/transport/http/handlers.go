@@ -2,7 +2,7 @@ package httptransport
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,7 +18,7 @@ type Handler struct {
 	auth     AuthService
 	projects ProjectService
 	push     PushStore
-	logger   *log.Logger
+	logger   *slog.Logger
 }
 
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {

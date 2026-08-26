@@ -1,7 +1,7 @@
 package httptransport
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -12,11 +12,13 @@ const (
 	allowedHeaders = "Authorization, Content-Type"
 )
 
-func recoverPanic(logger *log.Logger, next http.Handler) http.Handler {
+func recoverPanic(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				logger.Printf("panic serving %s %s: %v\n%s", r.Method, r.URL.Path, recovered, debug.Stack())
+				logger.Error("panic serving request",
+					"method", r.Method, "path", r.URL.Path,
+					"panic", recovered, "stack", string(debug.Stack()))
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			}
 		}()
@@ -49,7 +51,7 @@ func (w *responseRecorder) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func logRequests(logger *log.Logger, next http.Handler) http.Handler {
+func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		rw := &responseRecorder{ResponseWriter: w}
@@ -58,7 +60,9 @@ func logRequests(logger *log.Logger, next http.Handler) http.Handler {
 			if status == 0 {
 				status = http.StatusOK
 			}
-			logger.Printf("%s %s status=%d bytes=%d duration=%s", r.Method, r.URL.RequestURI(), status, rw.bytes, time.Since(started))
+			logger.Info("request",
+				"method", r.Method, "uri", r.URL.RequestURI(),
+				"status", status, "bytes", rw.bytes, "duration", time.Since(started))
 		}()
 		next.ServeHTTP(rw, r)
 	})
