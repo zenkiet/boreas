@@ -342,6 +342,17 @@ func TestMarkNotificationSeenIsPerUser(t *testing.T) {
 		t.Fatalf("another user's view must stay unseen: %+v, %v", listed, err)
 	}
 
+	if err := svc.MarkNotificationUnseen(ctx, accFor(alice), n.ID); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = svc.Notifications(ctx, accFor(alice), 10)
+	if err != nil || len(listed) != 1 || listed[0].Seen {
+		t.Fatalf("unseen must clear the mark: %+v, %v", listed, err)
+	}
+	if err := svc.MarkNotificationUnseen(ctx, accFor(alice), n.ID); err != nil {
+		t.Fatalf("unseen must be idempotent: %v", err)
+	}
+
 	// A grantee without a grant on the task cannot mark it.
 	eve := member()
 	granteeAcc := core.ProjectAccess{Project: project, UserID: eve.ID, AllTasks: false}

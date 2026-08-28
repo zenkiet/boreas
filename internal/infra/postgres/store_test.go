@@ -61,8 +61,8 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	store := NewTaskStore(pool)
 
 	created, err := store.Create(ctx, core.Task{
-		ProjectID: project.ID, Name: "web", Image: "nginx:alpine",
-		Status: core.StatusCreating, Port: 8080,
+		ProjectID: project.ID, Name: "web", Description: "front door", Note: "## Setup\n`make db`",
+		Image: "nginx:alpine", Status: core.StatusCreating, Port: 8080,
 		Labels: map[string]string{"tier": "front"},
 		Env:    map[string]string{"KEY": "value"},
 	})
@@ -74,6 +74,9 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	}
 	if created.Labels["tier"] != "front" || created.Env["KEY"] != "value" {
 		t.Fatalf("JSONB round trip failed: %+v", created)
+	}
+	if created.Description != "front door" || created.Note != "## Setup\n`make db`" {
+		t.Fatalf("description/note round trip failed: %+v", created)
 	}
 
 	fetched, err := store.GetByName(ctx, project.ID, "web")
@@ -96,6 +99,9 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Fatal("created_at changed on update")
+	}
+	if updated.Description != "front door" || updated.Note != created.Note {
+		t.Fatalf("update lost description/note: %+v", updated)
 	}
 
 	if err := store.Delete(ctx, created.ID); err != nil {
@@ -226,6 +232,20 @@ func TestNotificationSeenPerUser(t *testing.T) {
 	}
 	if len(listed) != 1 || listed[0].Seen {
 		t.Fatalf("another user's view must stay unseen: %+v", listed)
+	}
+
+	if err := store.MarkUnseen(ctx, created.ID, alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkUnseen(ctx, created.ID, alice.ID); err != nil {
+		t.Fatalf("unseen must be idempotent: %v", err)
+	}
+	listed, err = store.List(ctx, project.ID, alice.ID, true, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed[0].Seen {
+		t.Fatalf("unseen must clear the mark: %+v", listed)
 	}
 
 	// Without a grant on the task, a non-member's mark is a no-op.

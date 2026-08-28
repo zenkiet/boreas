@@ -762,6 +762,63 @@ paths:
       tags:
       - projects
   /api/v1/projects/{project}/notifications/{id}/seen:
+    delete:
+      description: Clears the caller's own seen mark. Idempotent.
+      operationId: delete-projects-project-notifications-id-seen
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Mark a notification unseen
+      tags:
+      - projects
     post:
       description: Seen is tracked per user. Idempotent; an id outside the caller's
         visibility is a no-op.
@@ -2224,6 +2281,8 @@ components:
         name:
           example: web
           type: string
+        note:
+          type: string
         port:
           example: 80
           type: integer
@@ -2605,6 +2664,11 @@ components:
         name:
           example: web
           type: string
+        note:
+          example: |-
+            ## Context
+            Needs the staging DB seeded.
+          type: string
         pending_recreate:
           type: boolean
         port:
@@ -2739,6 +2803,9 @@ components:
             type: string
           nullable: true
           type: object
+        note:
+          nullable: true
+          type: string
         port:
           example: 80
           nullable: true

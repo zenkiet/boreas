@@ -100,6 +100,7 @@ type taskDTO struct {
 	ProjectID       uuid.UUID         `json:"project_id"`
 	Name            string            `json:"name" example:"web"`
 	Description     string            `json:"description,omitempty"`
+	Note            string            `json:"note,omitempty" example:"## Context\nNeeds the staging DB seeded."`
 	Image           string            `json:"image" example:"nginx:alpine"`
 	Status          core.TaskStatus   `json:"status"`
 	DevStatus       core.DevStatus    `json:"dev_status"`
@@ -119,7 +120,7 @@ func taskFromCore(t core.Task) taskDTO {
 		t.Env = map[string]string{}
 	}
 	return taskDTO{
-		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description,
+		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description, Note: t.Note,
 		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
@@ -140,6 +141,7 @@ type createTaskRequest struct {
 	Project     string            `json:"-" path:"project" example:"demo"`
 	Name        string            `json:"name" example:"web"`
 	Description string            `json:"description,omitempty"`
+	Note        string            `json:"note,omitempty"`
 	Image       string            `json:"image" example:"nginx:alpine"`
 	Port        int               `json:"port,omitempty" example:"80"`
 	Labels      map[string]string `json:"labels,omitempty"`
@@ -150,6 +152,7 @@ type updateTaskRequest struct {
 	Project     string             `json:"-" path:"project" example:"demo"`
 	Name        string             `json:"-" path:"name" example:"web"`
 	Description *string            `json:"description,omitempty"`
+	Note        *string            `json:"note,omitempty"`
 	DevStatus   *core.DevStatus    `json:"dev_status,omitempty"`
 	Image       *string            `json:"image,omitempty" example:"nginx:1.27-alpine"`
 	Port        *int               `json:"port,omitempty" example:"80"`

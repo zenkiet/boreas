@@ -71,6 +71,15 @@ func (s *NotificationStore) MarkSeen(ctx context.Context, id, projectID, userID 
 	return nil
 }
 
+func (s *NotificationStore) MarkUnseen(ctx context.Context, id, userID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM notification_seen WHERE notification_id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return mapError("mark notification unseen", err)
+	}
+	return nil
+}
+
 func scanNotification(row pgx.CollectableRow) (core.Notification, error) {
 	var n core.Notification
 	err := row.Scan(&n.ID, &n.ProjectID, &n.TaskName, &n.Status, &n.Title, &n.Body, &n.CreatedAt, &n.Seen)

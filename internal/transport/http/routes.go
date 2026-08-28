@@ -258,6 +258,14 @@ var routeTable = [...]route{
 		req:         new(notificationSeenPath), resp: new(successResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest},
 	},
+	{
+		method: http.MethodDelete, path: "/api/v1/projects/{project}/notifications/{id}/seen", access: accessViewer,
+		handler: (*Handler).markNotificationUnseen,
+		tag:     "projects", summary: "Mark a notification unseen",
+		description: "Clears the caller's own seen mark. Idempotent.",
+		req:         new(notificationSeenPath), resp: new(successResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest},
+	},
 
 	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks", access: accessViewer,

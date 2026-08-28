@@ -226,6 +226,10 @@ func (s *stubProjects) MarkNotificationSeen(c context.Context, acc core.ProjectA
 	return nil
 }
 
+func (*stubProjects) MarkNotificationUnseen(context.Context, core.ProjectAccess, uuid.UUID) error {
+	return nil
+}
+
 func (s *stubProjects) ListGrants(c context.Context, slug, name string) ([]core.TaskGrant, error) {
 	if s.listGrants != nil {
 		return s.listGrants(c, slug, name)

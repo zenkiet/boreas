@@ -532,6 +532,25 @@ func TestUpdateDescriptionLeavesContainerAlone(t *testing.T) {
 	if h.routes.registered["team/web"] != created.ContainerIP {
 		t.Fatal("route was disturbed")
 	}
+
+	note := "## Context\n- seed the staging DB\n\n`make db`"
+	updated, err = h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{Note: &note}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Note != note {
+		t.Fatalf("a note-only update was not persisted: %q", updated.Note)
+	}
+	stored, err := h.svc.Get(context.Background(), "team", "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Note != note || stored.Description != "after" {
+		t.Fatalf("note round trip lost data: %+v", stored)
+	}
+	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
+		t.Fatalf("a note change touched the container: stops=%d recreates=%d", len(h.runtime.stopped), len(h.runtime.recreated))
+	}
 }
 
 func TestDevStatusStartsInProgressAndMovesWithoutTouchingTheContainer(t *testing.T) {

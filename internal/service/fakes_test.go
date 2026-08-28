@@ -331,6 +331,11 @@ func (f *fakeNotificationStore) MarkSeen(_ context.Context, id, projectID, userI
 	return nil
 }
 
+func (f *fakeNotificationStore) MarkUnseen(_ context.Context, id, userID uuid.UUID) error {
+	delete(f.seen, grantKey{id, userID})
+	return nil
+}
+
 // grantedName resolves a notification's task name to a grant the way the SQL join does.
 func (f *fakeTaskStore) grantedName(projectID, userID uuid.UUID, name string) bool {
 	for _, task := range f.tasks {

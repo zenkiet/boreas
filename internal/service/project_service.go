@@ -53,6 +53,13 @@ func (s *ProjectService) MarkNotificationSeen(ctx context.Context, acc core.Proj
 	return nil
 }
 
+func (s *ProjectService) MarkNotificationUnseen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error {
+	if err := s.notifications.MarkUnseen(ctx, id, acc.UserID); err != nil {
+		return fmt.Errorf("mark notification unseen: %w", err)
+	}
+	return nil
+}
+
 // List scopes non-admin results to memberships to enforce project visibility.
 func (s *ProjectService) List(ctx context.Context, actor core.User) ([]core.Project, error) {
 	var (

@@ -245,6 +245,7 @@ type Task struct {
 	ProjectID       uuid.UUID
 	Name            string
 	Description     string
+	Note            string
 	Image           string
 	Status          TaskStatus
 	DevStatus       DevStatus
@@ -416,6 +417,7 @@ type NotificationStore interface {
 	Create(context.Context, Notification) (Notification, error)
 	List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool, limit int) ([]Notification, error)
 	MarkSeen(ctx context.Context, id, projectID, userID uuid.UUID, allTasks bool) error
+	MarkUnseen(ctx context.Context, id, userID uuid.UUID) error
 }
 
 type GrantStore interface {

@@ -13,7 +13,7 @@ type TaskStore struct{ pool *pgxpool.Pool }
 
 func NewTaskStore(pool *pgxpool.Pool) *TaskStore { return &TaskStore{pool: pool} }
 
-const taskColumns = `id, project_id, name, description, image, status, dev_status, port,
+const taskColumns = `id, project_id, name, description, note, image, status, dev_status, port,
 	container_id, container_ip, labels, env, pending_recreate, error, created_at, updated_at`
 
 func (s *TaskStore) List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool) ([]core.Task, error) {
@@ -51,11 +51,11 @@ func (s *TaskStore) GetByName(ctx context.Context, projectID uuid.UUID, name str
 
 func (s *TaskStore) Create(ctx context.Context, task core.Task) (core.Task, error) {
 	rows, err := s.pool.Query(ctx, `
-		INSERT INTO tasks (project_id, name, description, image, status, dev_status, port,
+		INSERT INTO tasks (project_id, name, description, note, image, status, dev_status, port,
 			container_id, container_ip, labels, env, pending_recreate, error)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING `+taskColumns,
-		task.ProjectID, task.Name, task.Description, task.Image, task.Status,
+		task.ProjectID, task.Name, task.Description, task.Note, task.Image, task.Status,
 		devStatusOrDefault(task.DevStatus), task.Port,
 		task.ContainerID, task.ContainerIP, nonNilMap(task.Labels), nonNilMap(task.Env),
 		task.PendingRecreate, task.Error)
@@ -72,12 +72,12 @@ func (s *TaskStore) Create(ctx context.Context, task core.Task) (core.Task, erro
 // Update leaves updated_at to the database trigger and returns its value.
 func (s *TaskStore) Update(ctx context.Context, task core.Task) (core.Task, error) {
 	rows, err := s.pool.Query(ctx, `
-		UPDATE tasks SET description = $2, image = $3, status = $4, dev_status = $5, port = $6,
-			container_id = $7, container_ip = $8, labels = $9, env = $10,
-			pending_recreate = $11, error = $12
+		UPDATE tasks SET description = $2, note = $3, image = $4, status = $5, dev_status = $6, port = $7,
+			container_id = $8, container_ip = $9, labels = $10, env = $11,
+			pending_recreate = $12, error = $13
 		WHERE id = $1
 		RETURNING `+taskColumns,
-		task.ID, task.Description, task.Image, task.Status,
+		task.ID, task.Description, task.Note, task.Image, task.Status,
 		devStatusOrDefault(task.DevStatus), task.Port,
 		task.ContainerID, task.ContainerIP, nonNilMap(task.Labels), nonNilMap(task.Env),
 		task.PendingRecreate, task.Error)
@@ -104,7 +104,7 @@ func devStatusOrDefault(status core.DevStatus) core.DevStatus {
 
 func scanTask(row pgx.CollectableRow) (core.Task, error) {
 	var t core.Task
-	err := row.Scan(&t.ID, &t.ProjectID, &t.Name, &t.Description, &t.Image, &t.Status, &t.DevStatus, &t.Port,
+	err := row.Scan(&t.ID, &t.ProjectID, &t.Name, &t.Description, &t.Note, &t.Image, &t.Status, &t.DevStatus, &t.Port,
 		&t.ContainerID, &t.ContainerIP, &t.Labels, &t.Env, &t.PendingRecreate, &t.Error,
 		&t.CreatedAt, &t.UpdatedAt)
 	if err != nil {

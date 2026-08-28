@@ -178,7 +178,7 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
-| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, description, or dev status |
+| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, description, note, or dev status |
 | `POST`   | `/projects/{project}/tasks/{name}/deploy`      | operator      | Deploy an image built elsewhere                 |
 | `PUT`    | `/projects/{project}/tasks/{name}/state`       | operator      | Start, stop, or restart                         |
 | `DELETE` | `/projects/{project}/tasks/{name}`             | member        | Delete a task and its container                 |
@@ -237,6 +237,24 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
 
 The API returns the value only; mapping the three values to colours is the
 client's business.
+
+## Task notes
+
+A task carries two free-text fields. `description` is the one-line summary that
+list views and notification bodies show, so keep it short. `note` is an
+open-ended scratchpad for whatever the task needs — context, checklists,
+credentials to rotate, links:
+
+```bash
+curl -X PATCH -H "$AUTH" -H "$JSON" \
+  -d '{"note":"## Context\n- seed the staging DB\n\n`make db`"}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/web
+```
+
+Both are stored and returned verbatim, so `note` holds Markdown without any
+server-side interpretation: Boreas never renders it. A client that renders it
+as HTML must sanitise the result, because any member of a task can write it.
+Neither field changes the container and neither raises a notification.
 
 ## Task form defaults
 
@@ -371,7 +389,12 @@ idempotent, and an id outside the caller's visibility is a no-op:
 ```bash
 curl -X POST -H "$AUTH" \
   'http://localhost:8080/api/v1/projects/demo/notifications/<id>/seen'
+
+curl -X DELETE -H "$AUTH" \
+  'http://localhost:8080/api/v1/projects/demo/notifications/<id>/seen'
 ```
+
+`DELETE` clears the caller's own mark, making the entry unread again.
 
 ### Team destinations (Slack, ntfy, …)
 

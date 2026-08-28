@@ -373,6 +373,19 @@ func (h *Handler) markNotificationSeen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
+func (h *Handler) markNotificationUnseen(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	if err := h.projects.MarkNotificationUnseen(r.Context(), accessFrom(r.Context()), id); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
+}
+
 func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {
 	var req addMemberRequest
 	if err := decodeJSON(w, r, maxRequestBytes, &req); err != nil {
@@ -480,7 +493,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	task, err := h.tasks.Create(r.Context(), r.PathValue("project"), service.CreateTaskInput{
-		Name: req.Name, Description: req.Description, Image: req.Image,
+		Name: req.Name, Description: req.Description, Note: req.Note, Image: req.Image,
 		Port: req.Port, Labels: req.Labels, Env: req.Env,
 	})
 	if err != nil {
@@ -499,7 +512,7 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	autoRestart := req.AutoRestart == nil || *req.AutoRestart
 	task, err := h.tasks.Update(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		service.UpdateTaskInput{
-			Description: req.Description, DevStatus: req.DevStatus, Image: req.Image, Port: req.Port,
+			Description: req.Description, Note: req.Note, DevStatus: req.DevStatus, Image: req.Image, Port: req.Port,
 			Labels: req.Labels, Env: req.Env,
 		}, autoRestart)
 	if err != nil {
