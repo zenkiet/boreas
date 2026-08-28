@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.9.0 - 2026-08-28
+#### 🚀 Features
+- ✨ implement note markdown for task - (a310a63) - Zen Kiet
+
+- - -
+
 ## v1.8.0 - 2026-08-28
 #### 🚀 Features
 - ✨ improve  notification for task - (fed4eb2) - Zen Kiet
