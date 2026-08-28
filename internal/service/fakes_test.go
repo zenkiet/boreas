@@ -282,7 +282,8 @@ func (f *fakeCredentialStore) Delete(_ context.Context, id uuid.UUID) error {
 
 type fakeNotificationStore struct {
 	notifications []core.Notification
-	tasks         *fakeTaskStore // resolves task names to grants, as the SQL join does
+	seen          map[grantKey]bool // keyed by (notification ID, user ID)
+	tasks         *fakeTaskStore    // resolves task names to grants, as the SQL join does
 }
 
 func newFakeNotificationStore(tasks *fakeTaskStore) *fakeNotificationStore {
@@ -308,9 +309,26 @@ func (f *fakeNotificationStore) List(
 		if !allTasks && (f.tasks == nil || !f.tasks.grantedName(projectID, userID, n.TaskName)) {
 			continue
 		}
+		n.Seen = f.seen[grantKey{n.ID, userID}]
 		result = append(result, n)
 	}
 	return result, nil
+}
+
+func (f *fakeNotificationStore) MarkSeen(_ context.Context, id, projectID, userID uuid.UUID, allTasks bool) error {
+	for _, n := range f.notifications {
+		if n.ID != id || n.ProjectID != projectID {
+			continue
+		}
+		if !allTasks && (f.tasks == nil || !f.tasks.grantedName(projectID, userID, n.TaskName)) {
+			continue
+		}
+		if f.seen == nil {
+			f.seen = map[grantKey]bool{}
+		}
+		f.seen[grantKey{id, userID}] = true
+	}
+	return nil
 }
 
 // grantedName resolves a notification's task name to a grant the way the SQL join does.

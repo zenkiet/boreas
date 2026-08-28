@@ -336,24 +336,53 @@ reports cumulative counters and the first sample has nothing to compare against.
 than the larger raw cgroup figure. Tasks that are not running are omitted, and a
 grantee sees only the tasks they were granted.
 
-## Deploy notifications
+## Notifications
 
-Every deploy records a notification, successful or failed, and Boreas serves
-them newest-first for an in-app feed:
+Deploys and task lifecycle changes — creation, assignment, development status —
+each record a notification, and Boreas serves them newest-first for an in-app
+feed:
 
 ```bash
 curl -H "$AUTH" \
   'http://localhost:8080/api/v1/projects/demo/notifications?limit=20'
 ```
 
+Every notification shares one shape across every channel (the feed, browser
+push, and team destinations): title `<emoji> <Event> • <Project>`, body
+`<task>: <detail>`. Deploy bodies carry the completion time as a local
+12-hour clock with no timezone suffix; other channels render their own
+arrival timestamp.
+
+| Event              | `status`  | Example                                                                          |
+| ------------------ | --------- | -------------------------------------------------------------------------------- |
+| Deploy succeeded   | `success` | `🚀 Deploy Succeeded • Shop` / `web: Task completed at 11:00PM`                  |
+| Deploy failed      | `failure` | `❌ Deploy Failed • Shop` / `web: Failed at 11:00PM: pull image: unavailable`    |
+| Task created       | `info`    | `📋 Task Created • Shop` / `web: Customer checkout service`                      |
+| Task assigned      | `info`    | `👤 Task Assigned • Shop` / `web: assigned to nam (member)`                      |
+| Dev status changed | `info`    | `🔄 Status Changed • Shop` / `web: In Progress ➔ Ready`                          |
+
 A retried callback for the image a task already runs records nothing, so it
 does not repeat a notification a pipeline has already produced.
 
-Setting `BOREAS_NOTIFY_URL` additionally forwards each one to an
-[Apprise](https://github.com/caronc/apprise-api) instance, which fans it out to
+Each entry carries a per-user `seen` flag, so a badge can count what the
+caller has not read without one member clearing it for everyone. Marking is
+idempotent, and an id outside the caller's visibility is a no-op:
+
+```bash
+curl -X POST -H "$AUTH" \
+  'http://localhost:8080/api/v1/projects/demo/notifications/<id>/seen'
+```
+
+### Team destinations (Slack, ntfy, …)
+
+With `BOREAS_NOTIFY_URL` set, Boreas also posts each notification to the keyed
+endpoint it derives from it — `<BOREAS_NOTIFY_URL>/boreas`, so
+`http://boreas-noti:8000/notify/boreas` under Compose — and an
+[Apprise](https://github.com/caronc/apprise-api) instance fans that out to
 every service listed in its configuration. Compose runs one as `boreas-noti`,
-reachable only from `boreas-net`, so no notification port is exposed. List your
-destinations in `apprise/boreas.yml`:
+reachable only from `boreas-net`, so no notification port is exposed. While
+`apprise/boreas.yml` does not exist Apprise answers 204 and nothing is sent;
+list your destinations there to enable it:
 
 ```yaml
 urls:
@@ -397,10 +426,13 @@ to start on that combination rather than drop every subscriber silently.
 Legacy FCM was shut down in June 2024, so a service-account keyfile is the only
 supported credential.
 
-Browser push therefore **replaces** the destinations in `apprise/boreas.yml`
-rather than adding to them: the stateless endpoint delivers only to the devices
-in each request, so a deployment cannot run FCM and a hand-written Slack or ntfy
-destination at the same time.
+Browser push and team destinations run side by side, on separate endpoints
+derived from the same variable: FCM devices ride the stateless
+`BOREAS_NOTIFY_URL` request by request, while `<BOREAS_NOTIFY_URL>/boreas`
+delivers the same notification to everything in `apprise/boreas.yml`. One
+Apprise request cannot do both — the keyed endpoint ignores per-request
+destinations — which is why the two requests stay separate. Without FCM
+credentials the stateless endpoint is never called.
 
 Delivery follows the same rules as `GET /api/v1/projects/{slug}/notifications`:
 administrators and project members receive every task in a project, a task
@@ -455,7 +487,7 @@ the database connection and the initial administrator.
 | `BOREAS_ADMIN_USERNAME` | `admin`           | Seed administrator username                                                  |
 | `BOREAS_ADMIN_EMAIL`    | `admin@localhost` | Seed administrator email                                                     |
 | `BOREAS_ADMIN_PASSWORD` | unset             | Seed administrator password; required only on an empty database              |
-| `BOREAS_NOTIFY_URL`     | unset             | Apprise notify endpoint; unset records notifications without forwarding them |
+| `BOREAS_NOTIFY_URL`     | unset             | Apprise stateless endpoint (`…/notify`); Boreas derives `…/notify/boreas` itself |
 | `BOREAS_FCM_PROJECT`    | unset             | Firebase project ID; with the keyfile, enables browser push subscriptions    |
 | `BOREAS_FCM_KEYFILE`    | unset             | Service-account JSON path *inside the Apprise container*                     |
 

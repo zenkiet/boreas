@@ -162,6 +162,11 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 	if err != nil {
 		return core.Task{}, fmt.Errorf("reserve task %q: %w", in.Name, err)
 	}
+	detail := strings.TrimSpace(in.Description)
+	if detail == "" {
+		detail = spec.Image
+	}
+	s.cfg.Notify(ctx, notification(project, in.Name, core.NotificationInfo, "📋 Task Created", detail))
 
 	credential, err := s.credential(ctx, project)
 	if err != nil {
@@ -316,7 +321,12 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 	if err != nil {
 		return core.Task{}, err
 	}
-	return s.update(ctx, task, project, in, recreate)
+	updated, err := s.update(ctx, task, project, in, recreate)
+	if err == nil && updated.DevStatus != task.DevStatus {
+		s.cfg.Notify(ctx, notification(project, name, core.NotificationInfo, "🔄 Status Changed",
+			devLabel(task.DevStatus)+" ➔ "+devLabel(updated.DevStatus)))
+	}
+	return updated, err
 }
 
 var deployDigest = regexp.MustCompile(`^[^@\s]+@sha256:[0-9a-f]{64}$`)
@@ -343,20 +353,35 @@ func (s *TaskService) Deploy(ctx context.Context, slug, name, image string) (cor
 	return deployed, err
 }
 
-func deployNotification(project core.Project, name string, completedAt time.Time, cause error) core.Notification {
-	completed := completedAt.In(time.Local).Format("02 Jan 2006, 15:04 MST")
-	if cause != nil {
-		return core.Notification{
-			ProjectID: project.ID, TaskName: name, Status: core.NotificationFailure,
-			Title: project.Name + ": Deployment failed",
-			Body:  fmt.Sprintf("Task %s failed at %s: %v.", name, completed, cause),
-		}
-	}
+func notification(project core.Project, task string, status core.NotificationStatus, event, detail string) core.Notification {
 	return core.Notification{
-		ProjectID: project.ID, TaskName: name, Status: core.NotificationSuccess,
-		Title: project.Name + ": Deployment succeeded",
-		Body:  fmt.Sprintf("Task %s completed at %s.", name, completed),
+		ProjectID: project.ID, TaskName: task, Status: status,
+		Title: event + " • " + project.Name,
+		Body:  task + ": " + detail,
 	}
+}
+
+func deployNotification(project core.Project, name string, completedAt time.Time, cause error) core.Notification {
+	completed := completedAt.Format("3:04PM")
+	if cause != nil {
+		return notification(project, name, core.NotificationFailure, "❌ Deploy Failed",
+			fmt.Sprintf("Failed at %s: %v", completed, cause))
+	}
+	return notification(project, name, core.NotificationSuccess, "🚀 Deploy Succeeded", "Task completed at "+completed)
+}
+
+var devStatusLabels = map[core.DevStatus]string{
+	core.DevInProgress: "In Progress",
+	core.DevBlocked:    "Blocked",
+	core.DevReady:      "Ready",
+}
+
+// devLabel falls back to the raw value so an unlabeled future status still renders.
+func devLabel(status core.DevStatus) string {
+	if label, ok := devStatusLabels[status]; ok {
+		return label
+	}
+	return string(status)
 }
 
 func (s *TaskService) update(ctx context.Context, task core.Task, project core.Project, in UpdateTaskInput, recreate bool) (core.Task, error) {

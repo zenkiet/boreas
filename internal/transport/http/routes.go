@@ -250,6 +250,14 @@ var routeTable = [...]route{
 		req: new(notificationsRequest), resp: new(notificationsResponse), status: http.StatusOK,
 		extraErrors: []int{http.StatusBadRequest},
 	},
+	{
+		method: http.MethodPost, path: "/api/v1/projects/{project}/notifications/{id}/seen", access: accessViewer,
+		handler: (*Handler).markNotificationSeen,
+		tag:     "projects", summary: "Mark a notification seen",
+		description: "Seen is tracked per user. Idempotent; an id outside the caller's visibility is a no-op.",
+		req:         new(notificationSeenPath), resp: new(successResponse), status: http.StatusOK,
+		extraErrors: []int{http.StatusBadRequest},
+	},
 
 	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks", access: accessViewer,

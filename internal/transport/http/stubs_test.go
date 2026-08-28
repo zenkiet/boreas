@@ -173,6 +173,7 @@ type stubProjects struct {
 	update          func(context.Context, string, service.UpdateProjectInput) (core.Project, error)
 	listCredentials func(context.Context) ([]core.RegistryCredential, error)
 	notifications   func(context.Context, core.ProjectAccess, int) ([]core.Notification, error)
+	markSeen        func(context.Context, core.ProjectAccess, uuid.UUID) error
 	grant           func(context.Context, string, string, uuid.UUID, core.ProjectRole) error
 	listGrants      func(context.Context, string, string) ([]core.TaskGrant, error)
 	revoke          func(context.Context, string, string, uuid.UUID) error
@@ -216,6 +217,13 @@ func (s *stubProjects) Notifications(c context.Context, acc core.ProjectAccess, 
 		return s.notifications(c, acc, limit)
 	}
 	return nil, nil
+}
+
+func (s *stubProjects) MarkNotificationSeen(c context.Context, acc core.ProjectAccess, id uuid.UUID) error {
+	if s.markSeen != nil {
+		return s.markSeen(c, acc, id)
+	}
+	return nil
 }
 
 func (s *stubProjects) ListGrants(c context.Context, slug, name string) ([]core.TaskGrant, error) {

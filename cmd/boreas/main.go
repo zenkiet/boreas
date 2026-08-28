@@ -92,12 +92,9 @@ func run(logger *slog.Logger) error {
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	defer routes.CloseIdleConnections()
 
-	projects, err := service.NewProjectService(projectStore, credentials, notifications, grants, taskStore)
-	if err != nil {
-		return err
-	}
-	sender := apprise.New(cfg.NotifyURL, notifyTimeout)
+	sender := apprise.New("", notifyTimeout)
 	if cfg.FCM.Enabled() {
+		sender = apprise.New(cfg.NotifyURL, notifyTimeout)
 		sender.Targets = func(ctx context.Context, n core.Notification) []string {
 			tokens, err := push.Tokens(ctx, n.ProjectID, n.TaskName)
 			if err != nil {
@@ -110,6 +107,15 @@ func run(logger *slog.Logger) error {
 			return tokens
 		}
 	}
+	teamSender := apprise.New(cfg.TeamNotifyURL(), notifyTimeout)
+	notify := notifier(notifications, sender, teamSender, logger)
+
+	projects, err := service.NewProjectService(projectStore, credentials, notifications, grants, taskStore)
+	if err != nil {
+		return err
+	}
+	projects.Notify = notify
+	projects.Users = users
 	tasks, err := service.NewTaskService(
 		runtime, taskStore, projectStore, credentials, routes,
 		dockerinfra.TCPReadyChecker{DialTimeout: time.Second}.Ready,
@@ -117,7 +123,7 @@ func run(logger *slog.Logger) error {
 			DefaultPort:      80,
 			ReadinessTimeout: readinessTimeout,
 			PollInterval:     readinessPoll,
-			Notify:           notifier(notifications, sender, logger),
+			Notify:           notify,
 		},
 	)
 	if err != nil {
@@ -166,7 +172,7 @@ func run(logger *slog.Logger) error {
 	return nil
 }
 
-func notifier(store *pginfra.NotificationStore, sender *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
+func notifier(store *pginfra.NotificationStore, sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
 	return func(ctx context.Context, n core.Notification) {
 		ctx = context.WithoutCancel(ctx)
 		go func() {
@@ -177,6 +183,9 @@ func notifier(store *pginfra.NotificationStore, sender *apprise.Sender, logger *
 			}
 			if err := sender.Send(ctx, n); err != nil {
 				logger.Error("push notification", "error", err)
+			}
+			if err := team.Send(ctx, n); err != nil {
+				logger.Error("team notification", "error", err)
 			}
 		}()
 	}

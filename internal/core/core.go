@@ -107,9 +107,12 @@ type NotificationStatus string
 const (
 	NotificationSuccess NotificationStatus = "success"
 	NotificationFailure NotificationStatus = "failure"
+	NotificationInfo    NotificationStatus = "info"
 )
 
-func (NotificationStatus) Enum() []any { return []any{NotificationSuccess, NotificationFailure} }
+func (NotificationStatus) Enum() []any {
+	return []any{NotificationSuccess, NotificationFailure, NotificationInfo}
+}
 
 var (
 	taskNamePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
@@ -281,6 +284,7 @@ type Notification struct {
 	Status    NotificationStatus
 	Title     string
 	Body      string
+	Seen      bool
 	CreatedAt time.Time
 }
 
@@ -411,6 +415,7 @@ type ProjectStore interface {
 type NotificationStore interface {
 	Create(context.Context, Notification) (Notification, error)
 	List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool, limit int) ([]Notification, error)
+	MarkSeen(ctx context.Context, id, projectID, userID uuid.UUID, allTasks bool) error
 }
 
 type GrantStore interface {

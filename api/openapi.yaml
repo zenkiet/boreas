@@ -761,6 +761,65 @@ paths:
       summary: List deploy notifications
       tags:
       - projects
+  /api/v1/projects/{project}/notifications/{id}/seen:
+    post:
+      description: Seen is tracked per user. Idempotent; an id outside the caller's
+        visibility is a no-op.
+      operationId: post-projects-project-notifications-id-seen
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Mark a notification seen
+      tags:
+      - projects
   /api/v1/projects/{project}/tasks:
     get:
       operationId: get-projects-project-tasks
@@ -2366,25 +2425,29 @@ components:
           type: string
         id:
           $ref: '#/components/schemas/UUID'
+        seen:
+          type: boolean
         status:
           $ref: '#/components/schemas/NotificationStatus'
         task_name:
           example: web
           type: string
         title:
-          example: 'Deployed: demo/web'
+          example: "\U0001F680 Deploy Succeeded • Demo"
           type: string
       required:
       - id
       - task_name
       - status
       - title
+      - seen
       - created_at
       type: object
     NotificationStatus:
       enum:
       - success
       - failure
+      - info
       type: string
     NotificationsResponse:
       properties:

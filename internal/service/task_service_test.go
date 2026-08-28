@@ -408,20 +408,25 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.notified) != 0 {
-		t.Fatalf("creating a task notified: %+v", h.notified)
+	if len(h.notified) != 1 {
+		t.Fatalf("creating a task should notify creation once: %+v", h.notified)
+	}
+	created := h.notified[0]
+	if created.Status != core.NotificationInfo || created.Title != "📋 Task Created • team" ||
+		created.Body != "web: "+deployDigestA {
+		t.Fatalf("unexpected creation notification: %+v", created)
 	}
 
 	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.notified) != 1 {
-		t.Fatalf("want 1 notification, got %+v", h.notified)
+	if len(h.notified) != 2 {
+		t.Fatalf("want 2 notifications, got %+v", h.notified)
 	}
-	success := h.notified[0]
+	success := h.notified[1]
 	if success.Status != core.NotificationSuccess || success.ProjectID != h.project.ID ||
-		success.TaskName != "web" || success.Title != "team: Deployment succeeded" ||
-		!strings.HasPrefix(success.Body, "Task web completed at ") || strings.Contains(success.Body, deployDigestB) {
+		success.TaskName != "web" || success.Title != "🚀 Deploy Succeeded • team" ||
+		!strings.HasPrefix(success.Body, "web: Task completed at ") {
 		t.Fatalf("unexpected success notification: %+v", success)
 	}
 
@@ -429,7 +434,7 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.notified) != 1 {
+	if len(h.notified) != 2 {
 		t.Fatalf("a redeploy of the same image notified: %+v", h.notified)
 	}
 
@@ -437,12 +442,12 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA); err == nil {
 		t.Fatal("expected pull failure")
 	}
-	if len(h.notified) != 2 {
+	if len(h.notified) != 3 {
 		t.Fatalf("a failed deploy did not notify: %+v", h.notified)
 	}
-	failure := h.notified[1]
-	if failure.Status != core.NotificationFailure || failure.Title != "team: Deployment failed" ||
-		!strings.Contains(failure.Body, "Task web failed at ") ||
+	failure := h.notified[2]
+	if failure.Status != core.NotificationFailure || failure.Title != "❌ Deploy Failed • team" ||
+		!strings.HasPrefix(failure.Body, "web: Failed at ") ||
 		!strings.Contains(failure.Body, "registry unavailable") || strings.Contains(failure.Body, deployDigestA) {
 		t.Fatalf("unexpected failure notification: %+v", failure)
 	}
@@ -450,21 +455,50 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 
 func TestDeployNotificationMessages(t *testing.T) {
 	project := core.Project{ID: uuid.New(), Name: "Online Ordering", Slug: "online-ordering"}
-	originalLocal := time.Local
-	time.Local = time.FixedZone("ICT", 7*60*60)
-	t.Cleanup(func() { time.Local = originalLocal })
-	completedAt := time.Date(2026, time.August, 25, 10, 9, 0, 0, time.UTC)
+
+	completedAt := time.Date(2026, time.August, 25, 23, 0, 0, 0, time.UTC)
 
 	success := deployNotification(project, "wo-705", completedAt, nil)
-	if success.Title != "Online Ordering: Deployment succeeded" ||
-		success.Body != "Task wo-705 completed at 25 Aug 2026, 17:09 ICT." {
+	if success.Status != core.NotificationSuccess ||
+		success.Title != "🚀 Deploy Succeeded • Online Ordering" ||
+		success.Body != "wo-705: Task completed at 11:00PM" {
 		t.Fatalf("unexpected success message: %+v", success)
 	}
 
 	failure := deployNotification(project, "wo-705", completedAt, errors.New("registry unavailable"))
-	if failure.Title != "Online Ordering: Deployment failed" ||
-		failure.Body != "Task wo-705 failed at 25 Aug 2026, 17:09 ICT: registry unavailable." {
+	if failure.Status != core.NotificationFailure ||
+		failure.Title != "❌ Deploy Failed • Online Ordering" ||
+		failure.Body != "wo-705: Failed at 11:00PM: registry unavailable" {
 		t.Fatalf("unexpected failure message: %+v", failure)
+	}
+}
+
+func TestUpdateDevStatusNotifiesChange(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
+		t.Fatal(err)
+	}
+	h.notified = nil
+
+	ready := core.DevReady
+	if _, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &ready}, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notified) != 1 {
+		t.Fatalf("want 1 notification, got %+v", h.notified)
+	}
+	change := h.notified[0]
+	if change.Status != core.NotificationInfo || change.TaskName != "web" ||
+		change.Title != "🔄 Status Changed • team" || change.Body != "web: In Progress ➔ Ready" {
+		t.Fatalf("unexpected notification: %+v", change)
+	}
+
+	// Setting the same status again is not a change.
+	if _, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &ready}, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notified) != 1 {
+		t.Fatalf("an unchanged dev status notified: %+v", h.notified)
 	}
 }
 

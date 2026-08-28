@@ -17,6 +17,10 @@ type ProjectService struct {
 	notifications core.NotificationStore
 	grants        core.GrantStore
 	tasks         core.TaskStore
+	// Notify, when set, reports task assignments; Users, when also set, names
+	// the grantee in the message. Both are optional wiring, like apprise.Sender.Targets.
+	Notify func(context.Context, core.Notification)
+	Users  core.UserStore
 }
 
 func NewProjectService(
@@ -39,6 +43,14 @@ func (s *ProjectService) Notifications(ctx context.Context, acc core.ProjectAcce
 		return nil, fmt.Errorf("list notifications: %w", err)
 	}
 	return notifications, nil
+}
+
+// MarkNotificationSeen is idempotent; an id outside the caller's visibility is a no-op.
+func (s *ProjectService) MarkNotificationSeen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error {
+	if err := s.notifications.MarkSeen(ctx, id, acc.Project.ID, acc.UserID, acc.AllTasks); err != nil {
+		return fmt.Errorf("mark notification seen: %w", err)
+	}
+	return nil
 }
 
 // List scopes non-admin results to memberships to enforce project visibility.
@@ -288,7 +300,7 @@ func (s *ProjectService) grantedRole(
 }
 
 func (s *ProjectService) ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error) {
-	task, err := s.task(ctx, slug, taskName)
+	task, _, err := s.task(ctx, slug, taskName)
 	if err != nil {
 		return nil, err
 	}
@@ -305,18 +317,27 @@ func (s *ProjectService) Grant(ctx context.Context, slug, taskName string, userI
 	if role.Rank() < core.ProjectRoleViewer.Rank() || role.Rank() > core.ProjectRoleMember.Rank() {
 		return errors.Join(core.ErrInvalidInput, errors.New("role must be viewer, operator, or member"))
 	}
-	task, err := s.task(ctx, slug, taskName)
+	task, project, err := s.task(ctx, slug, taskName)
 	if err != nil {
 		return err
 	}
 	if err := s.grants.Grant(ctx, core.TaskGrant{TaskID: task.ID, UserID: userID, Role: role}); err != nil {
 		return fmt.Errorf("grant task: %w", err)
 	}
+	if s.Notify != nil {
+		detail := string(role) + " access granted"
+		if s.Users != nil {
+			if user, err := s.Users.Get(ctx, userID); err == nil {
+				detail = "assigned to " + user.Username + " (" + string(role) + ")"
+			}
+		}
+		s.Notify(ctx, notification(project, taskName, core.NotificationInfo, "👤 Task Assigned", detail))
+	}
 	return nil
 }
 
 func (s *ProjectService) Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error {
-	task, err := s.task(ctx, slug, taskName)
+	task, _, err := s.task(ctx, slug, taskName)
 	if err != nil {
 		return err
 	}
@@ -326,19 +347,19 @@ func (s *ProjectService) Revoke(ctx context.Context, slug, taskName string, user
 	return nil
 }
 
-func (s *ProjectService) task(ctx context.Context, slug, taskName string) (core.Task, error) {
+func (s *ProjectService) task(ctx context.Context, slug, taskName string) (core.Task, core.Project, error) {
 	if err := core.ValidateTaskName(taskName); err != nil {
-		return core.Task{}, err
+		return core.Task{}, core.Project{}, err
 	}
 	project, err := s.Get(ctx, slug)
 	if err != nil {
-		return core.Task{}, err
+		return core.Task{}, core.Project{}, err
 	}
 	task, err := s.tasks.GetByName(ctx, project.ID, taskName)
 	if err != nil {
-		return core.Task{}, fmt.Errorf("get task %q: %w", taskName, err)
+		return core.Task{}, core.Project{}, fmt.Errorf("get task %q: %w", taskName, err)
 	}
-	return task, nil
+	return task, project, nil
 }
 
 func (s *ProjectService) ListCredentials(ctx context.Context) ([]core.RegistryCredential, error) {

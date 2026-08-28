@@ -125,3 +125,13 @@ func TestLoadAllowsKeyedNotifyURLWithoutFCM(t *testing.T) {
 		t.Fatal("FCM must not be considered enabled without both variables")
 	}
 }
+
+func TestTeamNotifyURLDerivedFromNotifyURL(t *testing.T) {
+	if got := (Config{}).TeamNotifyURL(); got != "" {
+		t.Fatalf("unset notify URL must derive empty, got %q", got)
+	}
+	cfg := Config{NotifyURL: "http://boreas-noti:8000/notify/"}
+	if got := cfg.TeamNotifyURL(); got != "http://boreas-noti:8000/notify/boreas" {
+		t.Fatalf("got %q", got)
+	}
+}

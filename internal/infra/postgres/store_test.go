@@ -188,6 +188,59 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNotificationSeenPerUser(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	project := seedProject(t, pool)
+	store := NewNotificationStore(pool)
+
+	alice := seedUser(t, pool, "seen-alice", core.RoleUser)
+	bob := seedUser(t, pool, "seen-bob", core.RoleUser)
+	created, err := store.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: "web", Status: core.NotificationInfo, Title: "created",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Seen {
+		t.Fatalf("a fresh notification must be unseen: %+v", created)
+	}
+
+	if err := store.MarkSeen(ctx, created.ID, project.ID, alice.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkSeen(ctx, created.ID, project.ID, alice.ID, true); err != nil {
+		t.Fatalf("marking twice must be idempotent: %v", err)
+	}
+
+	listed, err := store.List(ctx, project.ID, alice.ID, true, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || !listed[0].Seen {
+		t.Fatalf("the marking user must read it as seen: %+v", listed)
+	}
+	listed, err = store.List(ctx, project.ID, bob.ID, true, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].Seen {
+		t.Fatalf("another user's view must stay unseen: %+v", listed)
+	}
+
+	// Without a grant on the task, a non-member's mark is a no-op.
+	if err := store.MarkSeen(ctx, created.ID, project.ID, bob.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = store.List(ctx, project.ID, bob.ID, true, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed[0].Seen {
+		t.Fatalf("an out-of-reach mark must be a no-op: %+v", listed)
+	}
+}
+
 func TestNotificationsSurviveTaskDeletion(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()

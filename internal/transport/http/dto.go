@@ -310,9 +310,15 @@ type notificationDTO struct {
 	ID        uuid.UUID               `json:"id"`
 	TaskName  string                  `json:"task_name" example:"web"`
 	Status    core.NotificationStatus `json:"status"`
-	Title     string                  `json:"title" example:"Deployed: demo/web"`
+	Title     string                  `json:"title" example:"🚀 Deploy Succeeded • Demo"`
 	Body      string                  `json:"body,omitempty"`
+	Seen      bool                    `json:"seen"`
 	CreatedAt time.Time               `json:"created_at"`
+}
+
+type notificationSeenPath struct {
+	Project string    `json:"-" path:"project" example:"demo"`
+	ID      uuid.UUID `json:"-" path:"id"`
 }
 
 type notificationsResponse struct {

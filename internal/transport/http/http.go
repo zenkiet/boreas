@@ -50,6 +50,7 @@ type ProjectService interface {
 	AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error
 	RemoveMember(ctx context.Context, slug string, userID uuid.UUID) error
 	Notifications(ctx context.Context, acc core.ProjectAccess, limit int) ([]core.Notification, error)
+	MarkNotificationSeen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error
 	Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error)
 	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
 	Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error

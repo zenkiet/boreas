@@ -140,3 +140,10 @@ func statelessNotifyURL(notifyURL string) bool {
 
 // ListenAddr binds all interfaces; deployment controls external exposure.
 func (c Config) ListenAddr() string { return "0.0.0.0:" + strconv.Itoa(c.Port) }
+
+func (c Config) TeamNotifyURL() string {
+	if c.NotifyURL == "" {
+		return ""
+	}
+	return strings.TrimSuffix(c.NotifyURL, "/") + "/boreas"
+}

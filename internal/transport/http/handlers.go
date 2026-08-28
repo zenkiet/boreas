@@ -354,10 +354,23 @@ func (h *Handler) listNotifications(w http.ResponseWriter, r *http.Request) {
 	for i, n := range notifications {
 		result[i] = notificationDTO{
 			ID: n.ID, TaskName: n.TaskName, Status: n.Status,
-			Title: n.Title, Body: n.Body, CreatedAt: n.CreatedAt,
+			Title: n.Title, Body: n.Body, Seen: n.Seen, CreatedAt: n.CreatedAt,
 		}
 	}
 	writeJSON(w, http.StatusOK, notificationsResponse{Notifications: result, Total: len(result)})
+}
+
+func (h *Handler) markNotificationSeen(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	if err := h.projects.MarkNotificationSeen(r.Context(), accessFrom(r.Context()), id); err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
 func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {

@@ -306,6 +306,98 @@ func TestGrantRejectsOwner(t *testing.T) {
 	}
 }
 
+func TestMarkNotificationSeenIsPerUser(t *testing.T) {
+	projects, credentials := newFakeProjectStore(), newFakeCredentialStore()
+	tasks := newFakeTaskStore()
+	projects.tasks = tasks
+	notifications := newFakeNotificationStore(tasks)
+	svc, err := NewProjectService(projects, credentials, notifications, newFakeGrantStore(tasks), tasks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	project := projects.add("team")
+	seedTask(t, tasks, project.ID, "web")
+	n, err := notifications.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: "web", Status: core.NotificationInfo, Title: "created",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	alice, bob := member(), member()
+	accFor := func(u core.User) core.ProjectAccess {
+		return core.ProjectAccess{Project: project, UserID: u.ID, AllTasks: true}
+	}
+	if err := svc.MarkNotificationSeen(ctx, accFor(alice), n.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	listed, err := svc.Notifications(ctx, accFor(alice), 10)
+	if err != nil || len(listed) != 1 || !listed[0].Seen {
+		t.Fatalf("the marking user must read it as seen: %+v, %v", listed, err)
+	}
+	listed, err = svc.Notifications(ctx, accFor(bob), 10)
+	if err != nil || len(listed) != 1 || listed[0].Seen {
+		t.Fatalf("another user's view must stay unseen: %+v, %v", listed, err)
+	}
+
+	// A grantee without a grant on the task cannot mark it.
+	eve := member()
+	granteeAcc := core.ProjectAccess{Project: project, UserID: eve.ID, AllTasks: false}
+	if err := svc.MarkNotificationSeen(ctx, granteeAcc, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Grant(ctx, "team", "web", eve.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = svc.Notifications(ctx, granteeAcc, 10)
+	if err != nil || len(listed) != 1 || listed[0].Seen {
+		t.Fatalf("an out-of-reach mark must be a no-op: %+v, %v", listed, err)
+	}
+}
+
+func TestGrantNotifiesAssignment(t *testing.T) {
+	svc, _, _, tasks := newProjectsWithTasks(t)
+	ctx := context.Background()
+	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team", Name: "Team Alpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTask(t, tasks, project.ID, "web")
+
+	var notified []core.Notification
+	svc.Notify = func(_ context.Context, n core.Notification) { notified = append(notified, n) }
+	users := newFakeUserStore()
+	grantee, err := users.Create(ctx, core.User{Username: "nam"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Users = users
+
+	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleMember); err != nil {
+		t.Fatal(err)
+	}
+	if len(notified) != 1 {
+		t.Fatalf("want 1 notification, got %+v", notified)
+	}
+	assigned := notified[0]
+	if assigned.Status != core.NotificationInfo || assigned.ProjectID != project.ID ||
+		assigned.TaskName != "web" || assigned.Title != "👤 Task Assigned • Team Alpha" ||
+		assigned.Body != "web: assigned to nam (member)" {
+		t.Fatalf("unexpected notification: %+v", assigned)
+	}
+
+	// Without a user store the message still reports the granted role.
+	svc.Users, notified = nil, nil
+	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleOperator); err != nil {
+		t.Fatal(err)
+	}
+	if len(notified) != 1 || notified[0].Body != "web: operator access granted" {
+		t.Fatalf("unexpected fallback notification: %+v", notified)
+	}
+}
+
 func TestListScopedByRole(t *testing.T) {
 	svc, _, _ := newProjects(t)
 	first, second := member(), member()
