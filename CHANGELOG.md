@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.8.0 - 2026-08-28
+#### 🚀 Features
+- ✨ improve  notification for task - (fed4eb2) - Zen Kiet
+- ✨ adopt structured logging with log/slog - (387b661) - Zen Kiet
+#### 📝 Documentation
+- 📝 add AGENTS.md for autonomous agents - (b59b402) - Zen Kiet, *factory-droid[bot]*
+#### 🔧 Chores & Maintenance
+- 🔖 add structured GitHub issue forms - (710c842) - Zen Kiet, *factory-droid[bot]*
+- 🔖 add pull request template - (c9a7c39) - Zen Kiet, *factory-droid[bot]*
+
+- - -
+
 ## v1.7.0 - 2026-08-25
 #### 🚀 Features
 - ✨ implement dev status - (3d5e164) - Zen Kiet
