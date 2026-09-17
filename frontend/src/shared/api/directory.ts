@@ -15,6 +15,7 @@ export type TaskStatus = 'creating' | 'starting' | 'running' | 'stopped' | 'erro
 export interface PublicTask {
 	readonly name: string;
 	readonly description?: string;
+	readonly note?: string;
 	readonly status: TaskStatus;
 	readonly devStatus: DevStatus;
 	readonly updatedAt: string;
@@ -38,6 +39,7 @@ export const runningCount = (tasks: readonly PublicTask[]): number =>
 interface TaskPayload {
 	name: string;
 	description?: string;
+	note?: string;
 	status: TaskStatus;
 	dev_status: DevStatus;
 	updated_at: string;
@@ -60,6 +62,7 @@ export const listProjects = (load: typeof fetch = fetch): Promise<readonly Publi
 				tasks: project.tasks.map((task) => ({
 					name: task.name,
 					description: task.description,
+					note: task.note,
 					status: task.status,
 					devStatus: task.dev_status,
 					updatedAt: task.updated_at

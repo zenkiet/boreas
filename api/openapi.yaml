@@ -2656,6 +2656,11 @@ components:
         name:
           example: myl-2019
           type: string
+        note:
+          example: |-
+            ## Context
+            Needs the staging DB seeded.
+          type: string
         status:
           $ref: '#/components/schemas/TaskStatus'
         updated_at:

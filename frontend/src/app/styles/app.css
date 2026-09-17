@@ -96,19 +96,19 @@
 	block-size: 0.4375rem;
 	flex: none;
 	border-radius: 999px;
-	background: var(--tui-status-neutral);
+	background: var(--dot-color, var(--tui-status-neutral));
 }
 
 .dot--ready {
-	background: var(--tui-status-positive);
+	--dot-color: var(--tui-status-positive);
 }
 
 .dot--in_progress {
-	background: var(--tui-status-warning);
+	--dot-color: var(--tui-status-warning);
 }
 
 .dot--blocked {
-	background: var(--tui-status-negative);
+	--dot-color: var(--tui-status-negative);
 }
 
 .btn {
