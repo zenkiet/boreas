@@ -115,7 +115,7 @@ func TestSpecRoundTrips(t *testing.T) {
 }
 
 func TestDocsEndpoints(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, "test", slog.New(slog.DiscardHandler))
 
 	rr := do(h, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	if rr.Code != http.StatusOK {

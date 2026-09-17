@@ -1675,6 +1675,27 @@ paths:
       summary: Start, stop, or restart a task
       tags:
       - tasks
+  /api/v1/public/projects:
+    get:
+      description: Every project with its tasks, reduced to what the public directory
+        pages show. Image, port, environment and container identifiers are never included.
+      operationId: get-public-projects
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicProjectsResponse'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      summary: Public environment directory
+      tags:
+      - system
   /api/v1/push/subscriptions:
     post:
       description: Takes an FCM registration token. The device receives the deploys
@@ -2419,9 +2440,13 @@ components:
         status:
           example: healthy
           type: string
+        version:
+          example: 1.9.0
+          type: string
       required:
       - service
       - status
+      - version
       type: object
     LoginRequest:
       properties:
@@ -2590,6 +2615,57 @@ components:
       required:
       - projects
       - total
+      type: object
+    PublicProject:
+      properties:
+        name:
+          example: Demo
+          type: string
+        slug:
+          example: demo
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/PublicTask'
+          nullable: true
+          type: array
+      required:
+      - slug
+      - name
+      - tasks
+      type: object
+    PublicProjectsResponse:
+      properties:
+        projects:
+          items:
+            $ref: '#/components/schemas/PublicProject'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - projects
+      - total
+      type: object
+    PublicTask:
+      properties:
+        description:
+          type: string
+        dev_status:
+          $ref: '#/components/schemas/DevStatus'
+        name:
+          example: myl-2019
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - name
+      - status
+      - dev_status
+      - updated_at
       type: object
     PushSubscriptionRequest:
       properties:

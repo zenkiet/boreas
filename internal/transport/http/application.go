@@ -15,9 +15,6 @@ func ApplicationHandler(api, proxy http.Handler, logger *slog.Logger) http.Handl
 		switch {
 		case r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/"):
 			api.ServeHTTP(w, r)
-		case r.Method == http.MethodGet && r.URL.Path == "/":
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			_, _ = w.Write([]byte(`{"service":"boreas","status":"healthy"}`))
 		case proxy != nil:
 			proxy.ServeHTTP(w, r)
 		default:

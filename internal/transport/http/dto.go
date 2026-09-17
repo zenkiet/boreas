@@ -269,6 +269,25 @@ type projectResponse struct {
 	Project projectDTO `json:"project"`
 }
 
+type publicTaskDTO struct {
+	Name        string          `json:"name" example:"myl-2019"`
+	Description string          `json:"description,omitempty"`
+	Status      core.TaskStatus `json:"status"`
+	DevStatus   core.DevStatus  `json:"dev_status"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+}
+
+type publicProjectDTO struct {
+	Slug  string          `json:"slug" example:"demo"`
+	Name  string          `json:"name" example:"Demo"`
+	Tasks []publicTaskDTO `json:"tasks"`
+}
+
+type publicProjectsResponse struct {
+	Projects []publicProjectDTO `json:"projects"`
+	Total    int                `json:"total"`
+}
+
 type projectsResponse struct {
 	Projects []projectDTO `json:"projects"`
 	Total    int          `json:"total"`
@@ -430,6 +449,7 @@ type credentialsResponse struct {
 type healthResponse struct {
 	Service string `json:"service" example:"boreas"`
 	Status  string `json:"status" example:"healthy"`
+	Version string `json:"version" example:"1.9.0"`
 }
 
 type systemStatsDTO struct {

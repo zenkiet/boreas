@@ -1,12 +1,20 @@
+FROM node:26-alpine AS ui
+
+RUN npm install --global pnpm
+WORKDIR /src
+COPY frontend ./frontend
+RUN pnpm -C frontend install --frozen-lockfile && pnpm -C frontend build
+
 FROM golang:alpine AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=ui /src/internal/web/public ./internal/web/public
 RUN CGO_ENABLED=0 go build -o /boreas ./cmd/boreas
 
-FROM alpine:3.22
+FROM alpine:latest
 
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app

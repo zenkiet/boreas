@@ -15,7 +15,7 @@ import (
 const testDeviceToken = "cH9x2Qk7RtqB:APA91bH-x9Kd2Qw_ErTyUiOp"
 
 func pushHandler(push PushStore) http.Handler {
-	return APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, push, slog.New(slog.DiscardHandler))
+	return APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, push, "test", slog.New(slog.DiscardHandler))
 }
 
 func TestSubscribePushRecordsTokenForCurrentUser(t *testing.T) {

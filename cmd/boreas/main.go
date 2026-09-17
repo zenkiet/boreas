@@ -21,6 +21,7 @@ import (
 	"github.com/zenkiet/boreas/internal/pkg/logging"
 	"github.com/zenkiet/boreas/internal/service"
 	httptransport "github.com/zenkiet/boreas/internal/transport/http"
+	"github.com/zenkiet/boreas/internal/web"
 )
 
 // These operational constants are intentionally not deployment configuration.
@@ -35,6 +36,8 @@ const (
 	startupTimeout   = 30 * time.Second
 	shutdownTimeout  = 10 * time.Second
 )
+
+var version = "dev"
 
 func main() {
 	logger := logging.New(os.Stdout)
@@ -90,6 +93,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
+	routes.Fallback = web.Handler()
 	defer routes.CloseIdleConnections()
 
 	sender := apprise.New("", notifyTimeout)
@@ -134,7 +138,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	handler := httptransport.ApplicationHandler(
-		httptransport.APIHandler(tasks, auth, projects, push, logger),
+		httptransport.APIHandler(tasks, auth, projects, push, version, logger),
 		routes,
 		logger,
 	)

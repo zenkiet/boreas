@@ -1,0 +1,161 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+@layer base {
+	html {
+		font-family: var(--app-font-text);
+		color: var(--tui-text-primary);
+		background: var(--app-canvas);
+		-webkit-font-smoothing: antialiased;
+		/* Open 4/6/9 and straighten l for identifiers at small UI sizes. */
+		font-feature-settings:
+			'cv02' 1,
+			'cv03' 1,
+			'cv04' 1,
+			'cv11' 1;
+	}
+
+	body {
+		min-inline-size: 20rem;
+		min-block-size: 100dvh;
+		background: var(--app-canvas);
+	}
+
+	code,
+	.font-mono {
+		font-feature-settings: normal;
+	}
+
+	::selection {
+		background: color-mix(in srgb, var(--tui-background-accent-1) 24%, transparent);
+	}
+
+	:focus-visible {
+		outline: 0.125rem solid var(--tui-border-focus);
+		outline-offset: 0.125rem;
+	}
+
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: var(--app-scrollbar-thumb) transparent;
+	}
+
+	::-webkit-scrollbar {
+		width: 0.5rem;
+		height: 0.5rem;
+	}
+
+	::-webkit-scrollbar-thumb {
+		background: var(--app-scrollbar-thumb);
+		border-radius: 0.25rem;
+	}
+}
+
+@utility tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/* The 1rem inset divider that makes stacked rows read as one iOS list. */
+@utility row-divider {
+	&::before {
+		content: '';
+		position: absolute;
+		inset-block-start: 0;
+		inset-inline: 1rem 0;
+		block-size: 1px;
+		background: var(--tui-border-normal);
+	}
+
+	&:first-child::before {
+		content: none;
+	}
+}
+
+@utility skeleton {
+	border-radius: 0.375rem;
+	background: var(--tui-background-neutral-1);
+	animation: skeleton-pulse 1.4s ease-in-out infinite;
+	/* Data under 200ms must never flash a skeleton. */
+	opacity: 0;
+	animation-delay: 0.2s;
+	animation-fill-mode: backwards;
+}
+
+@keyframes skeleton-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+.dot {
+	inline-size: 0.4375rem;
+	block-size: 0.4375rem;
+	flex: none;
+	border-radius: 999px;
+	background: var(--tui-status-neutral);
+}
+
+.dot--ready {
+	background: var(--tui-status-positive);
+}
+
+.dot--in_progress {
+	background: var(--tui-status-warning);
+}
+
+.dot--blocked {
+	background: var(--tui-status-negative);
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	block-size: 2.5rem;
+	padding-inline: 1.125rem;
+	border: 0;
+	border-radius: 999px;
+	background: var(--tui-background-accent-1);
+	color: var(--tui-text-on-accent);
+	font: inherit;
+	font-size: 0.9375rem;
+	font-weight: 500;
+	white-space: nowrap;
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		background-color var(--tui-duration),
+		transform var(--tui-duration);
+}
+
+.btn:hover {
+	background: var(--tui-background-accent-1-hover);
+}
+
+.btn:active {
+	transform: scale(0.97);
+}
+
+.btn--ghost {
+	background: var(--tui-background-neutral-1);
+	color: var(--tui-text-primary);
+}
+
+.btn--ghost:hover {
+	background: var(--tui-background-neutral-1-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+	}
+}

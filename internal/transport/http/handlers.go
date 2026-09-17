@@ -18,11 +18,12 @@ type Handler struct {
 	auth     AuthService
 	projects ProjectService
 	push     PushStore
+	version  string
 	logger   *slog.Logger
 }
 
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, healthResponse{Status: "healthy", Service: "boreas"})
+	writeJSON(w, http.StatusOK, healthResponse{Status: "healthy", Service: "boreas", Version: h.version})
 }
 
 func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +264,30 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 		result[i] = projectFromCore(projects[i])
 	}
 	writeJSON(w, http.StatusOK, projectsResponse{Projects: result, Total: len(result)})
+}
+
+func (h *Handler) publicProjects(w http.ResponseWriter, r *http.Request) {
+	projects, tasks, err := h.projects.Directory(r.Context())
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	grouped := make(map[uuid.UUID][]publicTaskDTO, len(projects))
+	for _, task := range tasks {
+		grouped[task.ProjectID] = append(grouped[task.ProjectID], publicTaskDTO{
+			Name: task.Name, Description: task.Description,
+			Status: task.Status, DevStatus: task.DevStatus, UpdatedAt: task.UpdatedAt,
+		})
+	}
+	result := make([]publicProjectDTO, len(projects))
+	for i, project := range projects {
+		list := grouped[project.ID]
+		if list == nil {
+			list = []publicTaskDTO{}
+		}
+		result[i] = publicProjectDTO{Slug: project.Slug, Name: project.Name, Tasks: list}
+	}
+	writeJSON(w, http.StatusOK, publicProjectsResponse{Projects: result, Total: len(result)})
 }
 
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {

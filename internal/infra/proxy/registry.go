@@ -33,6 +33,15 @@ type Registry struct {
 	mu        sync.RWMutex
 	routes    map[string]*route
 	transport *http.Transport
+	Fallback  http.Handler
+}
+
+func (r *Registry) miss(w http.ResponseWriter, request *http.Request) {
+	if r.Fallback != nil {
+		r.Fallback.ServeHTTP(w, request)
+		return
+	}
+	http.NotFound(w, request)
 }
 
 func routeKey(project, task string) string { return project + "/" + task }
@@ -90,14 +99,14 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	trimmed := strings.TrimPrefix(request.URL.Path, "/")
 	parts := strings.SplitN(trimmed, "/", 3)
 	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
-		http.NotFound(w, request)
+		r.miss(w, request)
 		return
 	}
 	r.mu.RLock()
 	entry := r.routes[routeKey(parts[0], parts[1])]
 	r.mu.RUnlock()
 	if entry == nil {
-		http.NotFound(w, request)
+		r.miss(w, request)
 		return
 	}
 	// Redirect to the base path so relative assets do not resolve under "/project/".

@@ -50,3 +50,7 @@ data/
 /apprise/
 # Added by goreleaser init:
 dist/
+
+# Built UI, embedded into the binary at build time
+internal/web/public/*
+!internal/web/public/.gitkeep

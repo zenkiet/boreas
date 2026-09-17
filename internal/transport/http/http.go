@@ -42,6 +42,7 @@ type AuthService interface {
 
 type ProjectService interface {
 	List(ctx context.Context, actor core.User) ([]core.Project, error)
+	Directory(ctx context.Context) ([]core.Project, []core.Task, error)
 	Get(ctx context.Context, slug string) (core.Project, error)
 	Create(ctx context.Context, actor core.User, in service.CreateProjectInput) (core.Project, error)
 	Update(ctx context.Context, slug string, in service.UpdateProjectInput) (core.Project, error)
@@ -69,11 +70,11 @@ type PushStore interface {
 const maxRequestBytes = 1 << 20
 
 // APIHandler serves the API and applies each route's declared access policy.
-func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, logger *slog.Logger) http.Handler {
+func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, version string, logger *slog.Logger) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, logger: logger}
+	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, version: version, logger: logger}
 
 	mux := http.NewServeMux()
 	for _, r := range routeTable {

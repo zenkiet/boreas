@@ -1,0 +1,104 @@
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme inline {
+	--font-sans: var(--app-font-text);
+	--font-mono: var(--app-font-mono);
+
+	--color-canvas: var(--app-canvas);
+	--color-base: var(--tui-background-base);
+	--color-neutral: var(--tui-background-neutral-1);
+	--color-border: var(--tui-border-normal);
+
+	--color-primary: var(--tui-text-primary);
+	--color-secondary: var(--tui-text-secondary);
+	--color-tertiary: var(--tui-text-tertiary);
+	--color-action: var(--tui-text-action);
+
+	--radius-md: var(--tui-radius-m);
+	--radius-lg: var(--tui-radius-l);
+}
+
+:root {
+	--app-font-text: -apple-system, system-ui, ui-sans-serif, 'Segoe UI', sans-serif;
+	--app-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+	--tui-radius-m: 0.625rem;
+	--tui-radius-l: 1rem;
+	--tui-duration: 0.22s;
+
+	--tui-background-base: #ffffff;
+	--tui-background-neutral-1: rgba(15, 23, 42, 0.045);
+	--tui-background-neutral-1-hover: rgba(15, 23, 42, 0.075);
+	--tui-background-neutral-2: rgba(15, 23, 42, 0.09);
+	--tui-background-accent-1: #4f46e5;
+	--tui-background-accent-1-hover: #5b52ec;
+
+	--tui-text-primary: #0f172a;
+	--tui-text-secondary: #475569;
+	--tui-text-tertiary: #64748b;
+	--tui-text-on-accent: #ffffff;
+	--tui-text-action: #4338ca;
+
+	--tui-border-normal: rgba(15, 23, 42, 0.085);
+	--tui-border-focus: #4f46e5;
+
+	--tui-status-positive: #047857;
+	--tui-status-negative: #be123c;
+	--tui-status-negative-pale: rgba(190, 18, 60, 0.09);
+	--tui-status-warning: #b45309;
+	--tui-status-warning-pale: rgba(180, 83, 9, 0.1);
+	--tui-status-neutral: #64748b;
+	--tui-status-neutral-pale: rgba(100, 116, 139, 0.1);
+
+	--app-canvas: #f4f6fa;
+	--app-scrollbar-thumb: rgba(15, 23, 42, 0.18);
+
+	--app-glass-fill: rgba(15, 23, 42, 0.035);
+	--app-glass-bevel: rgba(255, 255, 255, 0.9);
+	--app-glass-glow: rgba(255, 255, 255, 0.5);
+
+	--app-chrome-bg: rgba(255, 255, 255, 0.7);
+	--app-chrome-glow: rgba(255, 255, 255, 1);
+	--app-chrome-filter: blur(0.25rem) saturate(6) brightness(1.05);
+	--app-segment-thumb: rgba(255, 255, 255, 0.92);
+	--app-segment-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] {
+	--tui-background-base: #1c1c1e;
+	--tui-background-neutral-1: rgba(120, 120, 128, 0.18);
+	--tui-background-neutral-1-hover: rgba(120, 120, 128, 0.24);
+	--tui-background-neutral-2: rgba(120, 120, 128, 0.32);
+	--tui-background-accent-1: #6366f1;
+	--tui-background-accent-1-hover: #7c7ff5;
+
+	--tui-text-primary: #ffffff;
+	/* iOS label ramp; Apple's own tertiary is 2.4:1, this holds AA. */
+	--tui-text-secondary: rgba(235, 235, 245, 0.75);
+	--tui-text-tertiary: rgba(235, 235, 245, 0.55);
+	--tui-text-action: #a5b4fc;
+
+	--tui-border-normal: rgba(84, 84, 88, 0.65);
+	--tui-border-focus: #818cf8;
+
+	--tui-status-positive: #34d399;
+	--tui-status-negative: #fb7185;
+	--tui-status-negative-pale: rgba(251, 113, 133, 0.14);
+	--tui-status-warning: #fbbf24;
+	--tui-status-warning-pale: rgba(251, 191, 36, 0.14);
+	--tui-status-neutral: #98989f;
+	--tui-status-neutral-pale: rgba(152, 152, 159, 0.14);
+
+	--app-canvas: #000000;
+	--app-scrollbar-thumb: rgba(120, 120, 128, 0.4);
+
+	--app-glass-fill: rgba(255, 255, 255, 0.055);
+	--app-glass-bevel: rgba(255, 255, 255, 0.1);
+	--app-glass-glow: rgba(255, 255, 255, 0.045);
+
+	--app-chrome-bg: rgba(88, 88, 88, 0.31);
+	--app-chrome-glow: rgba(31, 31, 31, 0.8);
+	--app-chrome-filter: blur(0.25rem) saturate(4);
+	--app-segment-thumb: rgba(255, 255, 255, 0.16);
+	--app-segment-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}

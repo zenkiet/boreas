@@ -26,7 +26,7 @@ func testHandler(tasks TaskService, auth AuthService, projects ProjectService) h
 	if projects == nil {
 		projects = &stubProjects{}
 	}
-	return APIHandler(tasks, auth, projects, &stubPush{}, slog.New(slog.DiscardHandler))
+	return APIHandler(tasks, auth, projects, &stubPush{}, "test", slog.New(slog.DiscardHandler))
 }
 
 func authed(method, target string, body io.Reader) *http.Request {
@@ -820,7 +820,7 @@ func TestUpdateTaskRejectsUnknownFields(t *testing.T) {
 
 // Preflight must advertise every routed method because browsers reject missing methods.
 func TestCORSAdvertisesEveryRoutedMethod(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, "test", slog.New(slog.DiscardHandler))
 	r := httptest.NewRequest(http.MethodOptions, "/api/v1/projects/team/tasks/T", nil)
 	r.Header.Set("Origin", "http://localhost:4200")
 	headers := do(h, r).Header()
@@ -881,12 +881,7 @@ func TestApplicationHandlerRoutes(t *testing.T) {
 		t.Fatalf("proxy path = %q", seen)
 	}
 
-	rr := do(h, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rr.Code != http.StatusOK || rr.Body.String() != `{"service":"boreas","status":"healthy"}` {
-		t.Fatalf("root status=%d body=%q", rr.Code, rr.Body.String())
-	}
-
-	for _, path := range []string{"/T-1/app", "/missing", "/team/other/app"} {
+	for _, path := range []string{"/", "/T-1/app", "/missing", "/team/other/app"} {
 		if rr := do(h, httptest.NewRequest(http.MethodGet, path, nil)); rr.Code != http.StatusNotFound {
 			t.Fatalf("%s status=%d, want 404", path, rr.Code)
 		}

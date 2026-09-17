@@ -77,6 +77,19 @@ func (s *ProjectService) List(ctx context.Context, actor core.User) ([]core.Proj
 	return projects, nil
 }
 
+// Directory lists every project and task for the anonymous environment index.
+func (s *ProjectService) Directory(ctx context.Context) ([]core.Project, []core.Task, error) {
+	projects, err := s.projects.List(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list projects: %w", err)
+	}
+	tasks, err := s.tasks.ListAll(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list tasks: %w", err)
+	}
+	return projects, tasks, nil
+}
+
 func (s *ProjectService) Get(ctx context.Context, slug string) (core.Project, error) {
 	if err := core.ValidateProjectSlug(slug); err != nil {
 		return core.Project{}, err

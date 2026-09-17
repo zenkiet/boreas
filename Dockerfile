@@ -1,4 +1,4 @@
-FROM alpine:3.22
+FROM alpine:latest
 
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app

@@ -1,10 +1,17 @@
-.PHONY: all build run dev docker clean fmt hooks test test-race test-integration test-docker lint db openapi openapi-check
+.PHONY: all build frontend run dev docker clean fmt hooks test test-race test-integration test-docker lint db openapi openapi-check
+
+VERSION ?= $(shell git describe --tags --always --dirty)
 
 all: build
 
-build:
-	CGO_ENABLED=0 go build -o boreas ./cmd/boreas
-	@echo "Boreas built successfully"
+frontend:
+	pnpm -C frontend install --frozen-lockfile
+	pnpm -C frontend build
+	@touch internal/web/public/.gitkeep
+
+build: frontend
+	CGO_ENABLED=0 go build -ldflags "-X main.version=$(VERSION)" -o boreas ./cmd/boreas
+	@echo "Boreas $(VERSION) built successfully"
 
 run: build
 	./boreas

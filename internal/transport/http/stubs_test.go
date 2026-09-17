@@ -177,6 +177,7 @@ type stubProjects struct {
 	grant           func(context.Context, string, string, uuid.UUID, core.ProjectRole) error
 	listGrants      func(context.Context, string, string) ([]core.TaskGrant, error)
 	revoke          func(context.Context, string, string, uuid.UUID) error
+	directory       func(context.Context) ([]core.Project, []core.Task, error)
 }
 
 func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (core.ProjectAccess, error) {
@@ -199,7 +200,15 @@ func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (
 }
 
 func (*stubProjects) List(context.Context, core.User) ([]core.Project, error) { return nil, nil }
-func (*stubProjects) Get(context.Context, string) (core.Project, error)       { return core.Project{}, nil }
+
+func (s *stubProjects) Directory(c context.Context) ([]core.Project, []core.Task, error) {
+	if s.directory != nil {
+		return s.directory(c)
+	}
+	return nil, nil, nil
+}
+
+func (*stubProjects) Get(context.Context, string) (core.Project, error) { return core.Project{}, nil }
 
 func (*stubProjects) Create(context.Context, core.User, service.CreateProjectInput) (core.Project, error) {
 	return core.Project{}, nil

@@ -176,6 +176,28 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+func TestRegistryFallbackServesUnroutedPaths(t *testing.T) {
+	registry := New(0, 0)
+	registry.Fallback = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+
+	for _, path := range []string{"/", "/blogic-view", "/blogic-view/", "/blogic-view/missing"} {
+		rr := httptest.NewRecorder()
+		registry.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
+		if rr.Code != http.StatusTeapot {
+			t.Fatalf("%s status=%d, want fallback", path, rr.Code)
+		}
+	}
+
+	registry.Fallback = nil
+	rr := httptest.NewRecorder()
+	registry.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/blogic-view/missing", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status=%d, want 404 without a fallback", rr.Code)
+	}
+}
+
 func serverAddress(t *testing.T, raw string) (string, int) {
 	t.Helper()
 	u, err := url.Parse(raw)

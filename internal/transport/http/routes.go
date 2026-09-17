@@ -179,6 +179,15 @@ var routeTable = [...]route{
 	},
 
 	{
+		method: http.MethodGet, path: "/api/v1/public/projects", access: accessPublic,
+		handler: (*Handler).publicProjects,
+		tag:     "system", summary: "Public environment directory",
+		description: "Every project with its tasks, reduced to what the public directory pages show. " +
+			"Image, port, environment and container identifiers are never included.",
+		resp: new(publicProjectsResponse), status: http.StatusOK,
+	},
+
+	{
 		method: http.MethodGet, path: "/api/v1/projects", access: accessAuthed,
 		handler: (*Handler).listProjects,
 		tag:     "projects", summary: "List reachable projects",
