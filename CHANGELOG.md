@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.10.0 - 2026-09-17
+#### 🚀 Features
+- (**web**) ✨ implement manage task public - (bf79fa6) - *zenkiet*
+
+- - -
+
 ## v1.9.0 - 2026-08-28
 #### 🚀 Features
 - ✨ implement note markdown for task - (a310a63) - Zen Kiet
