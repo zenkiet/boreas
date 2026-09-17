@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.10.1 - 2026-09-17
+#### ♻️ Code Refactoring
+- (**web**) ♻️ improve search task - (3f3351d) - *zenkiet*
+
+- - -
+
 ## v1.10.0 - 2026-09-17
 #### 🚀 Features
 - (**web**) ✨ implement manage task public - (bf79fa6) - *zenkiet*
