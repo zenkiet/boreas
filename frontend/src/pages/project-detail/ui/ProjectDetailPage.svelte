@@ -2,11 +2,10 @@
 	/* eslint-disable svelte/no-navigation-without-resolve -- environment rows are served by the Go proxy. */
 	import { resolve } from '$app/paths';
 	import {
-		TASK_GROUPS,
-		TASK_GROUP_LABEL,
+		DEV_STATUSES,
+		DEV_STATUS_LABEL,
 		bySeverity,
-		groupCount,
-		groupOf,
+		devCount,
 		type PublicProject,
 		type PublicTask
 	} from '@/shared/api';
@@ -21,9 +20,9 @@
 
 	const filterItems = (tasks: readonly PublicTask[]) => [
 		{ label: 'All', count: tasks.length },
-		...TASK_GROUPS.map((group) => ({
-			label: TASK_GROUP_LABEL[group],
-			count: groupCount(tasks, group)
+		...DEV_STATUSES.map((status) => ({
+			label: DEV_STATUS_LABEL[status],
+			count: devCount(tasks, status)
 		}))
 	];
 
@@ -31,14 +30,14 @@
 		const needle = query.trim().toLowerCase();
 		return bySeverity(tasks).filter(
 			(task) =>
-				(filter === 0 || groupOf(task) === TASK_GROUPS[filter - 1]) &&
+				(filter === 0 || task.devStatus === DEV_STATUSES[filter - 1]) &&
 				`${task.name} ${task.description ?? ''}`.toLowerCase().includes(needle)
 		);
 	};
 
 	const summary = (tasks: readonly PublicTask[]) =>
-		TASK_GROUPS.filter((group) => groupCount(tasks, group))
-			.map((group) => `${groupCount(tasks, group)} ${TASK_GROUP_LABEL[group].toLowerCase()}`)
+		DEV_STATUSES.filter((status) => devCount(tasks, status))
+			.map((status) => `${devCount(tasks, status)} ${DEV_STATUS_LABEL[status].toLowerCase()}`)
 			.join(' · ') || '0 environments';
 </script>
 
@@ -146,7 +145,7 @@
 							href="/{found.slug}/{task.name}"
 							data-sveltekit-reload
 						>
-							<i class="dot dot--{groupOf(task)}"></i>
+							<i class="dot dot--{task.devStatus}"></i>
 							<span class="min-w-0 flex-1">
 								<span class="row__id font-mono">
 									{task.name}<span class="sr-only">, {task.status}</span>

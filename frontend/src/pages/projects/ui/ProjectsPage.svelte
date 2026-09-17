@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { bySeverity, groupCount, groupOf, type PublicProject } from '@/shared/api';
+	import { bySeverity, devCount, runningCount, type PublicProject } from '@/shared/api';
 	import { EmptyState, Icon, InsetGroup, SearchField, SkeletonRows } from '@/shared/ui';
 
 	let { projects }: { projects: Promise<readonly PublicProject[]> } = $props();
@@ -11,7 +11,7 @@
 
 	const taskLabel = (project: PublicProject) =>
 		project.tasks.length
-			? `${groupCount(project.tasks, 'running')}/${project.tasks.length} running`
+			? `${runningCount(project.tasks)}/${project.tasks.length} running`
 			: 'empty';
 </script>
 
@@ -59,7 +59,7 @@
 			: []}
 
 		<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-			{#each [['Projects', list.length, ''], ['Running', groupCount(tasks, 'running'), 'var(--tui-status-positive)'], ['Stopped', groupCount(tasks, 'stopped'), 'var(--tui-status-warning)'], ['Failed', groupCount(tasks, 'failed'), 'var(--tui-status-negative)']] as [label, value, color] (label)}
+			{#each [['Projects', list.length, ''], ['In progress', devCount(tasks, 'in_progress'), 'var(--tui-status-warning)'], ['Ready', devCount(tasks, 'ready'), 'var(--tui-status-positive)'], ['Blocked', devCount(tasks, 'blocked'), 'var(--tui-status-negative)']] as [label, value, color] (label)}
 				<div class="flex flex-col gap-1.5 rounded-lg bg-base px-4 py-3">
 					<span class="text-meta text-secondary">{label}</span>
 					<span class="text-[1.375rem] leading-none font-semibold tabular" style:color>{value}</span
@@ -109,7 +109,7 @@
 							</span>
 							<span class="flex flex-none items-center gap-1" aria-hidden="true">
 								{#each bySeverity(project.tasks).slice(0, MAX_DOTS) as task (task.name)}
-									<i class="dot dot--{groupOf(task)} size-1.5"></i>
+									<i class="dot dot--{task.devStatus} size-1.5"></i>
 								{/each}
 								{#if project.tasks.length > MAX_DOTS}
 									<span class="text-xs text-tertiary tabular">
@@ -134,7 +134,7 @@
 							href={resolve('/[project]/[task]', { project: project.slug, task: task.name })}
 							data-sveltekit-reload
 						>
-							<i class="dot dot--{groupOf(task)}"></i>
+							<i class="dot dot--{task.devStatus}"></i>
 							<span class="min-w-0 flex-1">
 								<span class="row__name font-mono">{task.name}</span>
 								<span class="row__sub font-mono">

@@ -99,15 +99,15 @@
 	background: var(--tui-status-neutral);
 }
 
-.dot--running {
+.dot--ready {
 	background: var(--tui-status-positive);
 }
 
-.dot--stopped {
+.dot--in_progress {
 	background: var(--tui-status-warning);
 }
 
-.dot--failed {
+.dot--blocked {
 	background: var(--tui-status-negative);
 }
 

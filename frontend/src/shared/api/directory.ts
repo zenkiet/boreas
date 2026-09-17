@@ -1,33 +1,22 @@
 /** Ordered worst first, so indexOf doubles as the severity sort key. */
-const TASK_STATUSES = ['error', 'unknown', 'stopped', 'creating', 'starting', 'running'] as const;
+export const DEV_STATUSES = ['blocked', 'in_progress', 'ready'] as const;
 
-export type TaskStatus = (typeof TASK_STATUSES)[number];
+export type DevStatus = (typeof DEV_STATUSES)[number];
 
-export const TASK_GROUPS = ['failed', 'stopped', 'running'] as const;
-
-type TaskGroup = (typeof TASK_GROUPS)[number];
-
-export const TASK_GROUP_LABEL: Record<TaskGroup, string> = {
-	failed: 'Failed',
-	stopped: 'Stopped',
-	running: 'Running'
+export const DEV_STATUS_LABEL: Record<DevStatus, string> = {
+	blocked: 'Blocked',
+	in_progress: 'In progress',
+	ready: 'Ready'
 };
 
-/** A visitor only cares whether the URL answers, so the six runtime states collapse to three. */
-const GROUP: Record<TaskStatus, TaskGroup> = {
-	error: 'failed',
-	unknown: 'stopped',
-	stopped: 'stopped',
-	creating: 'stopped',
-	starting: 'stopped',
-	running: 'running'
-};
+export type TaskStatus = 'creating' | 'starting' | 'running' | 'stopped' | 'error' | 'unknown';
 
 /** Image, port, env and container ids stay in the authed API: this page is anonymous. */
 export interface PublicTask {
 	readonly name: string;
 	readonly description?: string;
 	readonly status: TaskStatus;
+	readonly devStatus: DevStatus;
 	readonly updatedAt: string;
 }
 
@@ -37,18 +26,20 @@ export interface PublicProject {
 	readonly tasks: readonly PublicTask[];
 }
 
-export const groupOf = (task: PublicTask): TaskGroup => GROUP[task.status];
-
-export const groupCount = (tasks: readonly PublicTask[], group: TaskGroup): number =>
-	tasks.filter((task) => GROUP[task.status] === group).length;
-
 export const bySeverity = (tasks: readonly PublicTask[]): readonly PublicTask[] =>
-	[...tasks].sort((a, b) => TASK_STATUSES.indexOf(a.status) - TASK_STATUSES.indexOf(b.status));
+	[...tasks].sort((a, b) => DEV_STATUSES.indexOf(a.devStatus) - DEV_STATUSES.indexOf(b.devStatus));
+
+export const devCount = (tasks: readonly PublicTask[], status: DevStatus): number =>
+	tasks.filter((task) => task.devStatus === status).length;
+
+export const runningCount = (tasks: readonly PublicTask[]): number =>
+	tasks.filter((task) => task.status === 'running').length;
 
 interface TaskPayload {
 	name: string;
 	description?: string;
 	status: TaskStatus;
+	dev_status: DevStatus;
 	updated_at: string;
 }
 
@@ -70,6 +61,7 @@ export const listProjects = (load: typeof fetch = fetch): Promise<readonly Publi
 					name: task.name,
 					description: task.description,
 					status: task.status,
+					devStatus: task.dev_status,
 					updatedAt: task.updated_at
 				}))
 			}))
