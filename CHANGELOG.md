@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.11.0 - 2026-09-17
+#### 🚀 Features
+- (**project**) ✨ implement note in project detail - (7a97e55) - *zenkiet*
+
+- - -
+
 ## v1.10.2 - 2026-09-17
 #### 🎨 Styles & Formatting
 - 💄 improve UI/UX for project detail - (dee5e13) - *zenkiet*
