@@ -2651,8 +2651,6 @@ components:
       properties:
         description:
           type: string
-        dev_status:
-          $ref: '#/components/schemas/DevStatus'
         name:
           example: myl-2019
           type: string
@@ -2664,7 +2662,6 @@ components:
       required:
       - name
       - status
-      - dev_status
       - updated_at
       type: object
     PushSubscriptionRequest:

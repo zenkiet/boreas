@@ -276,7 +276,7 @@ func (h *Handler) publicProjects(w http.ResponseWriter, r *http.Request) {
 	for _, task := range tasks {
 		grouped[task.ProjectID] = append(grouped[task.ProjectID], publicTaskDTO{
 			Name: task.Name, Description: task.Description,
-			Status: task.Status, DevStatus: task.DevStatus, UpdatedAt: task.UpdatedAt,
+			Status: task.Status, UpdatedAt: task.UpdatedAt,
 		})
 	}
 	result := make([]publicProjectDTO, len(projects))

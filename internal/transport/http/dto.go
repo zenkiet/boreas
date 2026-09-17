@@ -273,7 +273,6 @@ type publicTaskDTO struct {
 	Name        string          `json:"name" example:"myl-2019"`
 	Description string          `json:"description,omitempty"`
 	Status      core.TaskStatus `json:"status"`
-	DevStatus   core.DevStatus  `json:"dev_status"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
