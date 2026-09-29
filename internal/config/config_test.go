@@ -7,17 +7,8 @@ import (
 
 func TestLoadDefaults(t *testing.T) {
 	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Port != 8080 {
-		t.Fatalf("port = %d, want 8080", cfg.Port)
-	}
-	if cfg.ListenAddr() != "0.0.0.0:8080" {
-		t.Fatalf("listen address = %q", cfg.ListenAddr())
-	}
-	if cfg.Admin.Provided() {
-		t.Fatal("admin should not be considered provided without environment variables")
+	if err != nil || cfg.Port != 8080 || cfg.ListenAddr() != "0.0.0.0:8080" || cfg.Admin.Provided() {
+		t.Fatalf("defaults = %+v, %v", cfg, err)
 	}
 }
 
@@ -30,25 +21,17 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	t.Setenv("BOREAS_ADMIN_PASSWORD", "supersecret")
 
 	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Port != 9090 || cfg.Postgres.Host != "db.internal" || cfg.Postgres.DB != "staging" {
-		t.Fatalf("overrides not applied: %+v", cfg)
-	}
-	if !cfg.Admin.Provided() {
-		t.Fatal("admin credentials should be considered provided")
+	if err != nil || cfg.Port != 9090 || cfg.Postgres.Host != "db.internal" || cfg.Postgres.DB != "staging" || !cfg.Admin.Provided() {
+		t.Fatalf("overrides not applied: %+v, %v", cfg, err)
 	}
 }
 
 func TestLoadRejectsInvalidPort(t *testing.T) {
-	t.Setenv("BOREAS_PORT", "70000")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected validation error for out-of-range port")
-	}
-	t.Setenv("BOREAS_PORT", "not-a-number")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected parse error for non-numeric port")
+	for _, port := range []string{"70000", "not-a-number"} {
+		t.Setenv("BOREAS_PORT", port)
+		if _, err := Load(); err == nil {
+			t.Fatalf("BOREAS_PORT=%q must be rejected", port)
+		}
 	}
 }
 
@@ -58,10 +41,7 @@ func TestDSNEscapesPasswordAndPrefersURL(t *testing.T) {
 		Password: "p@ss:word/1", DB: "boreas", SSLMode: "require",
 	}
 	dsn := p.DSN()
-	if strings.Contains(dsn, "p@ss:word/1") {
-		t.Fatalf("password was not escaped: %s", dsn)
-	}
-	if !strings.Contains(dsn, "sslmode=require") || !strings.Contains(dsn, "/boreas") {
+	if strings.Contains(dsn, "p@ss:word/1") || !strings.Contains(dsn, "sslmode=require") || !strings.Contains(dsn, "/boreas") {
 		t.Fatalf("unexpected DSN: %s", dsn)
 	}
 
@@ -72,6 +52,11 @@ func TestDSNEscapesPasswordAndPrefersURL(t *testing.T) {
 }
 
 func TestLoadRejectsFCMWithKeyedNotifyURL(t *testing.T) {
+	// A keyed URL stays valid on its own: only enabling FCM makes it a misconfiguration.
+	t.Setenv("BOREAS_NOTIFY_URL", "http://boreas-noti:8000/notify/boreas")
+	if _, err := Load(); err != nil {
+		t.Fatalf("a keyed URL without FCM must load: %v", err)
+	}
 	t.Setenv("BOREAS_FCM_PROJECT", "boreas")
 	t.Setenv("BOREAS_FCM_KEYFILE", "/config/key.json")
 
@@ -111,18 +96,6 @@ func TestLoadRejectsPartialFCMConfig(t *testing.T) {
 				t.Fatal("partial FCM configuration must be rejected")
 			}
 		})
-	}
-}
-
-// A keyed URL stays valid on its own: only enabling FCM makes it a misconfiguration.
-func TestLoadAllowsKeyedNotifyURLWithoutFCM(t *testing.T) {
-	t.Setenv("BOREAS_NOTIFY_URL", "http://boreas-noti:8000/notify/boreas")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.FCM.Enabled() {
-		t.Fatal("FCM must not be considered enabled without both variables")
 	}
 }
 

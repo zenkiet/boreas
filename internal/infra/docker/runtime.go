@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -53,10 +54,7 @@ func (r *Runtime) EnsureNetwork(ctx context.Context) error {
 		}
 	}
 	_, err = r.client.NetworkCreate(ctx, r.network, network.CreateOptions{Driver: "bridge", Labels: map[string]string{"managed-by": "boreas"}})
-	if errdefs.IsConflict(err) {
-		return nil
-	}
-	if err != nil {
+	if err != nil && !errdefs.IsConflict(err) {
 		return fmt.Errorf("create docker network %q: %w", r.network, err)
 	}
 	return nil
@@ -94,18 +92,12 @@ func (r *Runtime) Create(ctx context.Context, spec core.ContainerSpec) (string, 
 		return "", err
 	}
 	labels := map[string]string{"managed-by": "boreas", "project": spec.Project, "task": spec.Name}
-	for k, v := range spec.Labels {
-		labels[k] = v
-	}
+	maps.Copy(labels, spec.Labels)
 	port := nat.Port(strconv.Itoa(spec.Port) + "/tcp")
-	basePath := "/" + spec.Project + "/" + spec.Name + "/"
-	env := make([]string, 0, len(spec.Env)+4)
-	env = append(env,
-		"BOREAS_PROJECT="+spec.Project,
-		"BOREAS_TASK="+spec.Name,
-		"BOREAS_PORT="+strconv.Itoa(spec.Port),
-		"BASE_HREF="+basePath,
-	)
+	env := []string{
+		"BOREAS_PROJECT=" + spec.Project, "BOREAS_TASK=" + spec.Name,
+		"BOREAS_PORT=" + strconv.Itoa(spec.Port), "BASE_HREF=/" + spec.Project + "/" + spec.Name + "/",
+	}
 	for key, value := range spec.Env {
 		env = append(env, key+"="+value)
 	}
@@ -165,11 +157,7 @@ func (r *Runtime) Recreate(ctx context.Context, oldID string, spec core.Containe
 			return "", err
 		}
 	}
-	id, err := r.Create(ctx, spec)
-	if err != nil {
-		return "", err
-	}
-	return id, nil
+	return r.Create(ctx, spec)
 }
 
 func (r *Runtime) Start(ctx context.Context, id string) error {
@@ -177,8 +165,7 @@ func (r *Runtime) Start(ctx context.Context, id string) error {
 }
 
 func (r *Runtime) Stop(ctx context.Context, id string) error {
-	timeout := 10
-	err := r.client.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout})
+	err := r.client.ContainerStop(ctx, id, container.StopOptions{Timeout: new(10)})
 	if errdefs.IsNotModified(err) {
 		return nil
 	}
@@ -226,15 +213,15 @@ func (r *Runtime) Inspect(ctx context.Context, id string) (core.ContainerState, 
 }
 
 func (r *Runtime) Logs(ctx context.Context, id string, options core.LogOptions) (io.ReadCloser, error) {
-	tail := strconv.Itoa(options.Tail)
+	tail, since := strconv.Itoa(options.Tail), ""
+	if !options.Since.IsZero() {
+		tail, since = "all", fmt.Sprintf("%d.%09d", options.Since.Unix(), options.Since.Nanosecond())
+	}
 	stream, err := r.client.ContainerLogs(ctx, id, container.LogsOptions{
-		ShowStdout: true, ShowStderr: true, Follow: options.Follow, Tail: tail,
+		ShowStdout: true, ShowStderr: true, Follow: options.Follow, Tail: tail, Since: since,
 		Timestamps: options.Timestamps,
 	})
-	if err != nil {
-		return nil, mapError("read logs for container "+id, err)
-	}
-	return stream, nil
+	return stream, mapError("read logs for container "+id, err)
 }
 
 func (r *Runtime) TotalMemory(ctx context.Context) (int64, error) {

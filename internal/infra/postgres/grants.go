@@ -16,51 +16,53 @@ func NewGrantStore(pool *pgxpool.Pool) *GrantStore { return &GrantStore{pool: po
 
 // Role reports the role granted on one task, or "" when nothing is granted.
 func (s *GrantStore) Role(ctx context.Context, projectID, userID uuid.UUID, taskName string) (core.ProjectRole, error) {
-	var role core.ProjectRole
-	err := s.pool.QueryRow(ctx, `
+	role, err := one(ctx, s.pool, pgx.RowTo[core.ProjectRole], "get task grant", `
 		SELECT g.role FROM task_grants g
 		JOIN tasks t ON t.id = g.task_id
 		WHERE g.user_id = $2 AND t.project_id = $1 AND t.name = $3`,
-		projectID, userID, taskName).Scan(&role)
-	if errors.Is(err, pgx.ErrNoRows) {
+		projectID, userID, taskName)
+	if errors.Is(err, core.ErrNotFound) {
 		return "", nil
 	}
-	if err != nil {
-		return "", mapError("get task grant", err)
-	}
-	return role, nil
+	return role, err
 }
 
 // AnyInProject backs the project envelope: one grant is enough to see that the project exists.
 func (s *GrantStore) AnyInProject(ctx context.Context, projectID, userID uuid.UUID) (bool, error) {
-	var exists bool
-	err := s.pool.QueryRow(ctx, `
+	return one(ctx, s.pool, pgx.RowTo[bool], "check task grants", `
 		SELECT EXISTS (
 			SELECT 1 FROM task_grants g
 			JOIN tasks t ON t.id = g.task_id
 			WHERE g.user_id = $2 AND t.project_id = $1)`,
-		projectID, userID).Scan(&exists)
+		projectID, userID)
+}
+
+func (s *GrantStore) ForUser(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]core.ProjectRole, error) {
+	rows, err := s.pool.Query(ctx, `SELECT task_id, role FROM task_grants WHERE user_id = $1`, userID)
 	if err != nil {
-		return false, mapError("check task grants", err)
+		return nil, mapError("list user grants", err)
 	}
-	return exists, nil
+	roles := map[uuid.UUID]core.ProjectRole{}
+	var (
+		taskID uuid.UUID
+		role   core.ProjectRole
+	)
+	if _, err := pgx.ForEachRow(rows, []any{&taskID, &role}, func() error {
+		roles[taskID] = role
+		return nil
+	}); err != nil {
+		return nil, mapError("scan user grants", err)
+	}
+	return roles, nil
 }
 
 func (s *GrantStore) ListForTask(ctx context.Context, taskID uuid.UUID) ([]core.TaskGrant, error) {
-	rows, err := s.pool.Query(ctx, `
+	return many(ctx, s.pool, scanGrant, "list task grants", "scan task grants", `
 		SELECT g.task_id, g.user_id, u.username, g.role, g.created_at
 		FROM task_grants g
 		JOIN users u ON u.id = g.user_id
 		WHERE g.task_id = $1
 		ORDER BY u.username`, taskID)
-	if err != nil {
-		return nil, mapError("list task grants", err)
-	}
-	grants, err := pgx.CollectRows(rows, scanGrant)
-	if err != nil {
-		return nil, mapError("scan task grants", err)
-	}
-	return grants, nil
 }
 
 func (s *GrantStore) Grant(ctx context.Context, grant core.TaskGrant) error {

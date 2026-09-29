@@ -246,9 +246,98 @@ paths:
       summary: Health check
       tags:
       - system
+  /api/v1/notifications:
+    get:
+      description: Newest first, from every project and task the caller reaches. To
+        page, pass the id of the last notification received as before.
+      operationId: get-notifications
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          default: 50
+          maximum: 200
+          minimum: 1
+          type: integer
+      - in: query
+        name: before
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationsResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List notifications across projects
+      tags:
+      - notifications
+  /api/v1/notifications/seen:
+    post:
+      description: Seen is tracked per user. Idempotent; ids outside the caller's
+        visibility are skipped.
+      operationId: post-notifications-seen
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkSeenRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Mark notifications seen
+      tags:
+      - notifications
   /api/v1/projects:
     get:
-      description: Administrators see every project, others only their memberships.
+      description: Administrators see every project, others their memberships and
+        grants. my_role is the caller's role, per project and per task, where a grant
+        can raise it; last_deploy is the newest deploy.
       operationId: get-projects
       responses:
         "200":
@@ -271,7 +360,7 @@ paths:
           description: Internal Server Error
       security:
       - bearerAuth: []
-      summary: List reachable projects
+      summary: List reachable projects with their tasks
       tags:
       - projects
     post:
@@ -655,7 +744,8 @@ paths:
         {"task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit":
         integer, "network_rx_bytes": integer, "network_tx_bytes": integer, "observed_at":
         string}. Tasks that are not running are omitted, and a comment heartbeat fills
-        idle time. Use EventSource, not a generated client method.'
+        idle time. Read it with fetch and a stream reader: EventSource cannot send
+        the Authorization header.'
       operationId: get-projects-project-metrics-stream
       parameters:
       - in: path
@@ -702,7 +792,7 @@ paths:
       - projects
   /api/v1/projects/{project}/notifications:
     get:
-      description: Newest first. Recorded when a deploy succeeds or fails; a retried
+      description: The cross-project feed, limited to this project. A retried deploy
         callback for the image a task already runs records nothing.
       operationId: get-projects-project-notifications
       parameters:
@@ -713,6 +803,10 @@ paths:
           maximum: 200
           minimum: 1
           type: integer
+      - in: query
+        name: before
+        schema:
+          $ref: '#/components/schemas/UUID'
       - in: path
         name: project
         required: true
@@ -758,7 +852,7 @@ paths:
           description: Internal Server Error
       security:
       - bearerAuth: []
-      summary: List deploy notifications
+      summary: List a project's notifications
       tags:
       - projects
   /api/v1/projects/{project}/notifications/{id}/seen:
@@ -1489,7 +1583,9 @@ paths:
     get:
       description: 'Server-Sent Events, each carrying {"timestamp": string, "stream":
         "stdout"|"stderr", "message": string}, plus a comment heartbeat while idle.
-        Use EventSource, not a generated client method.'
+        To resume, pass the last timestamp received as since: every later entry follows
+        and tail is ignored. Read it with fetch and a stream reader: EventSource cannot
+        send the Authorization header.'
       operationId: get-projects-project-tasks-name-logs-stream
       parameters:
       - in: query
@@ -1498,6 +1594,11 @@ paths:
           default: 100
           minimum: 0
           type: integer
+      - in: query
+        name: since
+        schema:
+          format: date-time
+          type: string
       - in: path
         name: project
         required: true
@@ -1554,8 +1655,9 @@ paths:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/metrics/stream:
     get:
-      description: The project-wide stream's payload, limited to this task. 409 when
-        the task has no container yet. Use EventSource, not a generated client method.
+      description: 'The project-wide stream''s payload, limited to this task. 409
+        when the task has no container yet. Read it with fetch and a stream reader:
+        EventSource cannot send the Authorization header.'
       operationId: get-projects-project-tasks-name-metrics-stream
       parameters:
       - in: path
@@ -2393,6 +2495,79 @@ components:
       required:
       - error
       type: object
+    FleetProject:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        default_env:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+        default_image:
+          example: nginx:alpine
+          type: string
+        default_port:
+          example: 80
+          type: integer
+        id:
+          $ref: '#/components/schemas/UUID'
+        my_role:
+          $ref: '#/components/schemas/ProjectRole'
+        name:
+          example: Demo
+          type: string
+        registry_credential_id:
+          $ref: '#/components/schemas/UUID'
+        slug:
+          example: demo
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/FleetTask'
+          nullable: true
+          type: array
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - slug
+      - name
+      - default_image
+      - default_port
+      - default_env
+      - created_at
+      - updated_at
+      - my_role
+      - tasks
+      type: object
+    FleetTask:
+      properties:
+        description:
+          type: string
+        dev_status:
+          $ref: '#/components/schemas/DevStatus'
+        image:
+          example: nginx:alpine
+          type: string
+        last_deploy:
+          $ref: '#/components/schemas/LastDeploy'
+        my_role:
+          $ref: '#/components/schemas/ProjectRole'
+        name:
+          example: web
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+      required:
+      - name
+      - image
+      - status
+      - dev_status
+      - my_role
+      type: object
     Grant:
       properties:
         created_at:
@@ -2448,6 +2623,17 @@ components:
       - status
       - version
       type: object
+    LastDeploy:
+      properties:
+        at:
+          format: date-time
+          type: string
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+      required:
+      - status
+      - at
+      type: object
     LoginRequest:
       properties:
         password:
@@ -2469,6 +2655,18 @@ components:
       required:
       - token
       - user
+      type: object
+    MarkSeenRequest:
+      properties:
+        ids:
+          items:
+            $ref: '#/components/schemas/UUID'
+          maxItems: 200
+          minItems: 1
+          nullable: true
+          type: array
+      required:
+      - ids
       type: object
     Member:
       properties:
@@ -2509,6 +2707,9 @@ components:
           type: string
         id:
           $ref: '#/components/schemas/UUID'
+        project:
+          example: demo
+          type: string
         seen:
           type: boolean
         status:
@@ -2519,9 +2720,13 @@ components:
         title:
           example: "\U0001F680 Deploy Succeeded • Demo"
           type: string
+        type:
+          $ref: '#/components/schemas/NotificationType'
       required:
       - id
+      - project
       - task_name
+      - type
       - status
       - title
       - seen
@@ -2532,6 +2737,14 @@ components:
       - success
       - failure
       - info
+      type: string
+    NotificationType:
+      enum:
+      - deployed
+      - deploy_failed
+      - status_changed
+      - task_created
+      - task_assigned
       type: string
     NotificationsResponse:
       properties:
@@ -2568,6 +2781,8 @@ components:
           type: integer
         id:
           $ref: '#/components/schemas/UUID'
+        my_role:
+          $ref: '#/components/schemas/ProjectRole'
         name:
           example: Demo
           type: string
@@ -2588,6 +2803,7 @@ components:
       - default_env
       - created_at
       - updated_at
+      - my_role
       type: object
     ProjectResponse:
       properties:
@@ -2607,7 +2823,7 @@ components:
       properties:
         projects:
           items:
-            $ref: '#/components/schemas/Project'
+            $ref: '#/components/schemas/FleetProject'
           nullable: true
           type: array
         total:
@@ -2742,6 +2958,8 @@ components:
           additionalProperties:
             type: string
           type: object
+        my_role:
+          $ref: '#/components/schemas/ProjectRole'
         name:
           example: web
           type: string
@@ -2773,6 +2991,7 @@ components:
       - created_at
       - updated_at
       - env
+      - my_role
       type: object
     TaskDeletedResponse:
       properties:

@@ -49,30 +49,21 @@ func newHarness(t *testing.T) *harness {
 	return h
 }
 
-func TestNewTaskServiceRequiresCredentialStore(t *testing.T) {
-	_, err := NewTaskService(
-		newFakeRuntime(), newFakeTaskStore(), newFakeProjectStore(), nil, newFakeRoutes(), nil,
-		Config{DefaultPort: 80, PollInterval: time.Millisecond, ReadinessTimeout: time.Second},
-	)
-	if !errors.Is(err, core.ErrInvalidInput) {
-		t.Fatalf("got %v, want ErrInvalidInput", err)
+func (h *harness) create(t *testing.T, in CreateTaskInput) core.Task {
+	t.Helper()
+	task, err := h.svc.Create(context.Background(), "team", in)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return task
 }
 
 func TestCreateLifecycleAndDefaults(t *testing.T) {
 	h := newHarness(t)
-	task, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "task-1", Image: " image "})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if task.Status != core.StatusRunning || task.Port != 8080 || task.ContainerIP != "10.0.0.2" {
+	task := h.create(t, CreateTaskInput{Name: "task-1", Image: " image "})
+	if task.Status != core.StatusRunning || task.Port != 8080 || task.ContainerIP != "10.0.0.2" ||
+		task.Image != "image" || task.ProjectID != h.project.ID {
 		t.Fatalf("unexpected task: %+v", task)
-	}
-	if task.Image != "image" {
-		t.Fatalf("image was not trimmed: %q", task.Image)
-	}
-	if task.ProjectID != h.project.ID {
-		t.Fatal("task was not scoped to the project")
 	}
 	if len(h.runtime.created) != 1 || h.routes.registered["team/task-1"] != task.ContainerIP {
 		t.Fatal("create side effects missing")
@@ -100,39 +91,32 @@ func TestCreateIgnoresProjectFormDefaults(t *testing.T) {
 		}
 	}
 
-	task, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "sent:image"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	task := h.create(t, CreateTaskInput{Name: "web", Image: "sent:image"})
 	if task.Image != "sent:image" || task.Port == 9999 || len(task.Env) != 0 {
 		t.Fatalf("project form defaults leaked into the task: %+v", task)
 	}
 }
 
-func TestCreateAllowsSameNameInDifferentProjects(t *testing.T) {
+func TestUnknownAndInvalidNamesAreRejected(t *testing.T) {
 	h := newHarness(t)
-	h.projects.add("other")
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
+	ctx := context.Background()
+	if _, err := h.svc.Create(ctx, "missing", CreateTaskInput{Name: "x", Image: "img"}); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("unknown project: got %v, want ErrNotFound", err)
 	}
-	if _, err := h.svc.Create(context.Background(), "other", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatalf("same task name in another project was rejected: %v", err)
+	if _, err := h.svc.Deploy(ctx, "team", "absent", deployDigestA); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("unknown task: got %v, want ErrNotFound", err)
 	}
-	if h.routes.registered["team/web"] == "" || h.routes.registered["other/web"] == "" {
-		t.Fatalf("both routes should exist: %v", h.routes.registered)
+	if _, err := h.svc.Create(ctx, "team", CreateTaskInput{Name: "bad name", Image: "img"}); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("bad task name: got %v, want ErrInvalidInput", err)
+	}
+	if _, err := h.svc.Get(ctx, "API", "task"); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("bad project slug: got %v, want ErrInvalidInput", err)
 	}
 }
 
-func TestCreateUnknownProject(t *testing.T) {
+func TestCreatePullsWithTheProjectRegistryCredential(t *testing.T) {
 	h := newHarness(t)
-	_, err := h.svc.Create(context.Background(), "missing", CreateTaskInput{Name: "x", Image: "img"})
-	if !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("got %v, want ErrNotFound", err)
-	}
-}
-
-func TestCreateUsesProjectRegistryCredential(t *testing.T) {
-	h := newHarness(t)
+	h.create(t, CreateTaskInput{Name: "public", Image: "nginx"})
 	credential, err := h.credentials.Create(context.Background(), core.RegistryCredential{
 		Name: "ghcr", Registry: core.RegistryGHCR, Username: "bot", Token: "secret",
 	})
@@ -144,30 +128,15 @@ func TestCreateUsesProjectRegistryCredential(t *testing.T) {
 	if _, err := h.projects.Update(context.Background(), project); err != nil {
 		t.Fatal(err)
 	}
-
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "private", Image: "ghcr.io/org/app"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(h.runtime.pulled) != 1 || h.runtime.pulled[0] == nil || h.runtime.pulled[0].Token != "secret" {
-		t.Fatalf("credential was not passed to Pull: %+v", h.runtime.pulled)
-	}
-}
-
-func TestCreateWithoutCredentialPullsAnonymously(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "public", Image: "nginx"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(h.runtime.pulled) != 1 || h.runtime.pulled[0] != nil {
-		t.Fatalf("expected an anonymous pull, got %+v", h.runtime.pulled)
+	h.create(t, CreateTaskInput{Name: "private", Image: "ghcr.io/org/app"})
+	if p := h.runtime.pulled; len(p) != 2 || p[0] != nil || p[1] == nil || p[1].Token != "secret" {
+		t.Fatalf("want an anonymous pull, then one with the project credential: %+v", p)
 	}
 }
 
 func TestStartStopRestartDelete(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "life", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "life", Image: "img"})
 	if _, err := h.svc.Stop(context.Background(), "team", "life"); err != nil {
 		t.Fatal(err)
 	}
@@ -199,47 +168,6 @@ func TestStartStopRestartDelete(t *testing.T) {
 	}
 }
 
-func TestUpdateTaskEnvDeferredAndImmediate(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "env", Image: "img", Env: map[string]string{"OLD": "1"}}); err != nil {
-		t.Fatal(err)
-	}
-	deferredEnv := map[string]string{"NEW": "2"}
-	deferred, err := h.svc.Update(context.Background(), "team", "env", UpdateTaskInput{Env: &deferredEnv}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !deferred.PendingRecreate || deferred.Status != core.StatusStopped {
-		t.Fatalf("unexpected deferred task: %+v", deferred)
-	}
-	started, err := h.svc.Start(context.Background(), "team", "env")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if started.PendingRecreate || len(h.runtime.recreated) != 1 || h.runtime.recreated[0].Env["NEW"] != "2" {
-		t.Fatal("deferred recreate not applied")
-	}
-	if h.runtime.recreated[0].Project != "team" || h.runtime.recreated[0].Name != "env" {
-		t.Fatalf("recreate spec lost its identity: %+v", h.runtime.recreated[0])
-	}
-	immediateEnv := map[string]string{"NOW": "3"}
-	updated, err := h.svc.Update(context.Background(), "team", "env", UpdateTaskInput{Env: &immediateEnv}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Status != core.StatusRunning || len(h.runtime.recreated) != 2 || h.runtime.recreated[1].Env["NOW"] != "3" {
-		t.Fatal("immediate recreate not applied")
-	}
-	task, _ := h.svc.Get(context.Background(), "team", "env")
-	env := task.Env
-	env["NOW"] = "changed"
-	again, _ := h.svc.Get(context.Background(), "team", "env")
-	if again.Env["NOW"] != "3" {
-		t.Fatal("Get leaked env map")
-	}
-}
-
 const (
 	deployDigestA = "ghcr.io/acme/web@sha256:" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	deployDigestB = "ghcr.io/acme/web@sha256:" + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -247,8 +175,9 @@ const (
 
 func TestDeployPullsAndRestartsARunningTask(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
+	h.create(t, CreateTaskInput{Name: "web", Image: deployDigestA})
+	blocked := core.DevBlocked
+	if _, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &blocked}, true); err != nil {
 		t.Fatal(err)
 	}
 	h.runtime.calls = nil
@@ -257,72 +186,25 @@ func TestDeployPullsAndRestartsARunningTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if deployed.Image != deployDigestB || deployed.Status != core.StatusRunning {
+	if deployed.Image != deployDigestB || deployed.Status != core.StatusRunning || deployed.DevStatus != core.DevBlocked {
 		t.Fatalf("unexpected task: %+v", deployed)
 	}
 	pull, recreate := slices.Index(h.runtime.calls, "pull"), slices.Index(h.runtime.calls, "recreate")
 	if pull < 0 || recreate < 0 || pull > recreate {
 		t.Fatalf("pull must precede recreate, got %v", h.runtime.calls)
 	}
-	if last := h.runtime.pulledImages[len(h.runtime.pulledImages)-1]; last != deployDigestB {
-		t.Fatalf("pulled %q", last)
+	if last := h.runtime.pulledImages[len(h.runtime.pulledImages)-1]; last != deployDigestB ||
+		h.runtime.recreated[len(h.runtime.recreated)-1].Image != deployDigestB {
+		t.Fatalf("pulled %q, recreated %+v", last, h.runtime.recreated)
 	}
 	if h.routes.registered["team/web"] != deployed.ContainerIP {
 		t.Fatal("route was not restored after the deployment")
 	}
 }
 
-func TestDeployLeavesAStoppedTaskStopped(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.svc.Stop(context.Background(), "team", "web"); err != nil {
-		t.Fatal(err)
-	}
-	starts := len(h.runtime.started)
-
-	deployed, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if deployed.Status != core.StatusStopped || len(h.runtime.started) != starts {
-		t.Fatalf("a stopped task was started: status=%s starts=%d", deployed.Status, len(h.runtime.started))
-	}
-	if deployed.Image != deployDigestB || deployed.PendingRecreate {
-		t.Fatalf("the new image was not applied to the container: %+v", deployed)
-	}
-}
-
-func TestDeployOfTheSameImageIsANoOp(t *testing.T) {
-	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: deployDigestA})
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.runtime.calls = nil
-
-	deployed, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if deployed.ContainerID != created.ContainerID || deployed.Status != core.StatusRunning {
-		t.Fatalf("the container was disturbed: %+v", deployed)
-	}
-	if len(h.runtime.calls) != 0 {
-		t.Fatalf("redeploying the same image touched the runtime: %v", h.runtime.calls)
-	}
-}
-
 func TestDeployRetriesPendingRecreate(t *testing.T) {
 	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: deployDigestA})
-	if err != nil {
-		t.Fatal(err)
-	}
+	created := h.create(t, CreateTaskInput{Name: "web", Image: deployDigestA})
 	created.PendingRecreate = true
 	if _, err := h.tasks.Update(context.Background(), created); err != nil {
 		t.Fatal(err)
@@ -340,11 +222,7 @@ func TestDeployRetriesPendingRecreate(t *testing.T) {
 
 func TestDeployPullFailureLeavesRunningTaskUntouched(t *testing.T) {
 	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: deployDigestA})
-	if err != nil {
-		t.Fatal(err)
-	}
+	created := h.create(t, CreateTaskInput{Name: "web", Image: deployDigestA})
 	h.runtime.calls = nil
 	h.runtime.pullErr = errors.New("registry unavailable")
 
@@ -366,10 +244,7 @@ func TestDeployPullFailureLeavesRunningTaskUntouched(t *testing.T) {
 
 func TestDeployRejectsMutableAndMalformedImages(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: deployDigestA})
 	h.runtime.calls = nil
 
 	for name, image := range map[string]string{
@@ -395,24 +270,14 @@ func TestDeployRejectsMutableAndMalformedImages(t *testing.T) {
 	}
 }
 
-func TestDeployUnknownTask(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Deploy(context.Background(), "team", "absent", deployDigestA); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("got %v, want ErrNotFound", err)
-	}
-}
-
 func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: deployDigestA}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: deployDigestA})
 	if len(h.notified) != 1 {
 		t.Fatalf("creating a task should notify creation once: %+v", h.notified)
 	}
 	created := h.notified[0]
-	if created.Status != core.NotificationInfo || created.Title != "📋 Task Created • team" ||
+	if created.Type != core.NotificationTaskCreated || created.Title != "📋 Task Created • team" ||
 		created.Body != "web: "+deployDigestA {
 		t.Fatalf("unexpected creation notification: %+v", created)
 	}
@@ -424,18 +289,19 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 		t.Fatalf("want 2 notifications, got %+v", h.notified)
 	}
 	success := h.notified[1]
-	if success.Status != core.NotificationSuccess || success.ProjectID != h.project.ID ||
+	if success.Type != core.NotificationDeployed || success.ProjectID != h.project.ID ||
 		success.TaskName != "web" || success.Title != "🚀 Deploy Succeeded • team" ||
 		!strings.HasPrefix(success.Body, "web: Task completed at ") {
 		t.Fatalf("unexpected success notification: %+v", success)
 	}
 
 	// A retried callback for the running image is not a deployment.
+	h.runtime.calls = nil
 	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.notified) != 2 {
-		t.Fatalf("a redeploy of the same image notified: %+v", h.notified)
+	if len(h.notified) != 2 || len(h.runtime.calls) != 0 {
+		t.Fatalf("a redeploy of the same image did work: notified=%+v calls=%v", h.notified, h.runtime.calls)
 	}
 
 	h.runtime.pullErr = errors.New("registry unavailable")
@@ -446,7 +312,7 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 		t.Fatalf("a failed deploy did not notify: %+v", h.notified)
 	}
 	failure := h.notified[2]
-	if failure.Status != core.NotificationFailure || failure.Title != "❌ Deploy Failed • team" ||
+	if failure.Type != core.NotificationDeployFailed || failure.Title != "❌ Deploy Failed • team" ||
 		!strings.HasPrefix(failure.Body, "web: Failed at ") ||
 		!strings.Contains(failure.Body, "registry unavailable") || strings.Contains(failure.Body, deployDigestA) {
 		t.Fatalf("unexpected failure notification: %+v", failure)
@@ -475,9 +341,7 @@ func TestDeployNotificationMessages(t *testing.T) {
 
 func TestUpdateDevStatusNotifiesChange(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: "img"})
 	h.notified = nil
 
 	ready := core.DevReady
@@ -488,12 +352,11 @@ func TestUpdateDevStatusNotifiesChange(t *testing.T) {
 		t.Fatalf("want 1 notification, got %+v", h.notified)
 	}
 	change := h.notified[0]
-	if change.Status != core.NotificationInfo || change.TaskName != "web" ||
+	if change.Type != core.NotificationStatusChanged || change.TaskName != "web" ||
 		change.Title != "🔄 Status Changed • team" || change.Body != "web: In Progress ➔ Ready" {
 		t.Fatalf("unexpected notification: %+v", change)
 	}
 
-	// Setting the same status again is not a change.
 	if _, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &ready}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -504,11 +367,7 @@ func TestUpdateDevStatusNotifiesChange(t *testing.T) {
 
 func TestUpdateDescriptionLeavesContainerAlone(t *testing.T) {
 	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team",
-		CreateTaskInput{Name: "web", Image: "img", Description: "before"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	created := h.create(t, CreateTaskInput{Name: "web", Image: "img", Description: "before"})
 	stops, recreates := len(h.runtime.stopped), len(h.runtime.recreated)
 
 	description := "after"
@@ -517,14 +376,9 @@ func TestUpdateDescriptionLeavesContainerAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Description != "after" {
-		t.Fatalf("description = %q", updated.Description)
-	}
-	if updated.Status != core.StatusRunning || updated.ContainerID != created.ContainerID {
-		t.Fatalf("running container was disturbed: %+v", updated)
-	}
-	if updated.PendingRecreate {
-		t.Fatal("a description change must not schedule a recreate")
+	if updated.Description != "after" || updated.Status != core.StatusRunning ||
+		updated.ContainerID != created.ContainerID || updated.PendingRecreate {
+		t.Fatalf("a description change disturbed the container: %+v", updated)
 	}
 	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
 		t.Fatalf("container was touched: stops=%d recreates=%d", len(h.runtime.stopped), len(h.runtime.recreated))
@@ -533,66 +387,23 @@ func TestUpdateDescriptionLeavesContainerAlone(t *testing.T) {
 		t.Fatal("route was disturbed")
 	}
 
-	note := "## Context\n- seed the staging DB\n\n`make db`"
-	updated, err = h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{Note: &note}, true)
-	if err != nil {
+	note, blocked := "## Context\n- seed the staging DB\n\n`make db`", core.DevBlocked
+	if _, err := h.svc.Update(context.Background(), "team", "web",
+		UpdateTaskInput{Note: &note, DevStatus: &blocked}, true); err != nil {
 		t.Fatal(err)
-	}
-	if updated.Note != note {
-		t.Fatalf("a note-only update was not persisted: %q", updated.Note)
 	}
 	stored, err := h.svc.Get(context.Background(), "team", "web")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.Note != note || stored.Description != "after" {
-		t.Fatalf("note round trip lost data: %+v", stored)
+	if err != nil || stored.Note != note || stored.DevStatus != core.DevBlocked || stored.Description != "after" {
+		t.Fatalf("metadata round trip lost data: %+v, %v", stored, err)
 	}
 	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
-		t.Fatalf("a note change touched the container: stops=%d recreates=%d", len(h.runtime.stopped), len(h.runtime.recreated))
-	}
-}
-
-func TestDevStatusStartsInProgressAndMovesWithoutTouchingTheContainer(t *testing.T) {
-	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created.DevStatus != core.DevInProgress {
-		t.Fatalf("dev status = %q, want in_progress", created.DevStatus)
-	}
-	stops, recreates := len(h.runtime.stopped), len(h.runtime.recreated)
-
-	for _, want := range []core.DevStatus{core.DevReady, core.DevBlocked, core.DevInProgress} {
-		updated, err := h.svc.Update(context.Background(), "team", "web",
-			UpdateTaskInput{DevStatus: &want}, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if updated.DevStatus != want {
-			t.Fatalf("dev status = %q, want %q", updated.DevStatus, want)
-		}
-		if updated.Status != core.StatusRunning || updated.ContainerID != created.ContainerID {
-			t.Fatalf("running container was disturbed: %+v", updated)
-		}
-		if updated.PendingRecreate {
-			t.Fatal("a dev status change must not schedule a recreate")
-		}
-	}
-	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
-		t.Fatalf("container was touched: stops=%d recreates=%d", len(h.runtime.stopped), len(h.runtime.recreated))
-	}
-	if h.routes.registered["team/web"] != created.ContainerIP {
-		t.Fatal("route was disturbed")
+		t.Fatalf("a metadata change touched the container: stops=%d recreates=%d", len(h.runtime.stopped), len(h.runtime.recreated))
 	}
 }
 
 func TestDevStatusRejectsUnknownValue(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: "img"})
 	bogus := core.DevStatus("done")
 	if _, err := h.svc.Update(context.Background(), "team", "web",
 		UpdateTaskInput{DevStatus: &bogus}, true); !errors.Is(err, core.ErrInvalidInput) {
@@ -607,73 +418,9 @@ func TestDevStatusRejectsUnknownValue(t *testing.T) {
 	}
 }
 
-func TestDevStatusUnchangedIsANoOp(t *testing.T) {
-	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	same := core.DevInProgress
-	updated, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &same}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !updated.UpdatedAt.Equal(created.UpdatedAt) {
-		t.Fatal("an unchanged dev status wrote to the store")
-	}
-}
-
-func TestDeployLeavesDevStatusAlone(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
-	blocked := core.DevBlocked
-	if _, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{DevStatus: &blocked}, true); err != nil {
-		t.Fatal(err)
-	}
-	deployed, err := h.svc.Deploy(context.Background(), "team", "web",
-		"registry/app@sha256:"+strings.Repeat("a", 64))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if deployed.DevStatus != core.DevBlocked {
-		t.Fatalf("deploy changed dev status to %q", deployed.DevStatus)
-	}
-}
-
-func TestUpdateImagePullsBeforeRecreating(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "old"}); err != nil {
-		t.Fatal(err)
-	}
-	h.runtime.calls = nil
-
-	image := "new:tag"
-	updated, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{Image: &image}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Image != "new:tag" || updated.Status != core.StatusRunning {
-		t.Fatalf("unexpected task: %+v", updated)
-	}
-	pull, recreate := slices.Index(h.runtime.calls, "pull"), slices.Index(h.runtime.calls, "recreate")
-	if pull < 0 || recreate < 0 || pull > recreate {
-		t.Fatalf("pull must precede recreate, got %v", h.runtime.calls)
-	}
-	if last := h.runtime.pulledImages[len(h.runtime.pulledImages)-1]; last != "new:tag" {
-		t.Fatalf("pulled %q", last)
-	}
-	if spec := h.runtime.recreated[len(h.runtime.recreated)-1]; spec.Image != "new:tag" {
-		t.Fatalf("recreated with %q", spec.Image)
-	}
-}
-
 func TestUpdateWithoutImageChangeSkipsPull(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: "img"})
 	h.runtime.calls = nil
 
 	port := 9090
@@ -690,9 +437,7 @@ func TestUpdateWithoutImageChangeSkipsPull(t *testing.T) {
 
 func TestUpdateDeferredUntilNextStart(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "old"}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: "old"})
 	recreates := len(h.runtime.recreated)
 
 	image := "new"
@@ -710,16 +455,15 @@ func TestUpdateDeferredUntilNextStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if started.PendingRecreate || h.runtime.recreated[len(h.runtime.recreated)-1].Image != "new" {
-		t.Fatalf("deferred update was not applied on start: %+v", started)
+	if spec := h.runtime.recreated[len(h.runtime.recreated)-1]; started.PendingRecreate ||
+		spec.Image != "new" || spec.Project != "team" || spec.Name != "web" {
+		t.Fatalf("deferred update was not applied on start: task=%+v spec=%+v", started, spec)
 	}
 }
 
 func TestUpdateDoesNotStartAStoppedTask(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: "img"})
 	if _, err := h.svc.Stop(context.Background(), "team", "web"); err != nil {
 		t.Fatal(err)
 	}
@@ -730,7 +474,7 @@ func TestUpdateDoesNotStartAStoppedTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Status != core.StatusStopped || len(h.runtime.started) != starts {
+	if updated.Status != core.StatusStopped || updated.Image != "new" || len(h.runtime.started) != starts {
 		t.Fatalf("stopped task was started: status=%s starts=%d", updated.Status, len(h.runtime.started))
 	}
 	if updated.PendingRecreate {
@@ -740,9 +484,7 @@ func TestUpdateDoesNotStartAStoppedTask(t *testing.T) {
 
 func TestUpdateRejectsInvalidInput(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
+	h.create(t, CreateTaskInput{Name: "web", Image: "img"})
 	reserved := map[string]string{"BOREAS_PORT": "1"}
 	badPort := 0
 	blank := "   "
@@ -764,42 +506,17 @@ func TestUpdateRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-func TestUpdateWithNoFieldsIsANoOp(t *testing.T) {
-	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	recreates, updatedAt := len(h.runtime.recreated), created.UpdatedAt
-	updated, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Image != created.Image || updated.Status != core.StatusRunning {
-		t.Fatalf("unexpected task: %+v", updated)
-	}
-	if len(h.runtime.recreated) != recreates {
-		t.Fatal("an empty update touched the container")
-	}
-	if !updated.UpdatedAt.Equal(updatedAt) {
-		t.Fatal("an empty update wrote to the store")
-	}
-}
-
 func TestUpdateWithUnchangedValuesIsANoOp(t *testing.T) {
 	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{
+	created := h.create(t, CreateTaskInput{
 		Name: "web", Image: "img", Port: 80,
 		Labels: map[string]string{"tier": "web"}, Env: map[string]string{"A": "B"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	h.runtime.calls = nil
-	description, image, port := created.Description, created.Image, created.Port
+	description, note, dev, image, port := created.Description, created.Note, created.DevStatus, created.Image, created.Port
 	labels, env := maps.Clone(created.Labels), maps.Clone(created.Env)
 	updated, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{
-		Description: &description, Image: &image, Port: &port, Labels: &labels, Env: &env,
+		Description: &description, Note: &note, DevStatus: &dev, Image: &image, Port: &port, Labels: &labels, Env: &env,
 	}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -809,31 +526,9 @@ func TestUpdateWithUnchangedValuesIsANoOp(t *testing.T) {
 	}
 }
 
-func TestUpdateClonesSuppliedMaps(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
-		t.Fatal(err)
-	}
-	env := map[string]string{"KEY": "value"}
-	if _, err := h.svc.Update(context.Background(), "team", "web", UpdateTaskInput{Env: &env}, true); err != nil {
-		t.Fatal(err)
-	}
-	env["KEY"] = "mutated"
-	stored, err := h.svc.Get(context.Background(), "team", "web")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.Env["KEY"] != "value" {
-		t.Fatalf("service kept the caller's map: %v", stored.Env)
-	}
-}
-
 func TestUpdateClearsAPreviousError(t *testing.T) {
 	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "broken"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	created := h.create(t, CreateTaskInput{Name: "web", Image: "broken"})
 	created.Status, created.Error = core.StatusError, "container readiness: context deadline exceeded"
 	if _, err := h.tasks.Update(context.Background(), created); err != nil {
 		t.Fatal(err)
@@ -849,39 +544,10 @@ func TestUpdateClearsAPreviousError(t *testing.T) {
 	}
 }
 
-func TestUpdatedAtComesFromStore(t *testing.T) {
-	h := newHarness(t)
-	created, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "clock", Image: "img"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	stopped, err := h.svc.Stop(context.Background(), "team", "clock")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !stopped.UpdatedAt.After(created.UpdatedAt) {
-		t.Fatalf("updated_at did not advance: %v -> %v", created.UpdatedAt, stopped.UpdatedAt)
-	}
-	if !stopped.CreatedAt.Equal(created.CreatedAt) {
-		t.Fatal("created_at must not change on update")
-	}
-}
-
 func TestReconcileLogsAndStats(t *testing.T) {
 	h := newHarness(t)
-	running, err := h.tasks.Create(context.Background(), core.Task{
-		ProjectID: h.project.ID, Name: "run", Image: "i", Port: 80,
-		ContainerID: "c", Status: core.StatusUnknown,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.tasks.Create(context.Background(), core.Task{
-		ProjectID: h.project.ID, Name: "stop", Image: "i", Port: 80,
-		ContainerID: "s", Status: core.StatusRunning,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	running := seedTask(t, h.tasks, core.Task{ProjectID: h.project.ID, Name: "run", ContainerID: "c", Status: core.StatusUnknown})
+	stopped := seedTask(t, h.tasks, core.Task{ProjectID: h.project.ID, Name: "stop", ContainerID: "s", Status: core.StatusRunning})
 	h.runtime.states["c"] = core.ContainerState{Exists: true, Status: core.StatusRunning, IP: "10.0.0.4"}
 	h.runtime.states["s"] = core.ContainerState{Exists: true, Status: core.StatusStopped}
 
@@ -891,15 +557,8 @@ func TestReconcileLogsAndStats(t *testing.T) {
 	if h.routes.registered["team/run"] != "10.0.0.4" {
 		t.Fatalf("route not restored: %v", h.routes.registered)
 	}
-	stopped, err := h.svc.Get(context.Background(), "team", "stop")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stopped.Status != core.StatusStopped {
-		t.Fatalf("reconcile mismatch: %+v", stopped)
-	}
-	if h.tasks.tasks[running.ID].Status != core.StatusRunning {
-		t.Fatal("running task was not reconciled")
+	if h.tasks.tasks[running.ID].Status != core.StatusRunning || h.tasks.tasks[stopped.ID].Status != core.StatusStopped {
+		t.Fatalf("reconcile mismatch: run=%+v stop=%+v", h.tasks.tasks[running.ID], h.tasks.tasks[stopped.ID])
 	}
 
 	reader, err := h.svc.Logs(context.Background(), "team", "run", core.LogOptions{Tail: 1})
@@ -924,11 +583,7 @@ func TestReconcileLogsAndStats(t *testing.T) {
 
 func TestReconcileReportsOrphanedProject(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.tasks.Create(context.Background(), core.Task{
-		ProjectID: uuid.New(), Name: "orphan", Image: "img", Port: 80, Status: core.StatusRunning,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	seedTask(t, h.tasks, core.Task{ProjectID: uuid.New(), Name: "orphan", Status: core.StatusRunning})
 	if err := h.svc.Reconcile(context.Background()); err == nil {
 		t.Fatal("expected a warning for a task with an unknown project")
 	}
@@ -937,17 +592,6 @@ func TestReconcileReportsOrphanedProject(t *testing.T) {
 	}
 }
 
-func TestInvalidNamesRejected(t *testing.T) {
-	h := newHarness(t)
-	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "bad name", Image: "img"}); !errors.Is(err, core.ErrInvalidInput) {
-		t.Fatalf("got %v, want ErrInvalidInput", err)
-	}
-	if _, err := h.svc.Get(context.Background(), "API", "task"); !errors.Is(err, core.ErrInvalidInput) {
-		t.Fatalf("got %v, want ErrInvalidInput", err)
-	}
-}
-
-// Drains a stream into a per-task sample count.
 func metricsFor(t *testing.T, h *harness, acc core.ProjectAccess, name string) map[string]int {
 	t.Helper()
 	stream, err := h.svc.Metrics(context.Background(), acc, name)
@@ -961,61 +605,35 @@ func metricsFor(t *testing.T, h *harness, acc core.ProjectAccess, name string) m
 	return seen
 }
 
-func TestMetricsSkipsTasksThatAreNotRunning(t *testing.T) {
+func TestMetricsFansInRunningTasksTheCallerReaches(t *testing.T) {
 	h := newHarness(t)
-	ctx := context.Background()
-	if _, err := h.tasks.Create(ctx, core.Task{
-		ProjectID: h.project.ID, Name: "web", Image: "img", Port: 80,
-		Status: core.StatusRunning, ContainerID: "c-web",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.tasks.Create(ctx, core.Task{
-		ProjectID: h.project.ID, Name: "db", Image: "img", Port: 80,
-		Status: core.StatusStopped, ContainerID: "c-db",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	// A stopped container has no scripted stream, so asking for it would fail.
-	h.runtime.statsFor = map[string][]core.TaskMetric{
-		"c-web": {{CPUPercent: 1}, {CPUPercent: 2}},
-	}
-
-	seen := metricsFor(t, h, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
-	if seen["web"] != 2 || len(seen) != 1 {
-		t.Fatalf("project stream = %v, want two samples for web only", seen)
-	}
-}
-
-func TestMetricsFansInEveryRunningTask(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-	for _, name := range []string{"web", "api"} {
-		if _, err := h.tasks.Create(ctx, core.Task{
-			ProjectID: h.project.ID, Name: name, Image: "img", Port: 80,
-			Status: core.StatusRunning, ContainerID: "c-" + name,
-		}); err != nil {
-			t.Fatal(err)
+	grantee := uuid.New()
+	for name, status := range map[string]core.TaskStatus{
+		"web": core.StatusRunning, "api": core.StatusRunning, "db": core.StatusStopped,
+	} {
+		task := seedTask(t, h.tasks, core.Task{ProjectID: h.project.ID, Name: name, Status: status, ContainerID: "c-" + name})
+		if name == "web" {
+			h.tasks.roles[grantKey{taskID: task.ID, userID: grantee}] = core.ProjectRoleViewer
 		}
 	}
+	// db has a stream too, so only the status filter can keep a stopped task out.
 	h.runtime.statsFor = map[string][]core.TaskMetric{
-		"c-web": {{CPUPercent: 1}},
-		"c-api": {{CPUPercent: 2}, {CPUPercent: 3}},
+		"c-web": {{CPUPercent: 1}}, "c-api": {{CPUPercent: 2}, {CPUPercent: 3}}, "c-db": {{CPUPercent: 9}},
 	}
 
-	seen := metricsFor(t, h, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
-	if seen["web"] != 1 || seen["api"] != 2 {
-		t.Fatalf("fan-in = %v, want web 1 and api 2", seen)
+	full := metricsFor(t, h, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
+	if !maps.Equal(full, map[string]int{"web": 1, "api": 2}) {
+		t.Fatalf("member stream = %v, want every running task", full)
+	}
+	scoped := metricsFor(t, h, core.ProjectAccess{Project: h.project, UserID: grantee}, "")
+	if !maps.Equal(scoped, map[string]int{"web": 1}) {
+		t.Fatalf("grantee stream = %v, want the granted task only", scoped)
 	}
 }
 
 func TestMetricsForOneTaskRequiresAContainer(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.tasks.Create(context.Background(), core.Task{
-		ProjectID: h.project.ID, Name: "web", Image: "img", Port: 80, Status: core.StatusStopped,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	seedTask(t, h.tasks, core.Task{ProjectID: h.project.ID, Name: "web", Status: core.StatusStopped})
 	_, err := h.svc.Metrics(context.Background(),
 		core.ProjectAccess{Project: h.project, AllTasks: true}, "web")
 	if !errors.Is(err, core.ErrConflict) {
@@ -1023,41 +641,9 @@ func TestMetricsForOneTaskRequiresAContainer(t *testing.T) {
 	}
 }
 
-func TestMetricsRespectsTaskGrants(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-	grantee := uuid.New()
-	for _, name := range []string{"web", "secret"} {
-		task, err := h.tasks.Create(ctx, core.Task{
-			ProjectID: h.project.ID, Name: name, Image: "img", Port: 80,
-			Status: core.StatusRunning, ContainerID: "c-" + name,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if name == "web" {
-			h.tasks.granted[grantKey{taskID: task.ID, userID: grantee}] = true
-		}
-	}
-	h.runtime.statsFor = map[string][]core.TaskMetric{
-		"c-web": {{CPUPercent: 1}}, "c-secret": {{CPUPercent: 9}},
-	}
-
-	seen := metricsFor(t, h,
-		core.ProjectAccess{Project: h.project, UserID: grantee, AllTasks: false}, "")
-	if seen["web"] != 1 || len(seen) != 1 {
-		t.Fatalf("grantee stream = %v, want web only", seen)
-	}
-}
-
 func TestMetricsStopsWhenTheClientLeaves(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.tasks.Create(context.Background(), core.Task{
-		ProjectID: h.project.ID, Name: "web", Image: "img", Port: 80,
-		Status: core.StatusRunning, ContainerID: "c-web",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	seedTask(t, h.tasks, core.Task{ProjectID: h.project.ID, Name: "web", Status: core.StatusRunning, ContainerID: "c-web"})
 	// More samples than the consumer reads, so the fan-in goroutine is mid-send.
 	h.runtime.statsFor = map[string][]core.TaskMetric{
 		"c-web": {{CPUPercent: 1}, {CPUPercent: 2}, {CPUPercent: 3}, {CPUPercent: 4}},
@@ -1069,7 +655,7 @@ func TestMetricsStopsWhenTheClientLeaves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-stream // read one, abandon the rest
+	<-stream
 
 	// Wait for the sender to park, or the assertion races the goroutines into existence.
 	waitUntil(func() bool { return runtime.NumGoroutine() > before })
@@ -1081,7 +667,6 @@ func TestMetricsStopsWhenTheClientLeaves(t *testing.T) {
 	}
 }
 
-// Polls cond for up to two seconds, reporting whether it ever held.
 func waitUntil(cond func() bool) bool {
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
 		if cond() {

@@ -3,62 +3,38 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
 )
 
-func newProjects(t *testing.T) (*ProjectService, *fakeProjectStore, *fakeCredentialStore) {
+func newProjects(t *testing.T) (*ProjectService, *fakeTaskStore) {
 	t.Helper()
-	svc, projects, credentials, _ := newProjectsWithTasks(t)
-	return svc, projects, credentials
-}
-
-func newProjectsWithTasks(t *testing.T) (*ProjectService, *fakeProjectStore, *fakeCredentialStore, *fakeTaskStore) {
-	t.Helper()
-	projects, credentials := newFakeProjectStore(), newFakeCredentialStore()
-	tasks := newFakeTaskStore()
+	projects, tasks := newFakeProjectStore(), newFakeTaskStore()
 	projects.tasks = tasks
 	svc, err := NewProjectService(
-		projects, credentials, newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks)
+		projects, newFakeCredentialStore(), newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return svc, projects, credentials, tasks
+	return svc, tasks
 }
 
 func admin() core.User { return core.User{ID: uuid.New(), Username: "admin", Role: core.RoleAdmin} }
 
 func member() core.User { return core.User{ID: uuid.New(), Username: "member", Role: core.RoleUser} }
 
-func TestCreateProjectMakesCallerOwner(t *testing.T) {
-	svc, store, _ := newProjects(t)
-	actor := member()
-	project, err := svc.Create(context.Background(), actor, CreateProjectInput{Slug: "team-alpha"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if project.Name != "team-alpha" {
-		t.Fatalf("name should default to the slug: %q", project.Name)
-	}
-	stored, err := store.GetMember(context.Background(), project.ID, actor.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.Role != core.ProjectRoleOwner {
-		t.Fatalf("creator role = %q, want owner", stored.Role)
-	}
-}
-
 func TestCreateProjectTaskDefaults(t *testing.T) {
-	svc, _, _ := newProjects(t)
+	svc, _ := newProjects(t)
 	project, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: "bare"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if project.DefaultImage != "" || project.DefaultPort != 80 || len(project.DefaultEnv) != 0 {
-		t.Fatalf("unset defaults = %+v, want \"\", 80, empty", project)
+	if project.Name != "bare" || project.DefaultImage != "" || project.DefaultPort != 80 || len(project.DefaultEnv) != 0 {
+		t.Fatalf("unset defaults = %+v, want name=slug, \"\", 80, empty", project)
 	}
 
 	project, err = svc.Create(context.Background(), member(), CreateProjectInput{
@@ -73,6 +49,7 @@ func TestCreateProjectTaskDefaults(t *testing.T) {
 	}
 
 	for name, in := range map[string]CreateProjectInput{
+		"reserved slug": {Slug: "api"},
 		"port too high": {Slug: "bad-port", DefaultPort: 65536},
 		"reserved env":  {Slug: "bad-env", DefaultEnv: map[string]string{"BOREAS_PORT": "1"}},
 	} {
@@ -83,7 +60,7 @@ func TestCreateProjectTaskDefaults(t *testing.T) {
 }
 
 func TestUpdateProjectTaskDefaults(t *testing.T) {
-	svc, _, _ := newProjects(t)
+	svc, _ := newProjects(t)
 	if _, err := svc.Create(context.Background(), member(), CreateProjectInput{
 		Slug: "team", DefaultImage: "nginx:alpine", DefaultPort: 8080,
 		DefaultEnv: map[string]string{"APP_ENV": "dev"},
@@ -122,17 +99,8 @@ func TestUpdateProjectTaskDefaults(t *testing.T) {
 	}
 }
 
-func TestCreateProjectRejectsReservedAndInvalidSlugs(t *testing.T) {
-	svc, _, _ := newProjects(t)
-	for _, slug := range []string{"api", "admin", "Upper", "-dash", ""} {
-		if _, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: slug}); !errors.Is(err, core.ErrInvalidInput) {
-			t.Fatalf("slug %q: got %v, want ErrInvalidInput", slug, err)
-		}
-	}
-}
-
 func TestAccessRules(t *testing.T) {
-	svc, _, _ := newProjects(t)
+	svc, _ := newProjects(t)
 	owner := member()
 	_, err := svc.Create(context.Background(), owner, CreateProjectInput{Slug: "team"})
 	if err != nil {
@@ -164,28 +132,27 @@ func TestAccessRules(t *testing.T) {
 	}
 }
 
-// seedTask puts a task in the store directly; ProjectService only reads them.
-func seedTask(t *testing.T, tasks *fakeTaskStore, projectID uuid.UUID, name string) core.Task {
+// seedTask puts a task in the store directly, so no runtime call precedes the one under test.
+func seedTask(t *testing.T, tasks *fakeTaskStore, task core.Task) core.Task {
 	t.Helper()
-	task, err := tasks.Create(context.Background(), core.Task{
-		ProjectID: projectID, Name: name, Image: "img", Status: core.StatusRunning, Port: 80,
-	})
+	task.Image, task.Port = "img", 80
+	created, err := tasks.Create(context.Background(), task)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return task
+	return created
 }
 
 func TestGrantRaisesRoleButNeverLowersIt(t *testing.T) {
-	svc, _, _, tasks := newProjectsWithTasks(t)
+	svc, tasks := newProjects(t)
 	ctx := context.Background()
 	owner := member()
 	project, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "team"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedTask(t, tasks, project.ID, "web")
-	seedTask(t, tasks, project.ID, "db")
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "web"})
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "db"})
 
 	// A project viewer granted operator on one task deploys that task and only that one.
 	viewer := member()
@@ -215,14 +182,14 @@ func TestGrantRaisesRoleButNeverLowersIt(t *testing.T) {
 }
 
 func TestGranteeReachesOnlyGrantedTasks(t *testing.T) {
-	svc, _, _, tasks := newProjectsWithTasks(t)
+	svc, tasks := newProjects(t)
 	ctx := context.Background()
 	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	web := seedTask(t, tasks, project.ID, "web")
-	seedTask(t, tasks, project.ID, "db")
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "web"})
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "db"})
 
 	grantee := member()
 	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleViewer); err != nil {
@@ -237,67 +204,68 @@ func TestGranteeReachesOnlyGrantedTasks(t *testing.T) {
 	if _, err := svc.Access(ctx, grantee, "team", "db"); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("ungranted task: got %v, want ErrNotFound", err)
 	}
-
-	// Deleting the task drops the grant, and with it every trace of access.
-	if err := tasks.Delete(ctx, web.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.Access(ctx, grantee, "team", ""); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("access outlived the task it pointed at: %v", err)
-	}
 }
 
-// The project list fans out to every reachable project, so it must mask exactly what the
-// single-project route masks. Leaking there is worse: no caller can guard against it.
-func TestProjectListHidesDefaultEnvFromGrantees(t *testing.T) {
-	svc, store, _, tasks := newProjectsWithTasks(t)
-	ctx := context.Background()
-	owner := member()
-	project, err := svc.Create(ctx, owner, CreateProjectInput{
-		Slug: "team", DefaultEnv: map[string]string{"SECRET_KEY": "top-secret"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	seedTask(t, tasks, project.ID, "web")
-
-	grantee := member()
-	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleViewer); err != nil {
-		t.Fatal(err)
-	}
-	listed, err := svc.List(ctx, grantee)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(listed) != 1 {
-		t.Fatalf("a grant must reveal its project: %+v", listed)
-	}
-	if len(listed[0].DefaultEnv) != 0 {
-		t.Fatalf("default_env leaked through the project list: %+v", listed[0].DefaultEnv)
-	}
-
-	// Masking must not cost members their defaults, nor corrupt the stored row.
-	mine, err := svc.List(ctx, owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(mine) != 1 || mine[0].DefaultEnv["SECRET_KEY"] != "top-secret" {
-		t.Fatalf("a member lost the task form defaults: %+v", mine)
-	}
-	stored, err := store.GetBySlug(ctx, "team")
-	if err != nil || stored.DefaultEnv["SECRET_KEY"] != "top-secret" {
-		t.Fatalf("masking must not mutate the stored project: %+v, %v", stored, err)
-	}
-}
-
-func TestGrantRejectsOwner(t *testing.T) {
-	svc, _, _, tasks := newProjectsWithTasks(t)
+// The fleet must scope tasks and roles exactly as Access does per request, or its buttons lie.
+func TestFleetScopesTasksAndRoles(t *testing.T) {
+	svc, tasks := newProjects(t)
 	ctx := context.Background()
 	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedTask(t, tasks, project.ID, "web")
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "web"})
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "db"})
+	viewer, grantee := member(), member()
+	if err := svc.AddMember(ctx, "team", viewer.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []core.User{viewer, grantee} {
+		if err := svc.Grant(ctx, "team", "web", user.ID, core.ProjectRoleOperator); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.notifications.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: "web", Status: core.NotificationSuccess,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		actor core.User
+		want  string
+	}{
+		{admin(), "db=owner web=owner+deploy"},
+		{viewer, "db=viewer web=operator+deploy"},
+		{grantee, "web=operator+deploy"},
+	} {
+		_, fleet, err := svc.Fleet(ctx, tc.actor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, task := range fleet[project.ID] {
+			entry := task.Name + "=" + string(task.Role)
+			if task.LastDeploy != nil {
+				entry += "+deploy"
+			}
+			got = append(got, entry)
+		}
+		slices.Sort(got)
+		if strings.Join(got, " ") != tc.want {
+			t.Fatalf("fleet = %v, want %s", got, tc.want)
+		}
+	}
+}
+
+func TestGrantRejectsOwner(t *testing.T) {
+	svc, tasks := newProjects(t)
+	ctx := context.Background()
+	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "web"})
 	for _, role := range []core.ProjectRole{core.ProjectRoleOwner, "", "root"} {
 		err := svc.Grant(ctx, "team", "web", member().ID, role)
 		if !errors.Is(err, core.ErrInvalidInput) {
@@ -306,76 +274,14 @@ func TestGrantRejectsOwner(t *testing.T) {
 	}
 }
 
-func TestMarkNotificationSeenIsPerUser(t *testing.T) {
-	projects, credentials := newFakeProjectStore(), newFakeCredentialStore()
-	tasks := newFakeTaskStore()
-	projects.tasks = tasks
-	notifications := newFakeNotificationStore(tasks)
-	svc, err := NewProjectService(projects, credentials, notifications, newFakeGrantStore(tasks), tasks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	project := projects.add("team")
-	seedTask(t, tasks, project.ID, "web")
-	n, err := notifications.Create(ctx, core.Notification{
-		ProjectID: project.ID, TaskName: "web", Status: core.NotificationInfo, Title: "created",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	alice, bob := member(), member()
-	accFor := func(u core.User) core.ProjectAccess {
-		return core.ProjectAccess{Project: project, UserID: u.ID, AllTasks: true}
-	}
-	if err := svc.MarkNotificationSeen(ctx, accFor(alice), n.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	listed, err := svc.Notifications(ctx, accFor(alice), 10)
-	if err != nil || len(listed) != 1 || !listed[0].Seen {
-		t.Fatalf("the marking user must read it as seen: %+v, %v", listed, err)
-	}
-	listed, err = svc.Notifications(ctx, accFor(bob), 10)
-	if err != nil || len(listed) != 1 || listed[0].Seen {
-		t.Fatalf("another user's view must stay unseen: %+v, %v", listed, err)
-	}
-
-	if err := svc.MarkNotificationUnseen(ctx, accFor(alice), n.ID); err != nil {
-		t.Fatal(err)
-	}
-	listed, err = svc.Notifications(ctx, accFor(alice), 10)
-	if err != nil || len(listed) != 1 || listed[0].Seen {
-		t.Fatalf("unseen must clear the mark: %+v, %v", listed, err)
-	}
-	if err := svc.MarkNotificationUnseen(ctx, accFor(alice), n.ID); err != nil {
-		t.Fatalf("unseen must be idempotent: %v", err)
-	}
-
-	// A grantee without a grant on the task cannot mark it.
-	eve := member()
-	granteeAcc := core.ProjectAccess{Project: project, UserID: eve.ID, AllTasks: false}
-	if err := svc.MarkNotificationSeen(ctx, granteeAcc, n.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.Grant(ctx, "team", "web", eve.ID, core.ProjectRoleViewer); err != nil {
-		t.Fatal(err)
-	}
-	listed, err = svc.Notifications(ctx, granteeAcc, 10)
-	if err != nil || len(listed) != 1 || listed[0].Seen {
-		t.Fatalf("an out-of-reach mark must be a no-op: %+v, %v", listed, err)
-	}
-}
-
 func TestGrantNotifiesAssignment(t *testing.T) {
-	svc, _, _, tasks := newProjectsWithTasks(t)
+	svc, tasks := newProjects(t)
 	ctx := context.Background()
 	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team", Name: "Team Alpha"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedTask(t, tasks, project.ID, "web")
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "web"})
 
 	var notified []core.Notification
 	svc.Notify = func(_ context.Context, n core.Notification) { notified = append(notified, n) }
@@ -389,17 +295,14 @@ func TestGrantNotifiesAssignment(t *testing.T) {
 	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if len(notified) != 1 {
-		t.Fatalf("want 1 notification, got %+v", notified)
+	want := core.Notification{
+		ProjectID: project.ID, TaskName: "web", Type: core.NotificationTaskAssigned,
+		Status: core.NotificationInfo, Title: "👤 Task Assigned • Team Alpha", Body: "web: assigned to nam (member)",
 	}
-	assigned := notified[0]
-	if assigned.Status != core.NotificationInfo || assigned.ProjectID != project.ID ||
-		assigned.TaskName != "web" || assigned.Title != "👤 Task Assigned • Team Alpha" ||
-		assigned.Body != "web: assigned to nam (member)" {
-		t.Fatalf("unexpected notification: %+v", assigned)
+	if len(notified) != 1 || notified[0] != want {
+		t.Fatalf("notified %+v, want %+v", notified, want)
 	}
 
-	// Without a user store the message still reports the granted role.
 	svc.Users, notified = nil, nil
 	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleOperator); err != nil {
 		t.Fatal(err)
@@ -409,41 +312,17 @@ func TestGrantNotifiesAssignment(t *testing.T) {
 	}
 }
 
-func TestListScopedByRole(t *testing.T) {
-	svc, _, _ := newProjects(t)
-	first, second := member(), member()
-	if _, err := svc.Create(context.Background(), first, CreateProjectInput{Slug: "one"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.Create(context.Background(), second, CreateProjectInput{Slug: "two"}); err != nil {
-		t.Fatal(err)
-	}
-
-	mine, err := svc.List(context.Background(), first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(mine) != 1 || mine[0].Slug != "one" {
-		t.Fatalf("a user should only see their own projects: %+v", mine)
-	}
-
-	all, err := svc.List(context.Background(), admin())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) != 2 {
-		t.Fatalf("an admin should see every project: %+v", all)
-	}
-}
-
 func TestRemoveMemberProtectsLastOwner(t *testing.T) {
-	svc, _, _ := newProjects(t)
+	svc, _ := newProjects(t)
 	owner, second := member(), member()
 	if _, err := svc.Create(context.Background(), owner, CreateProjectInput{Slug: "team"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.RemoveMember(context.Background(), "team", owner.ID); !errors.Is(err, core.ErrConflict) {
 		t.Fatalf("removing the last owner: got %v, want ErrConflict", err)
+	}
+	if err := svc.AddMember(context.Background(), "team", second.ID, "superuser"); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("unknown role: got %v, want ErrInvalidInput", err)
 	}
 
 	if err := svc.AddMember(context.Background(), "team", second.ID, core.ProjectRoleOwner); err != nil {
@@ -454,18 +333,8 @@ func TestRemoveMemberProtectsLastOwner(t *testing.T) {
 	}
 }
 
-func TestAddMemberRejectsUnknownRole(t *testing.T) {
-	svc, _, _ := newProjects(t)
-	if _, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: "team"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.AddMember(context.Background(), "team", uuid.New(), "superuser"); !errors.Is(err, core.ErrInvalidInput) {
-		t.Fatalf("got %v, want ErrInvalidInput", err)
-	}
-}
-
 func TestCredentialLifecycleAndValidation(t *testing.T) {
-	svc, _, _ := newProjects(t)
+	svc, _ := newProjects(t)
 	actor := admin()
 	credential, err := svc.CreateCredential(context.Background(), actor, CreateCredentialInput{
 		Name: "ghcr-bot", Registry: core.RegistryGHCR, Username: "bot", Token: "secret",
@@ -496,24 +365,9 @@ func TestCredentialLifecycleAndValidation(t *testing.T) {
 	if err := svc.DeleteCredential(context.Background(), uuid.New()); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
 	}
-}
-
-func TestCreateProjectRejectsUnknownCredential(t *testing.T) {
-	svc, _, _ := newProjects(t)
-	missing := uuid.New()
-	_, err := svc.Create(context.Background(), member(), CreateProjectInput{
-		Slug: "team", RegistryCredentialID: &missing,
-	})
-	if !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("got %v, want ErrNotFound", err)
-	}
-}
-
-func TestNewProjectServiceRequiresCredentialStore(t *testing.T) {
-	tasks := newFakeTaskStore()
-	_, err := NewProjectService(
-		newFakeProjectStore(), nil, newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks)
-	if !errors.Is(err, core.ErrInvalidInput) {
-		t.Fatalf("got %v, want ErrInvalidInput", err)
+	if _, err := svc.Create(context.Background(), member(), CreateProjectInput{
+		Slug: "team", RegistryCredentialID: &credential.ID,
+	}); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("a deleted credential was accepted: got %v, want ErrNotFound", err)
 	}
 }

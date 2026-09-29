@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,17 +81,15 @@ func (ProjectRole) Enum() []any {
 
 // Rank orders roles so authorization is one comparison; 0 marks an unknown or absent role.
 func (r ProjectRole) Rank() int {
-	switch r {
-	case ProjectRoleViewer:
-		return 1
-	case ProjectRoleOperator:
-		return 2
-	case ProjectRoleMember:
-		return 3
-	case ProjectRoleOwner:
-		return 4
+	return slices.Index([]ProjectRole{ProjectRoleViewer, ProjectRoleOperator, ProjectRoleMember, ProjectRoleOwner}, r) + 1
+}
+
+// Max keeps the higher role: a grant raises access and never lowers it.
+func (r ProjectRole) Max(other ProjectRole) ProjectRole {
+	if other.Rank() > r.Rank() {
+		return other
 	}
-	return 0
+	return r
 }
 
 type RegistryKind string
@@ -112,6 +111,34 @@ const (
 
 func (NotificationStatus) Enum() []any {
 	return []any{NotificationSuccess, NotificationFailure, NotificationInfo}
+}
+
+type NotificationType string
+
+const (
+	NotificationDeployed      NotificationType = "deployed"
+	NotificationDeployFailed  NotificationType = "deploy_failed"
+	NotificationStatusChanged NotificationType = "status_changed"
+	NotificationTaskCreated   NotificationType = "task_created"
+	NotificationTaskAssigned  NotificationType = "task_assigned"
+)
+
+func (NotificationType) Enum() []any {
+	return []any{
+		NotificationDeployed, NotificationDeployFailed, NotificationStatusChanged,
+		NotificationTaskCreated, NotificationTaskAssigned,
+	}
+}
+
+// Status is the delivery severity: deploys succeed or fail, everything else informs.
+func (t NotificationType) Status() NotificationStatus {
+	switch t {
+	case NotificationDeployed:
+		return NotificationSuccess
+	case NotificationDeployFailed:
+		return NotificationFailure
+	}
+	return NotificationInfo
 }
 
 var (
@@ -278,10 +305,19 @@ func (t Task) Clone() Task {
 	return t
 }
 
+// FleetTask is a task as one caller sees it across every project they reach.
+type FleetTask struct {
+	Task
+	Role       ProjectRole
+	LastDeploy *Notification // nil until the first deploy
+}
+
 type Notification struct {
 	ID        uuid.UUID
 	ProjectID uuid.UUID
+	Project   string // slug, filled in on reads
 	TaskName  string
+	Type      NotificationType
 	Status    NotificationStatus
 	Title     string
 	Body      string
@@ -334,6 +370,7 @@ type LogOptions struct {
 	Tail       int
 	Follow     bool
 	Timestamps bool
+	Since      time.Time // when set, every line from then on, not only the tail
 }
 
 type SystemStats struct {
@@ -400,7 +437,7 @@ type TokenStore interface {
 
 type ProjectStore interface {
 	List(context.Context) ([]Project, error)
-	ListForUser(ctx context.Context, userID uuid.UUID) ([]Project, error)
+	ListForUser(ctx context.Context, userID uuid.UUID) ([]ProjectAccess, error)
 	GetBySlug(ctx context.Context, slug string) (Project, error)
 	Create(context.Context, Project) (Project, error)
 	Update(context.Context, Project) (Project, error)
@@ -415,14 +452,16 @@ type ProjectStore interface {
 
 type NotificationStore interface {
 	Create(context.Context, Notification) (Notification, error)
-	List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool, limit int) ([]Notification, error)
-	MarkSeen(ctx context.Context, id, projectID, userID uuid.UUID, allTasks bool) error
+	List(ctx context.Context, userID uuid.UUID, admin bool, projectID, before *uuid.UUID, limit int) ([]Notification, error)
+	MarkSeen(ctx context.Context, userID uuid.UUID, admin bool, ids []uuid.UUID) error
 	MarkUnseen(ctx context.Context, id, userID uuid.UUID) error
+	LastDeploys(context.Context) (map[uuid.UUID]Notification, error)
 }
 
 type GrantStore interface {
 	Role(ctx context.Context, projectID, userID uuid.UUID, taskName string) (ProjectRole, error)
 	AnyInProject(ctx context.Context, projectID, userID uuid.UUID) (bool, error)
+	ForUser(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]ProjectRole, error)
 	ListForTask(ctx context.Context, taskID uuid.UUID) ([]TaskGrant, error)
 	Grant(context.Context, TaskGrant) error
 	Revoke(ctx context.Context, taskID, userID uuid.UUID) error

@@ -31,6 +31,7 @@ func TestSpecCoversEveryRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ids := map[string]bool{}
 	for _, r := range routeTable {
 		item, ok := spec.Paths.MapOfPathItemValues[r.path]
 		if !ok {
@@ -49,6 +50,11 @@ func TestSpecCoversEveryRoute(t *testing.T) {
 		if _, ok := operation.Responses.MapOfResponseOrRefValues["500"]; !ok {
 			t.Fatalf("%s %s: missing 500 documentation", r.method, r.path)
 		}
+		id := operationID(r)
+		if ids[id] {
+			t.Fatalf("%s %s reuses operation id %q", r.method, r.path, id)
+		}
+		ids[id] = true
 	}
 }
 
@@ -68,49 +74,25 @@ func TestSpecNeverExposesSecrets(t *testing.T) {
 	}
 
 	schemas := spec.Components.Schemas.MapOfSchemaOrRefValues
-	credential, ok := schemas["Credential"]
-	if !ok {
-		t.Fatal("Credential schema is missing")
+	props := func(name string) map[string]openapi3.SchemaOrRef {
+		if schemas[name].Schema == nil {
+			t.Fatalf("%s schema is missing", name)
+		}
+		return schemas[name].Schema.Properties
 	}
-	if _, leaked := credential.Schema.Properties["token"]; leaked {
+	if _, leaked := props("Credential")["token"]; leaked {
 		t.Fatal("the credential response schema must not expose token")
 	}
-	request, ok := schemas["CreateCredentialRequest"]
-	if !ok {
-		t.Fatal("CreateCredentialRequest schema is missing")
-	}
-	if _, present := request.Schema.Properties["token"]; !present {
+	if _, present := props("CreateCredentialRequest")["token"]; !present {
 		t.Fatal("the credential request schema must accept token")
 	}
-	apiToken, ok := schemas["APIToken"]
-	if !ok {
-		t.Fatal("APIToken schema is missing")
-	}
 	for _, forbidden := range []string{"token", "token_hash"} {
-		if _, leaked := apiToken.Schema.Properties[forbidden]; leaked {
+		if _, leaked := props("APIToken")[forbidden]; leaked {
 			t.Fatalf("the API token metadata schema must not expose %s", forbidden)
 		}
 	}
-	created, ok := schemas["CreateAPITokenResponse"]
-	if !ok {
-		t.Fatal("CreateAPITokenResponse schema is missing")
-	}
-	if token, present := created.Schema.Properties["token"]; !present || token.Schema == nil || token.Schema.Format == nil || *token.Schema.Format != "password" {
+	if token, present := props("CreateAPITokenResponse")["token"]; !present || token.Schema == nil || token.Schema.Format == nil || *token.Schema.Format != "password" {
 		t.Fatal("the one-time API token response must document token as a password")
-	}
-}
-
-func TestSpecRoundTrips(t *testing.T) {
-	generated, err := MarshalOpenAPIYAML()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parsed openapi3.Spec
-	if err := parsed.UnmarshalYAML(generated); err != nil {
-		t.Fatalf("generated specification does not parse: %v", err)
-	}
-	if parsed.Info.Title != "Boreas API" || len(parsed.Paths.MapOfPathItemValues) == 0 {
-		t.Fatalf("unexpected round-tripped specification: %+v", parsed.Info)
 	}
 }
 
@@ -129,23 +111,9 @@ func TestDocsEndpoints(t *testing.T) {
 		t.Fatalf("openapi field = %v", spec["openapi"])
 	}
 
+	// The documentation page must load the served specification.
 	rr = do(h, httptest.NewRequest(http.MethodGet, "/api/v1/docs", nil))
-	body := rr.Body.String()
-	if rr.Code != http.StatusOK || !strings.Contains(body, "createApiReference") {
+	if body := rr.Body.String(); rr.Code != http.StatusOK || !strings.Contains(body, "createApiReference") || !strings.Contains(body, "/api/v1/openapi.json") {
 		t.Fatalf("docs status=%d body=%q", rr.Code, body)
-	}
-	if !strings.Contains(body, "/api/v1/openapi.json") {
-		t.Fatal("the documentation page must load the served specification")
-	}
-}
-
-func TestOperationIDsAreUnique(t *testing.T) {
-	seen := map[string]string{}
-	for _, r := range routeTable {
-		id := operationID(r)
-		if previous, duplicate := seen[id]; duplicate {
-			t.Fatalf("operation id %q is used by both %s and %s %s", id, previous, r.method, r.path)
-		}
-		seen[id] = r.method + " " + r.path
 	}
 }

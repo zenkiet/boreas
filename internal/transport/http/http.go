@@ -41,17 +41,17 @@ type AuthService interface {
 }
 
 type ProjectService interface {
-	List(ctx context.Context, actor core.User) ([]core.Project, error)
+	Fleet(ctx context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
+	GrantedRoles(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]core.ProjectRole, error)
 	Directory(ctx context.Context) ([]core.Project, []core.Task, error)
-	Get(ctx context.Context, slug string) (core.Project, error)
 	Create(ctx context.Context, actor core.User, in service.CreateProjectInput) (core.Project, error)
 	Update(ctx context.Context, slug string, in service.UpdateProjectInput) (core.Project, error)
 	Delete(ctx context.Context, slug string) error
 	ListMembers(ctx context.Context, slug string) ([]core.ProjectMember, error)
 	AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error
 	RemoveMember(ctx context.Context, slug string, userID uuid.UUID) error
-	Notifications(ctx context.Context, acc core.ProjectAccess, limit int) ([]core.Notification, error)
-	MarkNotificationSeen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error
+	Notifications(ctx context.Context, actor core.User, projectID, before *uuid.UUID, limit int) ([]core.Notification, error)
+	MarkNotificationsSeen(ctx context.Context, actor core.User, ids []uuid.UUID) error
 	MarkNotificationUnseen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error
 	Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error)
 	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
@@ -71,9 +71,6 @@ const maxRequestBytes = 1 << 20
 
 // APIHandler serves the API and applies each route's declared access policy.
 func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, version string, logger *slog.Logger) http.Handler {
-	if logger == nil {
-		logger = slog.Default()
-	}
 	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, version: version, logger: logger}
 
 	mux := http.NewServeMux()

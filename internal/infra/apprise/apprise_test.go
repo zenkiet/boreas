@@ -3,9 +3,9 @@ package apprise
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -18,26 +18,28 @@ var failure = core.Notification{
 }
 
 func TestSendPostsApprisePayload(t *testing.T) {
-	var got map[string]string
+	var got map[string]any
 	var contentType string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		contentType = r.Header.Get("Content-Type")
-		body, _ := io.ReadAll(r.Body)
-		if err := json.Unmarshal(body, &got); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Errorf("payload is not JSON: %v", err)
 		}
 	}))
 	defer server.Close()
 
-	if err := New(server.URL, time.Second).Send(context.Background(), failure); err != nil {
+	sender := New(server.URL, time.Second)
+	sender.Targets = func(context.Context, core.Notification) []string { return []string{"fcm://p/a/", "fcm://p/b/"} }
+	if err := sender.Send(context.Background(), failure); err != nil {
 		t.Fatal(err)
 	}
-	if contentType != "application/json" {
-		t.Fatalf("Content-Type = %q", contentType)
+	// Apprise reads exactly these keys: "type" carries the status verbatim, and the
+	// stateless endpoint takes urls as a list, so it must not be flattened.
+	want := map[string]any{
+		"title": failure.Title, "body": failure.Body, "type": "failure", "urls": []any{"fcm://p/a/", "fcm://p/b/"},
 	}
-	// Apprise reads exactly these keys, and "type" must carry the status verbatim.
-	if got["title"] != failure.Title || got["body"] != failure.Body || got["type"] != "failure" {
-		t.Fatalf("payload = %v", got)
+	if contentType != "application/json" || !reflect.DeepEqual(got, want) {
+		t.Fatalf("Content-Type %q, payload = %v", contentType, got)
 	}
 }
 
@@ -55,33 +57,6 @@ func TestSendReportsRejection(t *testing.T) {
 
 	if err := New(server.URL, time.Second).Send(context.Background(), failure); err == nil {
 		t.Fatal("a rejected notification must be reported")
-	}
-}
-
-func TestSendAddsSubscribedTargets(t *testing.T) {
-	var got map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		if err := json.Unmarshal(body, &got); err != nil {
-			t.Errorf("payload is not JSON: %v", err)
-		}
-	}))
-	defer server.Close()
-
-	sender := New(server.URL, time.Second)
-	sender.Targets = func(context.Context, core.Notification) []string {
-		return []string{"fcm://p/a/", "fcm://p/b/"}
-	}
-	if err := sender.Send(context.Background(), failure); err != nil {
-		t.Fatal(err)
-	}
-	// Apprise's stateless endpoint accepts urls as a list, so it must not be flattened.
-	urls, ok := got["urls"].([]any)
-	if !ok || len(urls) != 2 || urls[0] != "fcm://p/a/" || urls[1] != "fcm://p/b/" {
-		t.Fatalf("payload = %v", got)
-	}
-	if got["title"] != failure.Title || got["type"] != "failure" {
-		t.Fatalf("payload = %v", got)
 	}
 }
 

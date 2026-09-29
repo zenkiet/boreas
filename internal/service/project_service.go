@@ -1,10 +1,12 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -17,8 +19,7 @@ type ProjectService struct {
 	notifications core.NotificationStore
 	grants        core.GrantStore
 	tasks         core.TaskStore
-	// Notify, when set, reports task assignments; Users, when also set, names
-	// the grantee in the message. Both are optional wiring, like apprise.Sender.Targets.
+	// Optional wiring: Notify reports task assignments; Users, when also set, names the grantee.
 	Notify func(context.Context, core.Notification)
 	Users  core.UserStore
 }
@@ -37,44 +38,73 @@ func NewProjectService(
 	}, nil
 }
 
-func (s *ProjectService) Notifications(ctx context.Context, acc core.ProjectAccess, limit int) ([]core.Notification, error) {
-	notifications, err := s.notifications.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks, limit)
-	if err != nil {
-		return nil, fmt.Errorf("list notifications: %w", err)
-	}
-	return notifications, nil
+func (s *ProjectService) Notifications(
+	ctx context.Context, actor core.User, projectID, before *uuid.UUID, limit int,
+) ([]core.Notification, error) {
+	notifications, err := s.notifications.List(ctx, actor.ID, actor.IsAdmin(), projectID, before, limit)
+	return notifications, wrap("list notifications", err)
 }
 
-// MarkNotificationSeen is idempotent; an id outside the caller's visibility is a no-op.
-func (s *ProjectService) MarkNotificationSeen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error {
-	if err := s.notifications.MarkSeen(ctx, id, acc.Project.ID, acc.UserID, acc.AllTasks); err != nil {
-		return fmt.Errorf("mark notification seen: %w", err)
-	}
-	return nil
+func (s *ProjectService) MarkNotificationsSeen(ctx context.Context, actor core.User, ids []uuid.UUID) error {
+	return wrap("mark notifications seen", s.notifications.MarkSeen(ctx, actor.ID, actor.IsAdmin(), ids))
 }
 
 func (s *ProjectService) MarkNotificationUnseen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error {
-	if err := s.notifications.MarkUnseen(ctx, id, acc.UserID); err != nil {
-		return fmt.Errorf("mark notification unseen: %w", err)
-	}
-	return nil
+	return wrap("mark notification unseen", s.notifications.MarkUnseen(ctx, id, acc.UserID))
 }
 
-// List scopes non-admin results to memberships to enforce project visibility.
-func (s *ProjectService) List(ctx context.Context, actor core.User) ([]core.Project, error) {
-	var (
-		projects []core.Project
-		err      error
-	)
-	if actor.IsAdmin() {
-		projects, err = s.projects.List(ctx)
-	} else {
-		projects, err = s.projects.ListForUser(ctx, actor.ID)
+// List reports each reachable project with the caller's role in it; administrators own them all.
+func (s *ProjectService) List(ctx context.Context, actor core.User) ([]core.ProjectAccess, error) {
+	if !actor.IsAdmin() {
+		accesses, err := s.projects.ListForUser(ctx, actor.ID)
+		return accesses, wrap("list projects", err)
 	}
+	projects, err := s.projects.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
-	return projects, nil
+	accesses := make([]core.ProjectAccess, len(projects))
+	for i, project := range projects {
+		accesses[i] = core.ProjectAccess{Project: project, UserID: actor.ID, Role: core.ProjectRoleOwner, AllTasks: true}
+	}
+	return accesses, nil
+}
+
+// Fleet groups by project ID every task the actor reaches, with their effective role on each.
+// ponytail: one task query per project; fold into one SQL query if projects reach the hundreds.
+func (s *ProjectService) Fleet(ctx context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
+	accesses, err := s.List(ctx, actor)
+	if err != nil {
+		return nil, nil, err
+	}
+	grants, err := s.GrantedRoles(ctx, actor.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	deploys, err := s.notifications.LastDeploys(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list last deploys: %w", err)
+	}
+	fleet := make(map[uuid.UUID][]core.FleetTask, len(accesses))
+	for _, acc := range accesses {
+		tasks, err := s.tasks.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks)
+		if err != nil {
+			return nil, nil, fmt.Errorf("list tasks: %w", err)
+		}
+		for _, task := range tasks {
+			entry := core.FleetTask{Task: task, Role: acc.Role.Max(grants[task.ID])}
+			if deploy, ok := deploys[task.ID]; ok {
+				entry.LastDeploy = &deploy
+			}
+			fleet[acc.Project.ID] = append(fleet[acc.Project.ID], entry)
+		}
+	}
+	return accesses, fleet, nil
+}
+
+func (s *ProjectService) GrantedRoles(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]core.ProjectRole, error) {
+	roles, err := s.grants.ForUser(ctx, userID)
+	return roles, wrap("list user grants", err)
 }
 
 // Directory lists every project and task for the anonymous environment index.
@@ -91,14 +121,7 @@ func (s *ProjectService) Directory(ctx context.Context) ([]core.Project, []core.
 }
 
 func (s *ProjectService) Get(ctx context.Context, slug string) (core.Project, error) {
-	if err := core.ValidateProjectSlug(slug); err != nil {
-		return core.Project{}, err
-	}
-	project, err := s.projects.GetBySlug(ctx, slug)
-	if err != nil {
-		return core.Project{}, fmt.Errorf("get project %q: %w", slug, err)
-	}
-	return project, nil
+	return getProject(ctx, s.projects, slug)
 }
 
 type CreateProjectInput struct {
@@ -115,14 +138,8 @@ func (s *ProjectService) Create(ctx context.Context, actor core.User, in CreateP
 	if err := core.ValidateProjectSlug(in.Slug); err != nil {
 		return core.Project{}, err
 	}
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		name = in.Slug
-	}
-	port := in.DefaultPort
-	if port == 0 {
-		port = 80
-	}
+	name := cmp.Or(strings.TrimSpace(in.Name), in.Slug)
+	port := cmp.Or(in.DefaultPort, 80)
 	if port < 1 || port > 65535 {
 		return core.Project{}, errors.Join(core.ErrInvalidInput, errors.New("default port must be between 1 and 65535"))
 	}
@@ -189,10 +206,7 @@ func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProje
 		project.RegistryCredentialID = *in.RegistryCredentialID
 	}
 	updated, err := s.projects.Update(ctx, project)
-	if err != nil {
-		return core.Project{}, fmt.Errorf("update project: %w", err)
-	}
-	return updated, nil
+	return updated, wrap("update project", err)
 }
 
 func (s *ProjectService) Delete(ctx context.Context, slug string) error {
@@ -200,10 +214,7 @@ func (s *ProjectService) Delete(ctx context.Context, slug string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.projects.Delete(ctx, project.ID); err != nil {
-		return fmt.Errorf("delete project: %w", err)
-	}
-	return nil
+	return wrap("delete project", s.projects.Delete(ctx, project.ID))
 }
 
 func (s *ProjectService) ListMembers(ctx context.Context, slug string) ([]core.ProjectMember, error) {
@@ -212,10 +223,7 @@ func (s *ProjectService) ListMembers(ctx context.Context, slug string) ([]core.P
 		return nil, err
 	}
 	members, err := s.projects.ListMembers(ctx, project.ID)
-	if err != nil {
-		return nil, fmt.Errorf("list members: %w", err)
-	}
-	return members, nil
+	return members, wrap("list members", err)
 }
 
 func (s *ProjectService) AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error {
@@ -227,12 +235,9 @@ func (s *ProjectService) AddMember(ctx context.Context, slug string, userID uuid
 	if err != nil {
 		return err
 	}
-	if err := s.projects.AddMember(ctx, core.ProjectMember{
+	return wrap("add member", s.projects.AddMember(ctx, core.ProjectMember{
 		ProjectID: project.ID, UserID: userID, Role: role,
-	}); err != nil {
-		return fmt.Errorf("add member: %w", err)
-	}
-	return nil
+	}))
 }
 
 // RemoveMember refuses to leave a project without an owner.
@@ -245,23 +250,11 @@ func (s *ProjectService) RemoveMember(ctx context.Context, slug string, userID u
 	if err != nil {
 		return fmt.Errorf("list members: %w", err)
 	}
-	owners, targetIsOwner := 0, false
-	for _, member := range members {
-		if member.Role != core.ProjectRoleOwner {
-			continue
-		}
-		owners++
-		if member.UserID == userID {
-			targetIsOwner = true
-		}
-	}
-	if targetIsOwner && owners == 1 {
+	owners := slices.DeleteFunc(members, func(m core.ProjectMember) bool { return m.Role != core.ProjectRoleOwner })
+	if len(owners) == 1 && owners[0].UserID == userID {
 		return fmt.Errorf("cannot remove the last owner of project %q: %w", slug, core.ErrConflict)
 	}
-	if err := s.projects.RemoveMember(ctx, project.ID, userID); err != nil {
-		return fmt.Errorf("remove member: %w", err)
-	}
-	return nil
+	return wrap("remove member", s.projects.RemoveMember(ctx, project.ID, userID))
 }
 
 // Access resolves the caller's effective role, taking the higher of their project
@@ -287,9 +280,7 @@ func (s *ProjectService) Access(ctx context.Context, actor core.User, slug, task
 	if err != nil {
 		return core.ProjectAccess{}, err
 	}
-	if granted.Rank() > acc.Role.Rank() {
-		acc.Role = granted
-	}
+	acc.Role = acc.Role.Max(granted)
 	// An unreachable project or task must be indistinguishable from one that does not exist.
 	if acc.Role == "" {
 		return core.ProjectAccess{}, core.ErrNotFound
@@ -313,31 +304,24 @@ func (s *ProjectService) grantedRole(
 		return "", nil
 	}
 	role, err := s.grants.Role(ctx, projectID, userID, taskName)
-	if err != nil {
-		return "", fmt.Errorf("get task grant: %w", err)
-	}
-	return role, nil
+	return role, wrap("get task grant", err)
 }
 
 func (s *ProjectService) ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error) {
-	task, _, err := s.task(ctx, slug, taskName)
+	task, _, err := getTask(ctx, s.projects, s.tasks, slug, taskName)
 	if err != nil {
 		return nil, err
 	}
 	grants, err := s.grants.ListForTask(ctx, task.ID)
-	if err != nil {
-		return nil, fmt.Errorf("list task grants: %w", err)
-	}
-	return grants, nil
+	return grants, wrap("list task grants", err)
 }
 
-// Grant raises a user's role on one task. Owner is rejected because it only means
-// something at project scope.
+// Grant raises a user's role on one task; owner is rejected as it only means something at project scope.
 func (s *ProjectService) Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error {
 	if role.Rank() < core.ProjectRoleViewer.Rank() || role.Rank() > core.ProjectRoleMember.Rank() {
 		return errors.Join(core.ErrInvalidInput, errors.New("role must be viewer, operator, or member"))
 	}
-	task, project, err := s.task(ctx, slug, taskName)
+	task, project, err := getTask(ctx, s.projects, s.tasks, slug, taskName)
 	if err != nil {
 		return err
 	}
@@ -351,43 +335,22 @@ func (s *ProjectService) Grant(ctx context.Context, slug, taskName string, userI
 				detail = "assigned to " + user.Username + " (" + string(role) + ")"
 			}
 		}
-		s.Notify(ctx, notification(project, taskName, core.NotificationInfo, "👤 Task Assigned", detail))
+		s.Notify(ctx, notification(project, taskName, core.NotificationTaskAssigned, "👤 Task Assigned", detail))
 	}
 	return nil
 }
 
 func (s *ProjectService) Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error {
-	task, _, err := s.task(ctx, slug, taskName)
+	task, _, err := getTask(ctx, s.projects, s.tasks, slug, taskName)
 	if err != nil {
 		return err
 	}
-	if err := s.grants.Revoke(ctx, task.ID, userID); err != nil {
-		return fmt.Errorf("revoke task grant: %w", err)
-	}
-	return nil
-}
-
-func (s *ProjectService) task(ctx context.Context, slug, taskName string) (core.Task, core.Project, error) {
-	if err := core.ValidateTaskName(taskName); err != nil {
-		return core.Task{}, core.Project{}, err
-	}
-	project, err := s.Get(ctx, slug)
-	if err != nil {
-		return core.Task{}, core.Project{}, err
-	}
-	task, err := s.tasks.GetByName(ctx, project.ID, taskName)
-	if err != nil {
-		return core.Task{}, core.Project{}, fmt.Errorf("get task %q: %w", taskName, err)
-	}
-	return task, project, nil
+	return wrap("revoke task grant", s.grants.Revoke(ctx, task.ID, userID))
 }
 
 func (s *ProjectService) ListCredentials(ctx context.Context) ([]core.RegistryCredential, error) {
 	credentials, err := s.credentials.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list credentials: %w", err)
-	}
-	return credentials, nil
+	return credentials, wrap("list credentials", err)
 }
 
 type CreateCredentialInput struct {
@@ -409,25 +372,17 @@ func (s *ProjectService) CreateCredential(ctx context.Context, actor core.User, 
 	credential, err := s.credentials.Create(ctx, core.RegistryCredential{
 		Name: in.Name, Registry: in.Registry, Username: in.Username, Token: in.Token, CreatedBy: &actor.ID,
 	})
-	if err != nil {
-		return core.RegistryCredential{}, fmt.Errorf("create credential: %w", err)
-	}
-	return credential, nil
+	return credential, wrap("create credential", err)
 }
 
 func (s *ProjectService) DeleteCredential(ctx context.Context, id uuid.UUID) error {
-	if err := s.credentials.Delete(ctx, id); err != nil {
-		return fmt.Errorf("delete credential: %w", err)
-	}
-	return nil
+	return wrap("delete credential", s.credentials.Delete(ctx, id))
 }
 
 func (s *ProjectService) checkCredential(ctx context.Context, id *uuid.UUID) error {
 	if id == nil {
 		return nil
 	}
-	if _, err := s.credentials.Get(ctx, *id); err != nil {
-		return fmt.Errorf("get registry credential: %w", err)
-	}
-	return nil
+	_, err := s.credentials.Get(ctx, *id)
+	return wrap("get registry credential", err)
 }

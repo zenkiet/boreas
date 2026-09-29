@@ -31,7 +31,7 @@ func (s *PushStore) Delete(ctx context.Context, userID uuid.UUID, token string) 
 // task, grantees see only what they hold. Disabled accounts see nothing, so revoking a
 // user stops their devices along with their login.
 func (s *PushStore) Tokens(ctx context.Context, projectID uuid.UUID, taskName string) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `
+	return many(ctx, s.pool, pgx.RowTo[string], "list push subscriptions", "scan push subscriptions", `
 		SELECT p.token FROM push_subscriptions p
 		JOIN users u ON u.id = p.user_id AND u.disabled_at IS NULL
 		WHERE u.role = 'admin'
@@ -43,12 +43,4 @@ func (s *PushStore) Tokens(ctx context.Context, projectID uuid.UUID, taskName st
 			JOIN tasks t ON t.id = g.task_id
 			WHERE g.user_id = p.user_id AND t.project_id = $1 AND t.name = $2)`,
 		projectID, taskName)
-	if err != nil {
-		return nil, mapError("list push subscriptions", err)
-	}
-	tokens, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return nil, mapError("scan push subscriptions", err)
-	}
-	return tokens, nil
 }

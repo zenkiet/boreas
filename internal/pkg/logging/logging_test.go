@@ -36,11 +36,8 @@ func TestNewEmitsJSONWithAttrs(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
 		t.Fatalf("log line is not JSON: %v: %q", err, buf.String())
 	}
-	if entry["msg"] != "task started" || entry["project"] != "demo" || entry["task"] != "web" {
+	if entry["msg"] != "task started" || entry["project"] != "demo" || entry["task"] != "web" || entry["level"] != "INFO" {
 		t.Fatalf("unexpected entry: %v", entry)
-	}
-	if entry["level"] != "INFO" {
-		t.Fatalf("level = %v, want INFO", entry["level"])
 	}
 }
 

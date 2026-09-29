@@ -124,7 +124,6 @@ func run(logger *slog.Logger) error {
 		runtime, taskStore, projectStore, credentials, routes,
 		dockerinfra.TCPReadyChecker{DialTimeout: time.Second}.Ready,
 		service.Config{
-			DefaultPort:      80,
 			ReadinessTimeout: readinessTimeout,
 			PollInterval:     readinessPoll,
 			Notify:           notify,
@@ -178,9 +177,8 @@ func run(logger *slog.Logger) error {
 
 func notifier(store *pginfra.NotificationStore, sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
 	return func(ctx context.Context, n core.Notification) {
-		ctx = context.WithoutCancel(ctx)
 		go func() {
-			ctx, cancel := context.WithTimeout(ctx, notifyTimeout)
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), notifyTimeout)
 			defer cancel()
 			if _, err := store.Create(ctx, n); err != nil {
 				logger.Error("record notification", "error", err)

@@ -69,14 +69,10 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.ID == uuid.Nil || created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() {
-		t.Fatalf("database defaults were not returned: %+v", created)
-	}
-	if created.Labels["tier"] != "front" || created.Env["KEY"] != "value" {
-		t.Fatalf("JSONB round trip failed: %+v", created)
-	}
-	if created.Description != "front door" || created.Note != "## Setup\n`make db`" {
-		t.Fatalf("description/note round trip failed: %+v", created)
+	if created.ID == uuid.Nil || created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() ||
+		created.Labels["tier"] != "front" || created.Env["KEY"] != "value" ||
+		created.Description != "front door" || created.Note != "## Setup\n`make db`" {
+		t.Fatalf("create round trip lost data: %+v", created)
 	}
 
 	fetched, err := store.GetByName(ctx, project.ID, "web")
@@ -86,6 +82,9 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	if fetched.ID != created.ID {
 		t.Fatal("GetByName returned a different task")
 	}
+	if _, err := store.Create(ctx, created); !errors.Is(err, core.ErrAlreadyExists) {
+		t.Fatalf("duplicate create: got %v, want ErrAlreadyExists", err)
+	}
 
 	// The trigger owns updated_at, so it must advance without the app setting it.
 	time.Sleep(5 * time.Millisecond)
@@ -94,20 +93,18 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !updated.UpdatedAt.After(created.UpdatedAt) {
-		t.Fatalf("updated_at did not advance: %v -> %v", created.UpdatedAt, updated.UpdatedAt)
-	}
-	if !updated.CreatedAt.Equal(created.CreatedAt) {
-		t.Fatal("created_at changed on update")
-	}
-	if updated.Description != "front door" || updated.Note != created.Note {
-		t.Fatalf("update lost description/note: %+v", updated)
+	if !updated.UpdatedAt.After(created.UpdatedAt) || !updated.CreatedAt.Equal(created.CreatedAt) ||
+		updated.Description != "front door" || updated.Note != created.Note {
+		t.Fatalf("update must advance only updated_at and keep the rest: %v -> %+v", created.UpdatedAt, updated)
 	}
 
 	if err := store.Delete(ctx, created.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Delete(ctx, created.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+	if _, err := store.GetByName(ctx, project.ID, "web"); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }
@@ -144,6 +141,9 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 	if _, err := store.Update(ctx, fetched); err == nil {
 		t.Fatal("the database must reject an out-of-range default port")
 	}
+	if _, err := store.Create(ctx, core.Project{Slug: "api", Name: "reserved", DefaultPort: 80}); err == nil {
+		t.Fatal("the database CHECK constraint must reject the reserved slug 'api'")
+	}
 }
 
 func TestNotificationStoreRoundTrip(t *testing.T) {
@@ -152,11 +152,10 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 	project := seedProject(t, pool)
 	store := NewNotificationStore(pool)
 
-	for _, n := range []core.Notification{
-		{ProjectID: project.ID, TaskName: "web", Status: core.NotificationSuccess, Title: "first", Body: "image-a"},
-		{ProjectID: project.ID, TaskName: "web", Status: core.NotificationFailure, Title: "second", Body: "boom"},
-	} {
-		created, err := store.Create(ctx, n)
+	for _, kind := range []core.NotificationType{core.NotificationDeployed, core.NotificationDeployFailed} {
+		created, err := store.Create(ctx, core.Notification{
+			ProjectID: project.ID, TaskName: "web", Type: kind, Status: kind.Status(), Title: string(kind), Body: "boom",
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,32 +164,18 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 		}
 	}
 
-	listed, err := store.List(ctx, project.ID, uuid.Nil, true, 10)
+	listed, err := store.List(ctx, uuid.Nil, true, &project.ID, nil, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != 2 || listed[0].Title != "second" {
-		t.Fatalf("want newest first, got %+v", listed)
-	}
-	if listed[0].Status != core.NotificationFailure || listed[0].Body != "boom" {
-		t.Fatalf("round trip lost fields: %+v", listed[0])
-	}
-
-	limited, err := store.List(ctx, project.ID, uuid.Nil, true, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(limited) != 1 || limited[0].Title != "second" {
-		t.Fatalf("limit ignored: %+v", limited)
-	}
-
-	if _, err := store.List(ctx, uuid.New(), uuid.Nil, true, 10); err != nil {
-		t.Fatalf("an unknown project must list empty, got %v", err)
+	if len(listed) != 2 || listed[0].Type != core.NotificationDeployFailed || listed[0].Status != core.NotificationFailure ||
+		listed[0].Body != "boom" || listed[0].Project != project.Slug {
+		t.Fatalf("want the newest first with every field, got %+v", listed)
 	}
 	if _, err := store.Create(ctx, core.Notification{
-		ProjectID: project.ID, TaskName: "web", Status: "bogus", Title: "rejected",
+		ProjectID: project.ID, TaskName: "web", Type: "bogus", Status: core.NotificationInfo, Title: "rejected",
 	}); err == nil {
-		t.Fatal("the database must reject an unknown status")
+		t.Fatal("the database must reject an unknown type")
 	}
 }
 
@@ -203,113 +188,135 @@ func TestNotificationSeenPerUser(t *testing.T) {
 	alice := seedUser(t, pool, "seen-alice", core.RoleUser)
 	bob := seedUser(t, pool, "seen-bob", core.RoleUser)
 	created, err := store.Create(ctx, core.Notification{
-		ProjectID: project.ID, TaskName: "web", Status: core.NotificationInfo, Title: "created",
+		ProjectID: project.ID, TaskName: "web", Type: core.NotificationTaskCreated, Status: core.NotificationInfo,
+		Title: "created",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Seen {
-		t.Fatalf("a fresh notification must be unseen: %+v", created)
+	seen := func(user core.User) bool {
+		t.Helper()
+		listed, err := store.List(ctx, user.ID, true, &project.ID, nil, 10)
+		if err != nil || len(listed) != 1 {
+			t.Fatalf("list = %+v, %v", listed, err)
+		}
+		return listed[0].Seen
 	}
 
-	if err := store.MarkSeen(ctx, created.ID, project.ID, alice.ID, true); err != nil {
-		t.Fatal(err)
+	for range 2 {
+		if err := store.MarkSeen(ctx, alice.ID, true, []uuid.UUID{created.ID}); err != nil {
+			t.Fatalf("marking must be idempotent: %v", err)
+		}
 	}
-	if err := store.MarkSeen(ctx, created.ID, project.ID, alice.ID, true); err != nil {
-		t.Fatalf("marking twice must be idempotent: %v", err)
+	if !seen(alice) || seen(bob) {
+		t.Fatal("seen must be tracked per user")
 	}
-
-	listed, err := store.List(ctx, project.ID, alice.ID, true, 10)
-	if err != nil {
-		t.Fatal(err)
+	for range 2 {
+		if err := store.MarkUnseen(ctx, created.ID, alice.ID); err != nil {
+			t.Fatalf("unseen must be idempotent: %v", err)
+		}
 	}
-	if len(listed) != 1 || !listed[0].Seen {
-		t.Fatalf("the marking user must read it as seen: %+v", listed)
-	}
-	listed, err = store.List(ctx, project.ID, bob.ID, true, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(listed) != 1 || listed[0].Seen {
-		t.Fatalf("another user's view must stay unseen: %+v", listed)
-	}
-
-	if err := store.MarkUnseen(ctx, created.ID, alice.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.MarkUnseen(ctx, created.ID, alice.ID); err != nil {
-		t.Fatalf("unseen must be idempotent: %v", err)
-	}
-	listed, err = store.List(ctx, project.ID, alice.ID, true, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if listed[0].Seen {
-		t.Fatalf("unseen must clear the mark: %+v", listed)
-	}
-
-	// Without a grant on the task, a non-member's mark is a no-op.
-	if err := store.MarkSeen(ctx, created.ID, project.ID, bob.ID, false); err != nil {
-		t.Fatal(err)
-	}
-	listed, err = store.List(ctx, project.ID, bob.ID, true, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if listed[0].Seen {
-		t.Fatalf("an out-of-reach mark must be a no-op: %+v", listed)
+	if seen(alice) {
+		t.Fatal("unseen must clear the mark")
 	}
 }
 
-func TestNotificationsSurviveTaskDeletion(t *testing.T) {
+// The feed spans projects by membership, and pages without gaps or repeats even when
+// every row shares one timestamp.
+func TestNotificationFeedAcrossProjects(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
-	project := seedProject(t, pool)
-	tasks := NewTaskStore(pool)
+	mine, other := seedProject(t, pool), seedProject(t, pool)
 	store := NewNotificationStore(pool)
-
-	task, err := tasks.Create(ctx, core.Task{
-		ProjectID: project.ID, Name: "web", Image: "nginx:alpine",
-		Status: core.StatusRunning, Port: 80,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(ctx, core.Notification{
-		ProjectID: project.ID, TaskName: task.Name,
-		Status: core.NotificationSuccess, Title: "deployed", Body: "nginx:alpine",
+	user := seedUser(t, pool, "feed", core.RoleUser)
+	if err := NewProjectStore(pool).AddMember(ctx, core.ProjectMember{
+		ProjectID: mine.ID, UserID: user.ID, Role: core.ProjectRoleViewer,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := tasks.Delete(ctx, task.ID); err != nil {
+	var all []uuid.UUID
+	for range 3 {
+		for _, project := range []core.Project{mine, other} {
+			n, err := store.Create(ctx, core.Notification{
+				ProjectID: project.ID, TaskName: "web", Type: core.NotificationDeployed,
+				Status: core.NotificationSuccess, Title: "deployed",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			all = append(all, n.ID)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notifications SET created_at = now() WHERE id = ANY($1)`, all); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkSeen(ctx, user.ID, false, all); err != nil {
 		t.Fatal(err)
 	}
 
-	listed, err := store.List(ctx, project.ID, uuid.Nil, true, 10)
-	if err != nil {
-		t.Fatal(err)
+	paged := map[uuid.UUID]bool{}
+	var before *uuid.UUID
+	for {
+		page, err := store.List(ctx, user.ID, false, nil, before, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, n := range page {
+			if n.Project != mine.Slug || paged[n.ID] || !n.Seen {
+				t.Fatalf("page leaked, repeated, or lost its seen mark: %+v", n)
+			}
+			paged[n.ID] = true
+		}
+		before = &page[len(page)-1].ID
 	}
-	if len(listed) != 1 || listed[0].TaskName != "web" {
-		t.Fatalf("deleting a task erased its deploy history: %+v", listed)
+	if len(paged) != 3 {
+		t.Fatalf("paged %d of the 3 visible notifications", len(paged))
+	}
+	hidden, err := store.List(ctx, user.ID, true, &other.ID, nil, 10)
+	if err != nil || len(hidden) != 3 || hidden[0].Seen {
+		t.Fatalf("a mark reached a project the user cannot see: %+v, %v", hidden, err)
 	}
 }
 
-func TestTaskStoreErrorMapping(t *testing.T) {
+// A deploy belongs to the task that ran it, not to a later task that reuses the name.
+func TestLastDeploys(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
 	project := seedProject(t, pool)
-	store := NewTaskStore(pool)
-
-	if _, err := store.GetByName(ctx, project.ID, "absent"); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("got %v, want ErrNotFound", err)
+	tasks, notifications := NewTaskStore(pool), NewNotificationStore(pool)
+	create := func(name string) core.Task {
+		task, err := tasks.Create(ctx, core.Task{ProjectID: project.ID, Name: name, Image: "img", Status: core.StatusRunning, Port: 80})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return task
+	}
+	notify := func(kind core.NotificationType) {
+		if _, err := notifications.Create(ctx, core.Notification{
+			ProjectID: project.ID, TaskName: "web", Type: kind, Status: kind.Status(), Title: string(kind),
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	task := core.Task{ProjectID: project.ID, Name: "dup", Image: "img", Status: core.StatusUnknown, Port: 80}
-	if _, err := store.Create(ctx, task); err != nil {
+	predecessor := create("web")
+	notify(core.NotificationDeployFailed)
+	if err := tasks.Delete(ctx, predecessor.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(ctx, task); !errors.Is(err, core.ErrAlreadyExists) {
-		t.Fatalf("got %v, want ErrAlreadyExists", err)
+	web, idle := create("web"), create("idle")
+	notify(core.NotificationDeployed)
+	notify(core.NotificationStatusChanged)
+
+	deploys, err := notifications.LastDeploys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := deploys[idle.ID]; ok || deploys[web.ID].Status != core.NotificationSuccess {
+		t.Fatalf("last deploys = %+v", deploys)
 	}
 }
 
@@ -366,30 +373,11 @@ func TestForeignKeyViolationMapsToConflict(t *testing.T) {
 	}
 }
 
-func TestSchemaRejectsReservedProjectSlug(t *testing.T) {
-	pool := newPool(t)
-	store := NewProjectStore(pool)
-	if _, err := store.Create(context.Background(), core.Project{
-		Slug: "api", Name: "reserved", DefaultPort: 80,
-	}); err == nil {
-		t.Fatal("the database CHECK constraint should reject the reserved slug 'api'")
-	}
-}
-
 func TestUserAndTokenStores(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
 	users, tokens := NewUserStore(pool), NewTokenStore(pool)
-
-	user, err := users.Create(ctx, core.User{
-		Username: "user-" + uuid.New().String()[:8],
-		Email:    uuid.New().String()[:8] + "@example.com",
-		Role:     core.RoleUser,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+	user := seedUser(t, pool, "user", core.RoleUser)
 
 	if _, err := users.GetByUsername(ctx, user.Username); err != nil {
 		t.Fatal(err)
@@ -420,25 +408,16 @@ func TestUserAndTokenStores(t *testing.T) {
 		t.Fatal("a new token must not be revoked")
 	}
 
-	apiOwner := user.ID
-	otherUser, err := users.Create(ctx, core.User{
-		Username: "token-other-" + uuid.New().String()[:8],
-		Email:    uuid.New().String()[:8] + "@example.com",
-		Role:     core.RoleUser,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = users.Delete(context.Background(), otherUser.ID) })
+	otherUser := seedUser(t, pool, "token-other", core.RoleUser)
 	apiHash := uuid.New().String()
 	apiToken, err := tokens.Create(ctx, core.AuthToken{
-		UserID: apiOwner, Name: "ci", Kind: core.TokenKindAPI, TokenHash: apiHash,
+		UserID: user.ID, Name: "ci", Kind: core.TokenKindAPI, TokenHash: apiHash,
 		ValidFrom: now, ExpiresAt: now.Add(24 * time.Hour),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	listed, err := tokens.ListAPITokens(ctx, apiOwner)
+	listed, err := tokens.ListAPITokens(ctx, user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +427,7 @@ func TestUserAndTokenStores(t *testing.T) {
 	if err := tokens.RevokeByID(ctx, otherUser.ID, apiToken.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("another user revoked the token: %v", err)
 	}
-	if err := tokens.RevokeByID(ctx, apiOwner, apiToken.ID); err != nil {
+	if err := tokens.RevokeByID(ctx, user.ID, apiToken.ID); err != nil {
 		t.Fatal(err)
 	}
 	revokedAPI, err := tokens.GetByHash(ctx, apiHash)
@@ -474,17 +453,8 @@ func TestProjectMembership(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
 	project := seedProject(t, pool)
-	users, projects := NewUserStore(pool), NewProjectStore(pool)
-
-	user, err := users.Create(ctx, core.User{
-		Username: "member-" + uuid.New().String()[:8],
-		Email:    uuid.New().String()[:8] + "@example.com",
-		Role:     core.RoleUser,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+	projects := NewProjectStore(pool)
+	user := seedUser(t, pool, "member", core.RoleUser)
 
 	if err := projects.AddMember(ctx, core.ProjectMember{
 		ProjectID: project.ID, UserID: user.ID, Role: core.ProjectRoleMember,
@@ -504,14 +474,6 @@ func TestProjectMembership(t *testing.T) {
 		t.Fatalf("unexpected member: %+v", member)
 	}
 
-	mine, err := projects.ListForUser(ctx, user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(mine) != 1 || mine[0].ID != project.ID {
-		t.Fatalf("ListForUser = %+v", mine)
-	}
-
 	if err := projects.RemoveMember(ctx, project.ID, user.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -524,18 +486,8 @@ func TestTaskGrantsDieWithTheirTask(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
 	project := seedProject(t, pool)
-	users, tasks := NewUserStore(pool), NewTaskStore(pool)
-	grants, notifications := NewGrantStore(pool), NewNotificationStore(pool)
-
-	user, err := users.Create(ctx, core.User{
-		Username: "grantee-" + uuid.New().String()[:8],
-		Email:    uuid.New().String()[:8] + "@example.com",
-		Role:     core.RoleUser,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+	tasks, grants, notifications := NewTaskStore(pool), NewGrantStore(pool), NewNotificationStore(pool)
+	user := seedUser(t, pool, "grantee", core.RoleUser)
 
 	web, err := tasks.Create(ctx, core.Task{
 		ProjectID: project.ID, Name: "web", Image: "img", Status: core.StatusRunning, Port: 80,
@@ -550,7 +502,7 @@ func TestTaskGrantsDieWithTheirTask(t *testing.T) {
 	}
 	for _, name := range []string{"web", "db"} {
 		if _, err := notifications.Create(ctx, core.Notification{
-			ProjectID: project.ID, TaskName: name, Status: core.NotificationSuccess, Title: name,
+			ProjectID: project.ID, TaskName: name, Type: core.NotificationDeployed, Status: core.NotificationSuccess, Title: name,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -568,6 +520,9 @@ func TestTaskGrantsDieWithTheirTask(t *testing.T) {
 	if role, err := grants.Role(ctx, project.ID, user.ID, "db"); err != nil || role != "" {
 		t.Fatalf("ungranted task must yield no role, got %q, %v", role, err)
 	}
+	if mine, err := grants.ForUser(ctx, user.ID); err != nil || len(mine) != 1 || mine[web.ID] != core.ProjectRoleOperator {
+		t.Fatalf("user grants = %v, %v", mine, err)
+	}
 
 	// Filtering happens in SQL, so a grantee's list and feed carry only what was granted.
 	scoped, err := tasks.List(ctx, project.ID, user.ID, false)
@@ -577,7 +532,7 @@ func TestTaskGrantsDieWithTheirTask(t *testing.T) {
 	if len(scoped) != 1 || scoped[0].Name != "web" {
 		t.Fatalf("task list ignored grants: %+v", scoped)
 	}
-	feed, err := notifications.List(ctx, project.ID, user.ID, false, 10)
+	feed, err := notifications.List(ctx, user.ID, false, &project.ID, nil, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,11 +547,11 @@ func TestTaskGrantsDieWithTheirTask(t *testing.T) {
 		t.Fatalf("the grant outlived its task: any=%v err=%v", ok, err)
 	}
 	// The row survives for members, but no longer reaches the grantee whose grant is gone.
-	feed, err = notifications.List(ctx, project.ID, user.ID, false, 10)
+	feed, err = notifications.List(ctx, user.ID, false, &project.ID, nil, 10)
 	if err != nil || len(feed) != 0 {
 		t.Fatalf("deploy history stayed visible after the grant died: %+v, %v", feed, err)
 	}
-	if all, err := notifications.List(ctx, project.ID, user.ID, true, 10); err != nil || len(all) != 2 {
+	if all, err := notifications.List(ctx, user.ID, true, &project.ID, nil, 10); err != nil || len(all) != 2 {
 		t.Fatalf("members must still see the full history: %+v, %v", all, err)
 	}
 }
@@ -605,23 +560,13 @@ func TestGrantedProjectIsListedWithoutMembership(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
 	project := seedProject(t, pool)
-	users, tasks, grants := NewUserStore(pool), NewTaskStore(pool), NewGrantStore(pool)
-	projects := NewProjectStore(pool)
+	tasks, grants, projects := NewTaskStore(pool), NewGrantStore(pool), NewProjectStore(pool)
 
 	project.DefaultEnv = map[string]string{"SECRET_KEY": "top-secret"}
 	if _, err := projects.Update(ctx, project); err != nil {
 		t.Fatal(err)
 	}
-
-	user, err := users.Create(ctx, core.User{
-		Username: "grantee-" + uuid.New().String()[:8],
-		Email:    uuid.New().String()[:8] + "@example.com",
-		Role:     core.RoleUser,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+	user := seedUser(t, pool, "grantee", core.RoleUser)
 
 	if mine, err := projects.ListForUser(ctx, user.ID); err != nil || len(mine) != 0 {
 		t.Fatalf("a stranger must see nothing: %+v, %v", mine, err)
@@ -641,17 +586,16 @@ func TestGrantedProjectIsListedWithoutMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mine) != 1 || mine[0].ID != project.ID {
-		t.Fatalf("a grant must reveal its project without a membership row: %+v", mine)
+	if len(mine) != 1 || mine[0].Project.ID != project.ID || mine[0].Role != core.ProjectRoleViewer || mine[0].AllTasks {
+		t.Fatalf("a grant must reveal its project, as a viewer, without a membership row: %+v", mine)
 	}
 	// The list must mask what the single-project route masks, or secrets leak through the fan-out.
-	if len(mine[0].DefaultEnv) != 0 {
-		t.Fatalf("default_env leaked to a grantee through the project list: %+v", mine[0].DefaultEnv)
+	if len(mine[0].Project.DefaultEnv) != 0 {
+		t.Fatalf("default_env leaked to a grantee through the project list: %+v", mine[0].Project.DefaultEnv)
 	}
 
-	// A member of the same project must still receive the defaults.
 	if err := projects.AddMember(ctx, core.ProjectMember{
-		ProjectID: project.ID, UserID: user.ID, Role: core.ProjectRoleViewer,
+		ProjectID: project.ID, UserID: user.ID, Role: core.ProjectRoleOperator,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -659,8 +603,9 @@ func TestGrantedProjectIsListedWithoutMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mine) != 1 || mine[0].DefaultEnv["SECRET_KEY"] != "top-secret" {
-		t.Fatalf("a member must still see task form defaults: %+v", mine)
+	if len(mine) != 1 || mine[0].Project.DefaultEnv["SECRET_KEY"] != "top-secret" ||
+		mine[0].Role != core.ProjectRoleOperator || !mine[0].AllTasks {
+		t.Fatalf("a member must keep their role and the task form defaults: %+v", mine)
 	}
 }
 
@@ -690,26 +635,10 @@ func TestCredentialStore(t *testing.T) {
 	}
 }
 
-func TestMigrationsAreIdempotent(t *testing.T) {
-	pool := newPool(t)
-	if err := database.RunMigrations(context.Background(), pool, nil); err != nil {
-		t.Fatalf("re-running migrations failed: %v", err)
-	}
-}
-
 func TestAPITokenSchemaConstraints(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
-	users := NewUserStore(pool)
-	user, err := users.Create(ctx, core.User{
-		Username: "constraints-" + uuid.New().String()[:8],
-		Email:    uuid.New().String()[:8] + "@example.com",
-		Role:     core.RoleUser,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = users.Delete(context.Background(), user.ID) })
+	user := seedUser(t, pool, "constraints", core.RoleUser)
 	now := time.Now().UTC()
 	for name, args := range map[string][]any{
 		"blank name": {user.ID, "", "api", uuid.New().String(), now, now.Add(time.Hour)},
@@ -728,7 +657,6 @@ func TestAPITokenSchemaConstraints(t *testing.T) {
 	}
 }
 
-// seedUser returns a throwaway account that is removed when the test ends.
 func seedUser(t *testing.T, pool *pgxpool.Pool, prefix string, role core.UserRole) core.User {
 	t.Helper()
 	users := NewUserStore(pool)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,7 +28,16 @@ func OpenAPISpec() (*openapi3.Spec, error) {
 	spec.SetHTTPBearerTokenSecurity(bearerScheme, "",
 		"Login session or API token, sent as: Authorization: Bearer <token>")
 
-	configureSchemas(reflector.JSONSchemaReflector())
+	js := reflector.JSONSchemaReflector()
+	uuidSchema := jsonschema.Schema{}
+	uuidSchema.AddType(jsonschema.String)
+	uuidSchema.WithFormat("uuid")
+	// uuid.UUID is [16]byte, which would otherwise reflect as an array.
+	js.AddTypeMapping(uuid.UUID{}, uuidSchema)
+	js.DefaultOptions = append(js.DefaultOptions,
+		jsonschema.InterceptDefName(schemaName),
+		jsonschema.InterceptProp(requiredFromOmitEmpty),
+	)
 
 	for _, r := range routeTable {
 		if err := addOperation(reflector, r); err != nil {
@@ -35,19 +45,6 @@ func OpenAPISpec() (*openapi3.Spec, error) {
 		}
 	}
 	return spec, nil
-}
-
-func configureSchemas(js *jsonschema.Reflector) {
-	uuidSchema := jsonschema.Schema{}
-	uuidSchema.AddType(jsonschema.String)
-	uuidSchema.WithFormat("uuid")
-	// uuid.UUID is [16]byte, which would otherwise reflect as an array.
-	js.AddTypeMapping(uuid.UUID{}, uuidSchema)
-
-	js.DefaultOptions = append(js.DefaultOptions,
-		jsonschema.InterceptDefName(schemaName),
-		jsonschema.InterceptProp(requiredFromOmitEmpty),
-	)
 }
 
 func requiredFromOmitEmpty(params jsonschema.InterceptPropParams) error {
@@ -58,12 +55,9 @@ func requiredFromOmitEmpty(params jsonschema.InterceptPropParams) error {
 	if !ok || strings.Contains(tag, ",omitempty") {
 		return nil
 	}
-	for _, existing := range params.ParentSchema.Required {
-		if existing == params.Name {
-			return nil
-		}
+	if !slices.Contains(params.ParentSchema.Required, params.Name) {
+		params.ParentSchema.Required = append(params.ParentSchema.Required, params.Name)
 	}
-	params.ParentSchema.Required = append(params.ParentSchema.Required, params.Name)
 	return nil
 }
 
@@ -94,11 +88,7 @@ func addOperation(reflector *openapi3.Reflector, r route) error {
 		oc.AddReqStructure(r.req)
 	}
 
-	respOptions := []openapi.ContentOption{openapi.WithHTTPStatus(r.status)}
-	if r.contentType != "" {
-		respOptions = append(respOptions, openapi.WithContentType(r.contentType))
-	}
-	oc.AddRespStructure(r.resp, respOptions...)
+	oc.AddRespStructure(r.resp, openapi.WithHTTPStatus(r.status), openapi.WithContentType(r.contentType))
 
 	for _, status := range r.errorStatuses() {
 		oc.AddRespStructure(new(errorResponse), openapi.WithHTTPStatus(status))
@@ -122,11 +112,7 @@ func MarshalOpenAPIYAML() ([]byte, error) {
 
 func (h *Handler) openapiJSON(w http.ResponseWriter, _ *http.Request) {
 	spec, err := OpenAPISpec()
-	if err != nil {
-		writeServiceError(w, h.logger, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, spec)
+	h.reply(w, http.StatusOK, spec, err)
 }
 
 const docsPage = `<!DOCTYPE html>

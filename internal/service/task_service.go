@@ -2,6 +2,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ type Config struct {
 	DefaultPort      int
 	ReadinessTimeout time.Duration
 	PollInterval     time.Duration
-	// Notify reports deploy outcomes. It defaults to a no-op so callers need no nil check.
+	// Notify defaults to a no-op so callers need no nil check.
 	Notify func(context.Context, core.Notification)
 }
 
@@ -52,15 +53,9 @@ func NewTaskService(
 		return nil, errors.Join(core.ErrInvalidInput,
 			errors.New("runtime, task store, project store, credential store, and route registry are required"))
 	}
-	if cfg.DefaultPort == 0 {
-		cfg.DefaultPort = 80
-	}
-	if cfg.ReadinessTimeout == 0 {
-		cfg.ReadinessTimeout = 30 * time.Second
-	}
-	if cfg.PollInterval == 0 {
-		cfg.PollInterval = 100 * time.Millisecond
-	}
+	cfg.DefaultPort = cmp.Or(cfg.DefaultPort, 80)
+	cfg.ReadinessTimeout = cmp.Or(cfg.ReadinessTimeout, 30*time.Second)
+	cfg.PollInterval = cmp.Or(cfg.PollInterval, 100*time.Millisecond)
 	if cfg.Notify == nil {
 		cfg.Notify = func(context.Context, core.Notification) {}
 	}
@@ -100,18 +95,7 @@ func (s *TaskService) Get(ctx context.Context, slug, name string) (core.Task, er
 }
 
 func (s *TaskService) get(ctx context.Context, slug, name string) (core.Task, core.Project, error) {
-	if err := core.ValidateTaskName(name); err != nil {
-		return core.Task{}, core.Project{}, err
-	}
-	project, err := s.project(ctx, slug)
-	if err != nil {
-		return core.Task{}, core.Project{}, err
-	}
-	task, err := s.tasks.GetByName(ctx, project.ID, name)
-	if err != nil {
-		return core.Task{}, core.Project{}, fmt.Errorf("get task %q: %w", name, err)
-	}
-	return task, project, nil
+	return getTask(ctx, s.projects, s.tasks, slug, name)
 }
 
 func (s *TaskService) credential(ctx context.Context, project core.Project) (*core.RegistryCredential, error) {
@@ -125,28 +109,40 @@ func (s *TaskService) credential(ctx context.Context, project core.Project) (*co
 	return &stored, nil
 }
 
-func (s *TaskService) project(ctx context.Context, slug string) (core.Project, error) {
+func getProject(ctx context.Context, projects core.ProjectStore, slug string) (core.Project, error) {
 	if err := core.ValidateProjectSlug(slug); err != nil {
 		return core.Project{}, err
 	}
-	project, err := s.projects.GetBySlug(ctx, slug)
+	project, err := projects.GetBySlug(ctx, slug)
 	if err != nil {
 		return core.Project{}, fmt.Errorf("get project %q: %w", slug, err)
 	}
 	return project, nil
 }
 
+func getTask(ctx context.Context, projects core.ProjectStore, tasks core.TaskStore, slug, name string) (core.Task, core.Project, error) {
+	if err := core.ValidateTaskName(name); err != nil {
+		return core.Task{}, core.Project{}, err
+	}
+	project, err := getProject(ctx, projects, slug)
+	if err != nil {
+		return core.Task{}, core.Project{}, err
+	}
+	task, err := tasks.GetByName(ctx, project.ID, name)
+	if err != nil {
+		return core.Task{}, core.Project{}, fmt.Errorf("get task %q: %w", name, err)
+	}
+	return task, project, nil
+}
+
 func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInput) (core.Task, error) {
 	unlock := s.lockTask(slug, in.Name)
 	defer unlock()
-	project, err := s.project(ctx, slug)
+	project, err := getProject(ctx, s.projects, slug)
 	if err != nil {
 		return core.Task{}, err
 	}
-	port := in.Port
-	if port == 0 {
-		port = s.cfg.DefaultPort
-	}
+	port := cmp.Or(in.Port, s.cfg.DefaultPort)
 	spec := core.ContainerSpec{
 		Project: project.Slug, Name: in.Name, Image: strings.TrimSpace(in.Image), Port: port,
 		Labels: maps.Clone(in.Labels), Env: maps.Clone(in.Env),
@@ -163,11 +159,8 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 	if err != nil {
 		return core.Task{}, fmt.Errorf("reserve task %q: %w", in.Name, err)
 	}
-	detail := strings.TrimSpace(in.Description)
-	if detail == "" {
-		detail = spec.Image
-	}
-	s.cfg.Notify(ctx, notification(project, in.Name, core.NotificationInfo, "📋 Task Created", detail))
+	detail := cmp.Or(strings.TrimSpace(in.Description), spec.Image)
+	s.cfg.Notify(ctx, notification(project, in.Name, core.NotificationTaskCreated, "📋 Task Created", detail))
 
 	credential, err := s.credential(ctx, project)
 	if err != nil {
@@ -268,8 +261,7 @@ func (s *TaskService) Restart(ctx context.Context, slug, name string) (core.Task
 	if recreateErr != nil {
 		return s.failTask(ctx, task, fmt.Errorf("recreate container: %w", recreateErr))
 	}
-	task.ContainerID, task.PendingRecreate = newID, false
-	task.Status = core.StatusStarting
+	task.ContainerID, task.PendingRecreate, task.Status = newID, false, core.StatusStarting
 	if task, err = s.tasks.Update(ctx, task); err != nil {
 		return core.Task{}, fmt.Errorf("mark restarting: %w", err)
 	}
@@ -298,13 +290,9 @@ func (s *TaskService) Delete(ctx context.Context, slug, name string) error {
 			return fmt.Errorf("remove container: %w", err)
 		}
 	}
-	if err := s.tasks.Delete(ctx, task.ID); err != nil {
-		return fmt.Errorf("delete task: %w", err)
-	}
-	return nil
+	return wrap("delete task", s.tasks.Delete(ctx, task.ID))
 }
 
-// UpdateTaskInput uses pointers to preserve omitted fields during partial updates.
 type UpdateTaskInput struct {
 	Description *string
 	Note        *string
@@ -325,7 +313,7 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 	}
 	updated, err := s.update(ctx, task, project, in, recreate)
 	if err == nil && updated.DevStatus != task.DevStatus {
-		s.cfg.Notify(ctx, notification(project, name, core.NotificationInfo, "🔄 Status Changed",
+		s.cfg.Notify(ctx, notification(project, name, core.NotificationStatusChanged, "🔄 Status Changed",
 			devLabel(task.DevStatus)+" ➔ "+devLabel(updated.DevStatus)))
 	}
 	return updated, err
@@ -355,9 +343,9 @@ func (s *TaskService) Deploy(ctx context.Context, slug, name, image string) (cor
 	return deployed, err
 }
 
-func notification(project core.Project, task string, status core.NotificationStatus, event, detail string) core.Notification {
+func notification(project core.Project, task string, kind core.NotificationType, event, detail string) core.Notification {
 	return core.Notification{
-		ProjectID: project.ID, TaskName: task, Status: status,
+		ProjectID: project.ID, TaskName: task, Type: kind, Status: kind.Status(),
 		Title: event + " • " + project.Name,
 		Body:  task + ": " + detail,
 	}
@@ -366,10 +354,10 @@ func notification(project core.Project, task string, status core.NotificationSta
 func deployNotification(project core.Project, name string, completedAt time.Time, cause error) core.Notification {
 	completed := completedAt.Format("3:04PM")
 	if cause != nil {
-		return notification(project, name, core.NotificationFailure, "❌ Deploy Failed",
+		return notification(project, name, core.NotificationDeployFailed, "❌ Deploy Failed",
 			fmt.Sprintf("Failed at %s: %v", completed, cause))
 	}
-	return notification(project, name, core.NotificationSuccess, "🚀 Deploy Succeeded", "Task completed at "+completed)
+	return notification(project, name, core.NotificationDeployed, "🚀 Deploy Succeeded", "Task completed at "+completed)
 }
 
 var devStatusLabels = map[core.DevStatus]string{
@@ -379,12 +367,7 @@ var devStatusLabels = map[core.DevStatus]string{
 }
 
 // devLabel falls back to the raw value so an unlabeled future status still renders.
-func devLabel(status core.DevStatus) string {
-	if label, ok := devStatusLabels[status]; ok {
-		return label
-	}
-	return string(status)
-}
+func devLabel(status core.DevStatus) string { return cmp.Or(devStatusLabels[status], string(status)) }
 
 func (s *TaskService) update(ctx context.Context, task core.Task, project core.Project, in UpdateTaskInput, recreate bool) (core.Task, error) {
 	var err error
@@ -413,11 +396,8 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	descriptionChanged := in.Description != nil && *in.Description != task.Description
 	noteChanged := in.Note != nil && *in.Note != task.Note
 	devStatusChanged := in.DevStatus != nil && *in.DevStatus != task.DevStatus
-	containerChanged := spec.Image != task.Image || spec.Port != task.Port ||
+	containerChanged := (recreate && task.PendingRecreate) || spec.Image != task.Image || spec.Port != task.Port ||
 		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env)
-	if recreate && task.PendingRecreate {
-		containerChanged = true
-	}
 	if !descriptionChanged && !noteChanged && !devStatusChanged && !containerChanged {
 		return task.Clone(), nil
 	}
@@ -493,10 +473,7 @@ func (s *TaskService) Logs(ctx context.Context, slug, name string, opts core.Log
 		return nil, fmt.Errorf("task has no container: %w", core.ErrConflict)
 	}
 	r, err := s.runtime.Logs(ctx, task.ContainerID, opts)
-	if err != nil {
-		return nil, fmt.Errorf("read logs: %w", err)
-	}
-	return r, nil
+	return r, wrap("read logs", err)
 }
 
 // Metrics streams samples for one task, or for every running task when name is empty.
@@ -534,9 +511,7 @@ func (s *TaskService) Metrics(ctx context.Context, acc core.ProjectAccess, name 
 			}
 			return nil, fmt.Errorf("stream metrics: %w", err)
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for sample := range samples {
 				sample.TaskName = task.Name
 				select {
@@ -545,7 +520,7 @@ func (s *TaskService) Metrics(ctx context.Context, acc core.ProjectAccess, name 
 					return
 				}
 			}
-		}()
+		})
 	}
 	go func() {
 		wg.Wait()

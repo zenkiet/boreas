@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	// uniqueViolation is the SQLSTATE code Postgres reports for a duplicate key.
-	uniqueViolation = "23505"
-	// foreignKeyViolation is the SQLSTATE code Postgres reports for a blocked reference change.
+	uniqueViolation     = "23505"
 	foreignKeyViolation = "23503"
+	// restrictViolation is what Postgres 18 reports instead for an ON DELETE RESTRICT reference.
+	restrictViolation = "23001"
 )
 
 func mapError(operation string, err error) error {
@@ -26,12 +26,11 @@ func mapError(operation string, err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return core.ErrNotFound
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		switch pgErr.Code {
 		case uniqueViolation:
 			return errors.Join(core.ErrAlreadyExists, fmt.Errorf("%s: %w", operation, err))
-		case foreignKeyViolation:
+		case foreignKeyViolation, restrictViolation:
 			return errors.Join(core.ErrConflict, fmt.Errorf("%s: %w", operation, err))
 		}
 	}
@@ -43,6 +42,31 @@ func nonNilMap(m map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return m
+}
+
+func one[T any](ctx context.Context, pool *pgxpool.Pool, scan pgx.RowToFunc[T], operation, query string, args ...any) (T, error) {
+	var zero T
+	rows, err := pool.Query(ctx, query, args...)
+	if err != nil {
+		return zero, mapError(operation, err)
+	}
+	row, err := pgx.CollectExactlyOneRow(rows, scan)
+	if err != nil {
+		return zero, mapError(operation, err)
+	}
+	return row, nil
+}
+
+func many[T any](ctx context.Context, pool *pgxpool.Pool, scan pgx.RowToFunc[T], listOp, scanOp, query string, args ...any) ([]T, error) {
+	rows, err := pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, mapError(listOp, err)
+	}
+	items, err := pgx.CollectRows(rows, scan)
+	if err != nil {
+		return nil, mapError(scanOp, err)
+	}
+	return items, nil
 }
 
 func deleteRow(ctx context.Context, pool *pgxpool.Pool, operation, query string, args ...any) error {

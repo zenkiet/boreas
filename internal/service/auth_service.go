@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -32,6 +33,13 @@ func NewAuthService(users core.UserStore, tokens core.TokenStore) (*AuthService,
 		return nil, errors.Join(core.ErrInvalidInput, errors.New("user and token stores are required"))
 	}
 	return &AuthService{users: users, tokens: tokens}, nil
+}
+
+func wrap(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func hashToken(token string) string {
@@ -100,10 +108,7 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (core.User
 }
 
 func (s *AuthService) Logout(ctx context.Context, token string) error {
-	if err := s.tokens.Revoke(ctx, hashToken(token)); err != nil {
-		return fmt.Errorf("revoke token: %w", err)
-	}
-	return nil
+	return wrap("revoke token", s.tokens.Revoke(ctx, hashToken(token)))
 }
 
 type CreateAPITokenInput struct {
@@ -150,25 +155,16 @@ func (s *AuthService) CreateAPIToken(ctx context.Context, userID uuid.UUID, in C
 
 func (s *AuthService) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]core.AuthToken, error) {
 	tokens, err := s.tokens.ListAPITokens(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("list API tokens: %w", err)
-	}
-	return tokens, nil
+	return tokens, wrap("list API tokens", err)
 }
 
 func (s *AuthService) RevokeAPIToken(ctx context.Context, userID, tokenID uuid.UUID) error {
-	if err := s.tokens.RevokeByID(ctx, userID, tokenID); err != nil {
-		return fmt.Errorf("revoke API token: %w", err)
-	}
-	return nil
+	return wrap("revoke API token", s.tokens.RevokeByID(ctx, userID, tokenID))
 }
 
 func (s *AuthService) ListUsers(ctx context.Context) ([]core.User, error) {
 	users, err := s.users.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list users: %w", err)
-	}
-	return users, nil
+	return users, wrap("list users", err)
 }
 
 type CreateUserInput struct {
@@ -189,10 +185,7 @@ func (s *AuthService) CreateUser(ctx context.Context, in CreateUserInput) (core.
 		return core.User{}, errors.Join(core.ErrInvalidInput,
 			fmt.Errorf("password must be at least %d characters", minPasswordLength))
 	}
-	role := in.Role
-	if role == "" {
-		role = core.RoleUser
-	}
+	role := cmp.Or(in.Role, core.RoleUser)
 	if role != core.RoleAdmin && role != core.RoleUser {
 		return core.User{}, errors.Join(core.ErrInvalidInput, errors.New("role must be admin or user"))
 	}
@@ -203,10 +196,7 @@ func (s *AuthService) CreateUser(ctx context.Context, in CreateUserInput) (core.
 	user, err := s.users.Create(ctx, core.User{
 		Username: in.Username, Email: in.Email, PasswordHash: string(hash), Role: role,
 	})
-	if err != nil {
-		return core.User{}, fmt.Errorf("create user: %w", err)
-	}
-	return user, nil
+	return user, wrap("create user", err)
 }
 
 type UpdateUserInput struct {
@@ -246,8 +236,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, id uuid.UUID, in UpdateUse
 	}
 	if in.Disabled != nil {
 		if *in.Disabled && user.DisabledAt == nil {
-			now := time.Now()
-			user.DisabledAt = &now
+			user.DisabledAt = new(time.Now())
 		} else if !*in.Disabled {
 			user.DisabledAt = nil
 		}
@@ -266,10 +255,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, id uuid.UUID, in UpdateUse
 }
 
 func (s *AuthService) DeleteUser(ctx context.Context, id uuid.UUID) error {
-	if err := s.users.Delete(ctx, id); err != nil {
-		return fmt.Errorf("delete user: %w", err)
-	}
-	return nil
+	return wrap("delete user", s.users.Delete(ctx, id))
 }
 
 // EnsureAdmin seeds only an empty installation to avoid creating extra privileged users.

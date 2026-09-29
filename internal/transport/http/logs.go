@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,47 @@ type logEntry struct {
 }
 
 const heartbeatInterval = 15 * time.Second
+
+// sse frames each event as JSON data with a heartbeat while idle; true means events closed.
+func sse[T any](w http.ResponseWriter, r *http.Request, events <-chan T, encode func(T) any) bool {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	rc := http.NewResponseController(w)
+	_ = rc.Flush()
+	heartbeat := time.NewTicker(heartbeatInterval)
+	defer heartbeat.Stop()
+	for {
+		frame := ": heartbeat\n\n"
+		select {
+		case event, ok := <-events:
+			if !ok {
+				return true
+			}
+			payload, _ := json.Marshal(encode(event))
+			frame = "data: " + string(payload) + "\n\n"
+		case <-heartbeat.C:
+		case <-r.Context().Done():
+			return false
+		}
+		if _, err := io.WriteString(w, frame); err != nil || rc.Flush() != nil {
+			return false
+		}
+	}
+}
+
+func parseTail(r *http.Request) (int, error) {
+	raw := r.URL.Query().Get("tail")
+	if raw == "" {
+		return 100, nil
+	}
+	tail, err := strconv.Atoi(raw)
+	if err != nil || tail < 0 {
+		return 0, errors.Join(core.ErrInvalidInput, errors.New("tail must be a non-negative integer"))
+	}
+	return tail, nil
+}
 
 func (h *Handler) logs(w http.ResponseWriter, r *http.Request) {
 	tail, err := parseTail(r)
@@ -38,8 +80,7 @@ func (h *Handler) logs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if r.URL.Query().Get("download") == "true" {
-		filename := r.PathValue("project") + "-" + r.PathValue("name")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`-logs.txt"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+r.PathValue("project")+"-"+r.PathValue("name")+`-logs.txt"`)
 	}
 	if _, err := stdcopy.StdCopy(w, w, reader); err != nil && !errors.Is(err, r.Context().Err()) {
 		h.logger.Error("stream task logs", "error", err)
@@ -52,69 +93,37 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, h.logger, err)
 		return
 	}
-	reader, err := h.tasks.Logs(r.Context(), r.PathValue("project"), r.PathValue("name"),
-		core.LogOptions{Tail: tail, Follow: true, Timestamps: true})
+	opts := core.LogOptions{Tail: tail, Follow: true, Timestamps: true}
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		since, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			writeBadRequest(w)
+			return
+		}
+		// Docker's since includes its own instant, so resuming starts one nanosecond later.
+		// ponytail: two lines stamped in the same nanosecond can lose the second across a reconnect.
+		opts.Since = since.Add(time.Nanosecond)
+	}
+	reader, err := h.tasks.Logs(r.Context(), r.PathValue("project"), r.PathValue("name"), opts)
 	if err != nil {
 		writeServiceError(w, h.logger, err)
 		return
 	}
 	defer reader.Close()
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	rc := http.NewResponseController(w)
-	_ = rc.Flush()
-
 	entries := make(chan logEntry, 64)
-	done := make(chan error, 1)
+	var copyErr error
 	go func() {
+		defer close(entries)
 		stdout := &logLineWriter{done: r.Context().Done(), stream: "stdout", out: entries}
 		stderr := &logLineWriter{done: r.Context().Done(), stream: "stderr", out: entries}
-		_, copyErr := stdcopy.StdCopy(stdout, stderr, reader)
+		_, copyErr = stdcopy.StdCopy(stdout, stderr, reader)
 		stdout.Flush()
 		stderr.Flush()
-		done <- copyErr
 	}()
-
-	heartbeat := time.NewTicker(heartbeatInterval)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case entry := <-entries:
-			payload, _ := json.Marshal(entry)
-			if _, err = w.Write(append(append([]byte("data: "), payload...), '\n', '\n')); err != nil {
-				return
-			}
-			if err = rc.Flush(); err != nil {
-				return
-			}
-		case err = <-done:
-			// Drain entries queued before the decoder completed.
-			for {
-				select {
-				case entry := <-entries:
-					payload, _ := json.Marshal(entry)
-					_, _ = w.Write(append(append([]byte("data: "), payload...), '\n', '\n'))
-				default:
-					if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, r.Context().Err()) {
-						h.logger.Error("decode task log stream", "error", err)
-					}
-					_ = rc.Flush()
-					return
-				}
-			}
-		case <-heartbeat.C:
-			if _, err = io.WriteString(w, ": heartbeat\n\n"); err != nil {
-				return
-			}
-			if err = rc.Flush(); err != nil {
-				return
-			}
-		case <-r.Context().Done():
-			return
-		}
+	if sse(w, r, entries, func(e logEntry) any { return e }) && copyErr != nil &&
+		!errors.Is(copyErr, io.EOF) && !errors.Is(copyErr, r.Context().Err()) {
+		h.logger.Error("decode task log stream", "error", copyErr)
 	}
 }
 
@@ -128,13 +137,12 @@ type logLineWriter struct {
 func (w *logLineWriter) Write(p []byte) (int, error) {
 	w.buffer = append(w.buffer, p...)
 	for {
-		index := bytes.IndexByte(w.buffer, '\n')
-		if index < 0 {
+		line, rest, found := bytes.Cut(w.buffer, []byte{'\n'})
+		if !found {
 			return len(p), nil
 		}
-		line := string(w.buffer[:index])
-		w.buffer = w.buffer[index+1:]
-		if err := w.emit(strings.TrimSuffix(line, "\r")); err != nil {
+		w.buffer = rest
+		if err := w.emit(string(line)); err != nil {
 			return 0, err
 		}
 	}
@@ -142,15 +150,14 @@ func (w *logLineWriter) Write(p []byte) (int, error) {
 
 func (w *logLineWriter) Flush() {
 	if len(w.buffer) > 0 {
-		_ = w.emit(strings.TrimSuffix(string(w.buffer), "\r"))
+		_ = w.emit(string(w.buffer))
 		w.buffer = nil
 	}
 }
 
 func (w *logLineWriter) emit(line string) error {
-	timestamp := time.Now().UTC()
-	message := line
-	if first, rest, found := strings.Cut(line, " "); found {
+	timestamp, message := time.Now().UTC(), strings.TrimSuffix(line, "\r")
+	if first, rest, found := strings.Cut(message, " "); found {
 		if parsed, err := time.Parse(time.RFC3339Nano, first); err == nil {
 			timestamp, message = parsed, rest
 		}

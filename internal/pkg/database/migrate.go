@@ -1,6 +1,7 @@
 package database
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"fmt"
@@ -19,9 +20,7 @@ const migrationLockID int64 = 8021957372116418
 
 // RunMigrations commits each migration and its record atomically for safe retries.
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
-	if logger == nil {
-		logger = slog.Default()
-	}
+	logger = cmp.Or(logger, slog.Default())
 
 	conn, err := pool.Acquire(ctx)
 	if err != nil {

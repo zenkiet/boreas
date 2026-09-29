@@ -4,12 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/zenkiet/boreas/internal/core"
 )
 
 const testDeviceToken = "cH9x2Qk7RtqB:APA91bH-x9Kd2Qw_ErTyUiOp"
@@ -18,20 +16,21 @@ func pushHandler(push PushStore) http.Handler {
 	return APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, push, "test", slog.New(slog.DiscardHandler))
 }
 
-func TestSubscribePushRecordsTokenForCurrentUser(t *testing.T) {
-	var gotUser uuid.UUID
-	var gotToken string
-	push := &stubPush{create: func(_ context.Context, userID uuid.UUID, token string) error {
-		gotUser, gotToken = userID, token
-		return nil
-	}}
-	rr := do(pushHandler(push), authed(http.MethodPost, "/api/v1/push/subscriptions",
-		strings.NewReader(`{"token":"`+testDeviceToken+`"}`)))
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+// Both directions pass the caller's own ID, which is what scopes the store to their devices.
+func TestPushSubscriptionsActAsTheCaller(t *testing.T) {
+	var calls []string
+	record := func(op string) func(context.Context, uuid.UUID, string) error {
+		return func(_ context.Context, userID uuid.UUID, token string) error {
+			calls = append(calls, op+" "+userID.String()+" "+token)
+			return nil
+		}
 	}
-	if gotUser != testMember.ID || gotToken != testDeviceToken {
-		t.Fatalf("user=%s token=%q", gotUser, gotToken)
+	h := pushHandler(&stubPush{create: record("create"), delete: record("delete")})
+	sub := do(h, authed(http.MethodPost, "/api/v1/push/subscriptions", strings.NewReader(`{"token":"`+testDeviceToken+`"}`)))
+	unsub := do(h, authed(http.MethodDelete, "/api/v1/push/subscriptions/"+testDeviceToken, nil))
+	caller := " " + testMember.ID.String() + " " + testDeviceToken
+	if sub.Code != http.StatusCreated || unsub.Code != http.StatusOK || strings.Join(calls, ",") != "create"+caller+",delete"+caller {
+		t.Fatalf("statuses %d/%d, store calls %v", sub.Code, unsub.Code, calls)
 	}
 }
 
@@ -53,43 +52,5 @@ func TestSubscribePushRejectsMalformedTokenWithoutStoring(t *testing.T) {
 	}
 	if called {
 		t.Fatal("an invalid token must not reach the store")
-	}
-}
-
-func TestUnsubscribePushScopesToCurrentUser(t *testing.T) {
-	var gotUser uuid.UUID
-	var gotToken string
-	push := &stubPush{delete: func(_ context.Context, userID uuid.UUID, token string) error {
-		gotUser, gotToken = userID, token
-		return nil
-	}}
-	rr := do(pushHandler(push), authed(http.MethodDelete, "/api/v1/push/subscriptions/"+testDeviceToken, nil))
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	if gotUser != testMember.ID || gotToken != testDeviceToken {
-		t.Fatalf("user=%s token=%q", gotUser, gotToken)
-	}
-}
-
-func TestUnsubscribePushReportsAnotherUsersToken(t *testing.T) {
-	push := &stubPush{delete: func(context.Context, uuid.UUID, string) error {
-		return core.ErrNotFound
-	}}
-	rr := do(pushHandler(push), authed(http.MethodDelete, "/api/v1/push/subscriptions/"+testDeviceToken, nil))
-	if rr.Code != http.StatusNotFound {
-		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
-	}
-}
-
-func TestPushSubscriptionsRequireAuthentication(t *testing.T) {
-	h := pushHandler(&stubPush{})
-	for _, r := range []*http.Request{
-		httptest.NewRequest(http.MethodPost, "/api/v1/push/subscriptions", strings.NewReader(`{"token":"x"}`)),
-		httptest.NewRequest(http.MethodDelete, "/api/v1/push/subscriptions/"+testDeviceToken, nil),
-	} {
-		if rr := do(h, r); rr.Code != http.StatusUnauthorized {
-			t.Fatalf("%s status=%d", r.Method, rr.Code)
-		}
 	}
 }

@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"cmp"
 	"context"
 	"io"
 	"strings"
@@ -67,10 +68,8 @@ func (stubTasks) Start(context.Context, string, string) (core.Task, error) { ret
 
 func (stubTasks) Stop(context.Context, string, string) (core.Task, error) { return core.Task{}, nil }
 
-func (stubTasks) Restart(context.Context, string, string) (core.Task, error) {
-	return core.Task{}, nil
-}
-func (stubTasks) Delete(context.Context, string, string) error { return nil }
+func (stubTasks) Restart(context.Context, string, string) (core.Task, error) { return core.Task{}, nil }
+func (stubTasks) Delete(context.Context, string, string) error               { return nil }
 
 func (s stubTasks) Logs(c context.Context, project, name string, opts core.LogOptions) (io.ReadCloser, error) {
 	if s.logs != nil {
@@ -97,8 +96,8 @@ func (s stubTasks) SystemStats(c context.Context) (core.SystemStats, error) {
 
 type stubAuth struct {
 	user      core.User
+	kind      core.TokenKind
 	login     func(context.Context, string, string) (string, core.User, error)
-	auth      func(context.Context, string) (core.User, core.TokenKind, error)
 	createAPI func(context.Context, uuid.UUID, service.CreateAPITokenInput) (string, core.AuthToken, error)
 	listAPI   func(context.Context, uuid.UUID) ([]core.AuthToken, error)
 	revokeAPI func(context.Context, uuid.UUID, uuid.UUID) error
@@ -113,14 +112,11 @@ func (s *stubAuth) Login(c context.Context, username, password string) (string, 
 	return testToken, s.user, nil
 }
 
-func (s *stubAuth) Authenticate(c context.Context, token string) (core.User, core.TokenKind, error) {
-	if s.auth != nil {
-		return s.auth(c, token)
-	}
+func (s *stubAuth) Authenticate(_ context.Context, token string) (core.User, core.TokenKind, error) {
 	if token != testToken {
 		return core.User{}, "", core.ErrUnauthorized
 	}
-	return s.user, core.TokenKindSession, nil
+	return s.user, cmp.Or(s.kind, core.TokenKindSession), nil
 }
 
 func (s *stubAuth) Logout(_ context.Context, token string) error {
@@ -172,12 +168,10 @@ type stubProjects struct {
 	accessErr       error
 	update          func(context.Context, string, service.UpdateProjectInput) (core.Project, error)
 	listCredentials func(context.Context) ([]core.RegistryCredential, error)
-	notifications   func(context.Context, core.ProjectAccess, int) ([]core.Notification, error)
-	markSeen        func(context.Context, core.ProjectAccess, uuid.UUID) error
-	grant           func(context.Context, string, string, uuid.UUID, core.ProjectRole) error
-	listGrants      func(context.Context, string, string) ([]core.TaskGrant, error)
-	revoke          func(context.Context, string, string, uuid.UUID) error
-	directory       func(context.Context) ([]core.Project, []core.Task, error)
+	notifications   func(context.Context, core.User, *uuid.UUID, *uuid.UUID, int) ([]core.Notification, error)
+	markSeen        func(context.Context, core.User, []uuid.UUID) error
+	fleet           func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
+	grantedRoles    map[uuid.UUID]core.ProjectRole
 }
 
 func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (core.ProjectAccess, error) {
@@ -199,19 +193,15 @@ func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (
 	return acc, nil
 }
 
-func (*stubProjects) List(context.Context, core.User) ([]core.Project, error) { return nil, nil }
-
-func (s *stubProjects) Directory(c context.Context) ([]core.Project, []core.Task, error) {
-	if s.directory != nil {
-		return s.directory(c)
+func (s *stubProjects) Fleet(c context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
+	if s.fleet != nil {
+		return s.fleet(c, actor)
 	}
 	return nil, nil, nil
 }
 
-func (*stubProjects) Get(context.Context, string) (core.Project, error) { return core.Project{}, nil }
-
-func (*stubProjects) Create(context.Context, core.User, service.CreateProjectInput) (core.Project, error) {
-	return core.Project{}, nil
+func (s *stubProjects) GrantedRoles(context.Context, uuid.UUID) (map[uuid.UUID]core.ProjectRole, error) {
+	return s.grantedRoles, nil
 }
 
 func (s *stubProjects) Update(c context.Context, slug string, in service.UpdateProjectInput) (core.Project, error) {
@@ -221,45 +211,36 @@ func (s *stubProjects) Update(c context.Context, slug string, in service.UpdateP
 	return core.Project{}, nil
 }
 
-func (s *stubProjects) Notifications(c context.Context, acc core.ProjectAccess, limit int) ([]core.Notification, error) {
+func (s *stubProjects) Notifications(
+	c context.Context, actor core.User, projectID, before *uuid.UUID, limit int,
+) ([]core.Notification, error) {
 	if s.notifications != nil {
-		return s.notifications(c, acc, limit)
+		return s.notifications(c, actor, projectID, before, limit)
 	}
 	return nil, nil
 }
 
-func (s *stubProjects) MarkNotificationSeen(c context.Context, acc core.ProjectAccess, id uuid.UUID) error {
+func (s *stubProjects) MarkNotificationsSeen(c context.Context, actor core.User, ids []uuid.UUID) error {
 	if s.markSeen != nil {
-		return s.markSeen(c, acc, id)
+		return s.markSeen(c, actor, ids)
 	}
 	return nil
 }
 
-func (*stubProjects) MarkNotificationUnseen(context.Context, core.ProjectAccess, uuid.UUID) error {
-	return nil
-}
-
-func (s *stubProjects) ListGrants(c context.Context, slug, name string) ([]core.TaskGrant, error) {
-	if s.listGrants != nil {
-		return s.listGrants(c, slug, name)
+func (s *stubProjects) ListCredentials(c context.Context) ([]core.RegistryCredential, error) {
+	if s.listCredentials != nil {
+		return s.listCredentials(c)
 	}
 	return nil, nil
 }
 
-func (s *stubProjects) Grant(c context.Context, slug, name string, userID uuid.UUID, role core.ProjectRole) error {
-	if s.grant != nil {
-		return s.grant(c, slug, name, userID, role)
-	}
-	return nil
+func (*stubProjects) Directory(context.Context) ([]core.Project, []core.Task, error) {
+	return nil, nil, nil
 }
 
-func (s *stubProjects) Revoke(c context.Context, slug, name string, userID uuid.UUID) error {
-	if s.revoke != nil {
-		return s.revoke(c, slug, name, userID)
-	}
-	return nil
+func (*stubProjects) Create(context.Context, core.User, service.CreateProjectInput) (core.Project, error) {
+	return core.Project{}, nil
 }
-
 func (*stubProjects) Delete(context.Context, string) error { return nil }
 func (*stubProjects) ListMembers(context.Context, string) ([]core.ProjectMember, error) {
 	return nil, nil
@@ -269,18 +250,21 @@ func (*stubProjects) AddMember(context.Context, string, uuid.UUID, core.ProjectR
 	return nil
 }
 func (*stubProjects) RemoveMember(context.Context, string, uuid.UUID) error { return nil }
+func (*stubProjects) MarkNotificationUnseen(context.Context, core.ProjectAccess, uuid.UUID) error {
+	return nil
+}
 
-func (s *stubProjects) ListCredentials(c context.Context) ([]core.RegistryCredential, error) {
-	if s.listCredentials != nil {
-		return s.listCredentials(c)
-	}
+func (*stubProjects) ListGrants(context.Context, string, string) ([]core.TaskGrant, error) {
 	return nil, nil
 }
 
+func (*stubProjects) Grant(context.Context, string, string, uuid.UUID, core.ProjectRole) error {
+	return nil
+}
+func (*stubProjects) Revoke(context.Context, string, string, uuid.UUID) error { return nil }
 func (*stubProjects) CreateCredential(context.Context, core.User, service.CreateCredentialInput) (core.RegistryCredential, error) {
 	return core.RegistryCredential{}, nil
 }
-
 func (*stubProjects) DeleteCredential(context.Context, uuid.UUID) error { return nil }
 
 type stubPush struct {

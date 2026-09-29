@@ -16,24 +16,28 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func decodeJSON(w http.ResponseWriter, r *http.Request, max int64, dst any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, max)
-	dec := json.NewDecoder(r.Body)
+// decode answers 400 itself on a malformed, oversized or trailing body, so callers only return.
+func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBytes))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		return err
+	if dec.Decode(dst) != nil || dec.Decode(&struct{}{}) != io.EOF {
+		writeBadRequest(w)
+		return false
 	}
-	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		if err == nil {
-			return errors.New("multiple JSON values")
-		}
-		return err
-	}
-	return nil
+	return true
 }
 
 func writeBadRequest(w http.ResponseWriter) {
 	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+}
+
+// reply builds v before checking err, so v must be safe to build from zero values.
+func (h *Handler) reply(w http.ResponseWriter, status int, v any, err error) {
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	writeJSON(w, status, v)
 }
 
 func writeServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
@@ -42,6 +46,7 @@ func writeServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	case errors.Is(err, core.ErrInvalidInput):
 		status, message = http.StatusBadRequest, "invalid request"
 	case errors.Is(err, core.ErrUnauthorized):
+		w.Header().Set("WWW-Authenticate", `Bearer realm="Boreas"`)
 		status, message = http.StatusUnauthorized, "unauthorized"
 	case errors.Is(err, core.ErrForbidden):
 		status, message = http.StatusForbidden, "forbidden"

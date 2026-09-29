@@ -17,6 +17,18 @@ type successResponse struct {
 	Success bool `json:"success" example:"true"`
 }
 
+type idPath struct {
+	ID uuid.UUID `json:"-" path:"id"`
+}
+
+func convert[T, U any](in []T, f func(T) U) []U {
+	out := make([]U, len(in))
+	for i, v := range in {
+		out[i] = f(v)
+	}
+	return out
+}
+
 type apiTokenStatus string
 
 const (
@@ -73,10 +85,6 @@ type apiTokensResponse struct {
 	Total     int           `json:"total"`
 }
 
-type apiTokenPath struct {
-	ID uuid.UUID `json:"-" path:"id"`
-}
-
 type nullableUUID struct {
 	Set   bool
 	Value *uuid.UUID
@@ -113,9 +121,10 @@ type taskDTO struct {
 	Env             map[string]string `json:"env"`
 	Error           string            `json:"error,omitempty"`
 	PendingRecreate bool              `json:"pending_recreate,omitempty"`
+	MyRole          core.ProjectRole  `json:"my_role"`
 }
 
-func taskFromCore(t core.Task) taskDTO {
+func taskFromCore(t core.Task, role core.ProjectRole) taskDTO {
 	if t.Env == nil {
 		t.Env = map[string]string{}
 	}
@@ -124,7 +133,7 @@ func taskFromCore(t core.Task) taskDTO {
 		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
-		Labels: t.Labels, Env: t.Env, Error: t.Error, PendingRecreate: t.PendingRecreate,
+		Labels: t.Labels, Env: t.Env, Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role,
 	}
 }
 
@@ -181,9 +190,10 @@ type logsRequest struct {
 }
 
 type streamLogsRequest struct {
-	Project string `json:"-" path:"project" example:"demo"`
-	Name    string `json:"-" path:"name" example:"web"`
-	Tail    int    `query:"tail" minimum:"0" default:"100"`
+	Project string    `json:"-" path:"project" example:"demo"`
+	Name    string    `json:"-" path:"name" example:"web"`
+	Tail    int       `query:"tail" minimum:"0" default:"100"`
+	Since   time.Time `query:"since"`
 }
 
 type taskResponse struct {
@@ -215,9 +225,10 @@ type projectDTO struct {
 	DefaultEnv           map[string]string `json:"default_env"`
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
+	MyRole               core.ProjectRole  `json:"my_role"`
 }
 
-func projectFromCore(p core.Project) projectDTO {
+func projectFromCore(p core.Project, role core.ProjectRole) projectDTO {
 	if p.DefaultEnv == nil {
 		p.DefaultEnv = map[string]string{}
 	}
@@ -225,7 +236,7 @@ func projectFromCore(p core.Project) projectDTO {
 		ID: p.ID, Slug: p.Slug, Name: p.Name,
 		RegistryCredentialID: p.RegistryCredentialID,
 		DefaultImage:         p.DefaultImage, DefaultPort: p.DefaultPort, DefaultEnv: p.DefaultEnv,
-		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
 	}
 }
 
@@ -289,9 +300,29 @@ type publicProjectsResponse struct {
 	Total    int                `json:"total"`
 }
 
+type fleetTaskDTO struct {
+	Name        string           `json:"name" example:"web"`
+	Description string           `json:"description,omitempty"`
+	Image       string           `json:"image" example:"nginx:alpine"`
+	Status      core.TaskStatus  `json:"status"`
+	DevStatus   core.DevStatus   `json:"dev_status"`
+	MyRole      core.ProjectRole `json:"my_role"`
+	LastDeploy  *lastDeployDTO   `json:"last_deploy,omitempty"`
+}
+
+type lastDeployDTO struct {
+	Status core.NotificationStatus `json:"status"`
+	At     time.Time               `json:"at"`
+}
+
+type fleetProjectDTO struct {
+	projectDTO
+	Tasks []fleetTaskDTO `json:"tasks"`
+}
+
 type projectsResponse struct {
-	Projects []projectDTO `json:"projects"`
-	Total    int          `json:"total"`
+	Projects []fleetProjectDTO `json:"projects"`
+	Total    int               `json:"total"`
 }
 
 type membersResponse struct {
@@ -324,14 +355,25 @@ type grantsResponse struct {
 	Total  int        `json:"total"`
 }
 
+type notificationsPage struct {
+	Limit  int       `query:"limit" minimum:"1" maximum:"200" default:"50"`
+	Before uuid.UUID `query:"before"`
+}
+
 type notificationsRequest struct {
 	Project string `json:"-" path:"project" example:"demo"`
-	Limit   int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+	notificationsPage
+}
+
+type markSeenRequest struct {
+	IDs []uuid.UUID `json:"ids" minItems:"1" maxItems:"200"`
 }
 
 type notificationDTO struct {
 	ID        uuid.UUID               `json:"id"`
+	Project   string                  `json:"project" example:"demo"`
 	TaskName  string                  `json:"task_name" example:"web"`
+	Type      core.NotificationType   `json:"type"`
 	Status    core.NotificationStatus `json:"status"`
 	Title     string                  `json:"title" example:"🚀 Deploy Succeeded • Demo"`
 	Body      string                  `json:"body,omitempty"`
@@ -386,10 +428,6 @@ type createUserRequest struct {
 	Role     core.UserRole `json:"role,omitempty"`
 }
 
-type userPath struct {
-	ID uuid.UUID `json:"-" path:"id"`
-}
-
 type updateUserRequest struct {
 	ID       uuid.UUID      `json:"-" path:"id"`
 	Email    *string        `json:"email,omitempty" format:"email"`
@@ -432,10 +470,6 @@ type createCredentialRequest struct {
 	Registry core.RegistryKind `json:"registry"`
 	Username string            `json:"username"`
 	Token    string            `json:"token" format:"password"`
-}
-
-type credentialPath struct {
-	ID uuid.UUID `json:"-" path:"id"`
 }
 
 type credentialResponse struct {

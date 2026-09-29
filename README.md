@@ -144,6 +144,10 @@ Grants are deleted with the task they point at, so access cannot outlive its
 subject. A project or task the caller cannot reach answers `404`, not `403`, so
 that names do not leak. `403` means the caller can see it but ranks too low.
 
+Every project and task response carries `my_role`, the caller's effective role,
+so a client can hide what it cannot do. `GET /projects` lists each project with
+the tasks the caller sees, each with its own `my_role` and `last_deploy`.
+
 ## API
 
 All API routes are under `/api/v1`.
@@ -165,7 +169,7 @@ All API routes are under `/api/v1`.
 | `GET`    | `/registry-credentials`                        | admin         | List registry credentials                       |
 | `POST`   | `/registry-credentials`                        | admin         | Create a registry credential                    |
 | `DELETE` | `/registry-credentials/{id}`                   | admin         | Delete a registry credential                    |
-| `GET`    | `/projects`                                    | user          | List reachable projects                         |
+| `GET`    | `/projects`                                    | user          | List reachable projects with their tasks        |
 | `POST`   | `/projects`                                    | admin         | Create a project; the creator becomes owner     |
 | `GET`    | `/projects/{project}`                          | viewer        | Get a project                                   |
 | `PATCH`  | `/projects/{project}`                          | owner         | Update a project                                |
@@ -173,7 +177,9 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/members`                  | owner         | List members                                    |
 | `POST`   | `/projects/{project}/members`                  | owner         | Add or promote a member                         |
 | `DELETE` | `/projects/{project}/members/{userID}`         | owner         | Remove a member                                 |
-| `GET`    | `/projects/{project}/notifications`            | viewer        | List deploy notifications                       |
+| `GET`    | `/notifications`                               | user          | List notifications across projects              |
+| `POST`   | `/notifications/seen`                          | user          | Mark notifications seen                         |
+| `GET`    | `/projects/{project}/notifications`            | viewer        | List a project's notifications                  |
 | `GET`    | `/projects/{project}/metrics/stream`           | viewer        | Stream metrics for every running task over SSE  |
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
@@ -209,9 +215,6 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
   -d '{"env":{"APP_MODE":"staging"},"auto_restart":false}' \
   http://localhost:8080/api/v1/projects/demo/tasks/web
 ```
-
-The former dedicated `GET` and `PUT` `/tasks/{name}/env` endpoints have been
-removed. Clients should read `task.env` and use `PATCH /tasks/{name}` instead.
 
 ## Development status
 
@@ -318,11 +321,13 @@ curl -H "$AUTH" http://localhost:8080/api/v1/auth/tokens
 curl -X DELETE -H "$AUTH" http://localhost:8080/api/v1/auth/tokens/<id>
 ```
 
-For live logs, use an SSE-capable client:
+For live logs, use an SSE-capable client. A browser reads the stream with
+`fetch`, since `EventSource` cannot send the `Authorization` header. To resume
+after a disconnect, pass the last timestamp received as `since`:
 
 ```bash
 curl -N -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/v1/projects/demo/tasks/web/logs/stream
+  'http://localhost:8080/api/v1/projects/demo/tasks/web/logs/stream?since=2026-01-02T03:04:05.123456789Z'
 ```
 
 ## Resource metrics
@@ -358,11 +363,13 @@ grantee sees only the tasks they were granted.
 
 Deploys and task lifecycle changes — creation, assignment, development status —
 each record a notification, and Boreas serves them newest-first for an in-app
-feed:
+feed, across every project the caller reaches or for one project. To page, pass
+the id of the last notification received as `before`:
 
 ```bash
-curl -H "$AUTH" \
-  'http://localhost:8080/api/v1/projects/demo/notifications?limit=20'
+curl -H "$AUTH" 'http://localhost:8080/api/v1/notifications?limit=20'
+curl -H "$AUTH" 'http://localhost:8080/api/v1/notifications?limit=20&before=<id>'
+curl -H "$AUTH" 'http://localhost:8080/api/v1/projects/demo/notifications'
 ```
 
 Every notification shares one shape across every channel (the feed, browser
@@ -371,13 +378,15 @@ push, and team destinations): title `<emoji> <Event> • <Project>`, body
 12-hour clock with no timezone suffix; other channels render their own
 arrival timestamp.
 
-| Event              | `status`  | Example                                                                          |
-| ------------------ | --------- | -------------------------------------------------------------------------------- |
-| Deploy succeeded   | `success` | `🚀 Deploy Succeeded • Shop` / `web: Task completed at 11:00PM`                  |
-| Deploy failed      | `failure` | `❌ Deploy Failed • Shop` / `web: Failed at 11:00PM: pull image: unavailable`    |
-| Task created       | `info`    | `📋 Task Created • Shop` / `web: Customer checkout service`                      |
-| Task assigned      | `info`    | `👤 Task Assigned • Shop` / `web: assigned to nam (member)`                      |
-| Dev status changed | `info`    | `🔄 Status Changed • Shop` / `web: In Progress ➔ Ready`                          |
+| `type`           | `status`  | Example                                                                          |
+| ---------------- | --------- | -------------------------------------------------------------------------------- |
+| `deployed`       | `success` | `🚀 Deploy Succeeded • Shop` / `web: Task completed at 11:00PM`                  |
+| `deploy_failed`  | `failure` | `❌ Deploy Failed • Shop` / `web: Failed at 11:00PM: pull image: unavailable`    |
+| `task_created`   | `info`    | `📋 Task Created • Shop` / `web: Customer checkout service`                      |
+| `task_assigned`  | `info`    | `👤 Task Assigned • Shop` / `web: assigned to nam (member)`                      |
+| `status_changed` | `info`    | `🔄 Status Changed • Shop` / `web: In Progress ➔ Ready`                          |
+
+Route on `type` and `project` (the slug), not on the title, which is for people.
 
 A retried callback for the image a task already runs records nothing, so it
 does not repeat a notification a pipeline has already produced.
@@ -387,8 +396,8 @@ caller has not read without one member clearing it for everyone. Marking is
 idempotent, and an id outside the caller's visibility is a no-op:
 
 ```bash
-curl -X POST -H "$AUTH" \
-  'http://localhost:8080/api/v1/projects/demo/notifications/<id>/seen'
+curl -X POST -H "$AUTH" -H "$JSON" -d '{"ids":["<id>","<id>"]}' \
+  'http://localhost:8080/api/v1/notifications/seen'
 
 curl -X DELETE -H "$AUTH" \
   'http://localhost:8080/api/v1/projects/demo/notifications/<id>/seen'

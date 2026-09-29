@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -68,12 +69,11 @@ func (r *Registry) Register(_ context.Context, project, task, host string, port 
 	if strings.TrimSpace(host) == "" || port < 1 || port > 65535 {
 		return errors.Join(core.ErrInvalidInput, errors.New("proxy host and valid port are required"))
 	}
-	target := &url.URL{Scheme: "http", Host: net.JoinHostPort(host, fmt.Sprint(port))}
 	entry := &route{
 		project: project, task: task,
 		prefix:   "/" + project + "/" + task,
 		basePath: "/" + project + "/" + task + "/",
-		target:   target,
+		target:   &url.URL{Scheme: "http", Host: net.JoinHostPort(host, fmt.Sprint(port))},
 	}
 	entry.proxy = r.newReverseProxy(entry)
 	r.mu.Lock()
@@ -96,8 +96,7 @@ func (r *Registry) Unregister(_ context.Context, project, task string) error {
 func (r *Registry) CloseIdleConnections() { r.transport.CloseIdleConnections() }
 
 func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
-	trimmed := strings.TrimPrefix(request.URL.Path, "/")
-	parts := strings.SplitN(trimmed, "/", 3)
+	parts := strings.SplitN(strings.TrimPrefix(request.URL.Path, "/"), "/", 3)
 	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 		r.miss(w, request)
 		return
@@ -172,11 +171,8 @@ func (r *Registry) newReverseProxy(entry *route) *httputil.ReverseProxy {
 
 func rewriteLocation(response *http.Response, entry *route) {
 	value := response.Header.Get("Location")
-	if value == "" {
-		return
-	}
 	location, err := url.Parse(value)
-	if err != nil {
+	if value == "" || err != nil {
 		return
 	}
 	if location.IsAbs() {
@@ -185,13 +181,11 @@ func rewriteLocation(response *http.Response, entry *route) {
 		}
 		location.Scheme, location.Host = "", ""
 	}
-	if strings.HasPrefix(location.Path, entry.basePath) {
-		response.Header.Set("Location", location.String())
-		return
-	}
-	location.Path = entry.basePath + strings.TrimPrefix(location.Path, "/")
-	if location.Path == entry.basePath && value != "/" && value != "" {
-		location.Path = entry.basePath + strings.TrimPrefix(value, "./")
+	if !strings.HasPrefix(location.Path, entry.basePath) {
+		location.Path = entry.basePath + strings.TrimPrefix(location.Path, "/")
+		if location.Path == entry.basePath && value != "/" {
+			location.Path = entry.basePath + strings.TrimPrefix(value, "./")
+		}
 	}
 	response.Header.Set("Location", location.String())
 }
@@ -204,24 +198,15 @@ var (
 
 func injectBase(document []byte, basePath string) []byte {
 	document = baseTagPattern.ReplaceAll(document, nil)
-	location := headPattern.FindIndex(document)
 	tag := []byte(`<base href="` + basePath + `">`)
-	if location == nil {
-		head := append(append([]byte(`<head>`), tag...), []byte(`</head>`)...)
-		if htmlLocation := htmlPattern.FindIndex(document); htmlLocation != nil {
-			result := make([]byte, 0, len(document)+len(head))
-			result = append(result, document[:htmlLocation[1]]...)
-			result = append(result, head...)
-			result = append(result, document[htmlLocation[1]:]...)
-			return result
-		}
-		return append(head, document...)
+	if head := headPattern.FindIndex(document); head != nil {
+		return slices.Insert(document, head[1], tag...)
 	}
-	result := make([]byte, 0, len(document)+len(tag))
-	result = append(result, document[:location[1]]...)
-	result = append(result, tag...)
-	result = append(result, document[location[1]:]...)
-	return result
+	tag = slices.Concat([]byte(`<head>`), tag, []byte(`</head>`))
+	if html := htmlPattern.FindIndex(document); html != nil {
+		return slices.Insert(document, html[1], tag...)
+	}
+	return append(tag, document...)
 }
 
 func isHTML(contentType string) bool {

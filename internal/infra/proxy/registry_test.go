@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,17 +15,11 @@ import (
 
 func TestRegistryProxyPathHeadersAndHTML(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/some/path" || req.URL.RawQuery != "x=1" {
-			t.Errorf("upstream URL = %s", req.URL.String())
-		}
-		if req.Header.Get("X-Boreas-Project") != "team" {
-			t.Errorf("project header = %q", req.Header.Get("X-Boreas-Project"))
-		}
-		if req.Header.Get("X-Boreas-Task") != "Task.1" {
-			t.Errorf("task header = %q", req.Header.Get("X-Boreas-Task"))
-		}
-		if req.Header.Get("Accept-Encoding") != "identity" {
-			t.Errorf("encoding = %q", req.Header.Get("Accept-Encoding"))
+		if got := strings.Join([]string{
+			req.URL.String(), req.Header.Get("X-Boreas-Project"),
+			req.Header.Get("X-Boreas-Task"), req.Header.Get("Accept-Encoding"),
+		}, " "); got != "/some/path?x=1 team Task.1 identity" {
+			t.Errorf("upstream saw %q", got)
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		io.WriteString(w, `<HTML><HEAD><base href="/old/"><title>x</title></HEAD><body></body></HTML>`)
@@ -85,75 +80,51 @@ func TestRegistryRedirectAndLocationRewrite(t *testing.T) {
 }
 
 func TestRegistrySameTaskNameInDifferentProjects(t *testing.T) {
-	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, "first")
-	}))
-	defer first.Close()
-	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, "second")
-	}))
-	defer second.Close()
-
 	registry := New(0, 0)
 	defer registry.CloseIdleConnections()
-	host, port := serverAddress(t, first.URL)
-	registry.Register(context.Background(), "alpha", "web", host, port)
-	host, port = serverAddress(t, second.URL)
-	registry.Register(context.Background(), "beta", "web", host, port)
-
-	r := httptest.NewRecorder()
-	registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/alpha/web/", nil))
-	if r.Body.String() != "first" {
-		t.Fatalf("alpha/web = %q", r.Body.String())
+	for _, project := range []string{"alpha", "beta"} {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			io.WriteString(w, project)
+		}))
+		t.Cleanup(upstream.Close)
+		host, port := serverAddress(t, upstream.URL)
+		registry.Register(context.Background(), project, "web", host, port)
 	}
-	r = httptest.NewRecorder()
-	registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/beta/web/", nil))
-	if r.Body.String() != "second" {
-		t.Fatalf("beta/web = %q", r.Body.String())
+	get := func(path string) string {
+		r := httptest.NewRecorder()
+		registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, path, nil))
+		return r.Body.String()
 	}
-
+	if a, b := get("/alpha/web/"), get("/beta/web/"); a != "alpha" || b != "beta" {
+		t.Fatalf("alpha/web = %q, beta/web = %q", a, b)
+	}
 	if err := registry.Unregister(context.Background(), "alpha", "web"); err != nil {
 		t.Fatal(err)
 	}
-	r = httptest.NewRecorder()
-	registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/beta/web/", nil))
-	if r.Body.String() != "second" {
+	if get("/beta/web/") != "beta" {
 		t.Fatal("unregistering alpha/web removed beta/web")
 	}
 }
 
-func TestRegistryDoesNotModifyNonHTML(t *testing.T) {
+func TestRegistryLeavesNonHTMLAndEncodedHTMLAlone(t *testing.T) {
 	const payload = `<head><base href="/leave/">`
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, payload)
-	}))
-	defer upstream.Close()
-	host, port := serverAddress(t, upstream.URL)
-	registry := New(0, 0)
-	registry.Register(context.Background(), "team", "id", host, port)
-	r := httptest.NewRecorder()
-	registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/team/id/data", nil))
-	if r.Body.String() != payload {
-		t.Fatalf("body = %q", r.Body.String())
-	}
-}
-
-func TestRegistryDoesNotModifyEncodedHTML(t *testing.T) {
-	const payload = `encoded <head><base href="/leave/">`
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.Header().Set("Content-Encoding", "br")
-		io.WriteString(w, payload)
-	}))
-	defer upstream.Close()
-	host, port := serverAddress(t, upstream.URL)
-	registry := New(0, 0)
-	registry.Register(context.Background(), "team", "id", host, port)
-	r := httptest.NewRecorder()
-	registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/team/id/", nil))
-	if r.Body.String() != payload {
-		t.Fatalf("body = %q", r.Body.String())
+	for _, header := range []http.Header{
+		{"Content-Type": {"application/json"}},
+		{"Content-Type": {"text/html"}, "Content-Encoding": {"br"}},
+	} {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			maps.Copy(w.Header(), header)
+			io.WriteString(w, payload)
+		}))
+		t.Cleanup(upstream.Close)
+		host, port := serverAddress(t, upstream.URL)
+		registry := New(0, 0)
+		registry.Register(context.Background(), "team", "id", host, port)
+		r := httptest.NewRecorder()
+		registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/team/id/", nil))
+		if r.Body.String() != payload {
+			t.Fatalf("%v: body = %q", header, r.Body.String())
+		}
 	}
 }
 

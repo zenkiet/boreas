@@ -19,16 +19,14 @@ type grantKey struct {
 
 type fakeTaskStore struct {
 	tasks map[uuid.UUID]core.Task
-	// granted and roles stand in for task_grants; Delete clears them the way the FK cascade does.
-	granted map[grantKey]bool
-	roles   map[grantKey]core.ProjectRole
-	now     time.Time
+	// roles stands in for task_grants: a key is granted exactly when it holds a role.
+	roles map[grantKey]core.ProjectRole
+	now   time.Time
 }
 
 func newFakeTaskStore() *fakeTaskStore {
 	return &fakeTaskStore{
-		tasks: map[uuid.UUID]core.Task{}, granted: map[grantKey]bool{},
-		roles: map[grantKey]core.ProjectRole{}, now: time.Unix(1000, 0).UTC(),
+		tasks: map[uuid.UUID]core.Task{}, roles: map[grantKey]core.ProjectRole{}, now: time.Unix(1000, 0).UTC(),
 	}
 }
 
@@ -45,7 +43,7 @@ func (f *fakeTaskStore) List(
 		if task.ProjectID != projectID {
 			continue
 		}
-		if !allTasks && !f.granted[grantKey{task.ID, userID}] {
+		if !allTasks && f.roles[grantKey{task.ID, userID}] == "" {
 			continue
 		}
 		result = append(result, task.Clone())
@@ -78,38 +76,18 @@ func (f *fakeTaskStore) Create(_ context.Context, task core.Task) (core.Task, er
 	}
 	task.ID = uuid.New()
 	task.CreatedAt, task.UpdatedAt = f.tick(), f.now
-	if task.DevStatus == "" {
-		task.DevStatus = core.DevInProgress
-	}
 	f.tasks[task.ID] = task.Clone()
 	return task.Clone(), nil
 }
 
 func (f *fakeTaskStore) Update(_ context.Context, task core.Task) (core.Task, error) {
-	existing, ok := f.tasks[task.ID]
-	if !ok {
-		return core.Task{}, core.ErrNotFound
-	}
-	task.CreatedAt = existing.CreatedAt
-	task.UpdatedAt = f.tick()
-	if task.DevStatus == "" {
-		task.DevStatus = core.DevInProgress
-	}
+	task.CreatedAt, task.UpdatedAt = f.tasks[task.ID].CreatedAt, f.tick()
 	f.tasks[task.ID] = task.Clone()
 	return task.Clone(), nil
 }
 
 func (f *fakeTaskStore) Delete(_ context.Context, id uuid.UUID) error {
-	if _, ok := f.tasks[id]; !ok {
-		return core.ErrNotFound
-	}
 	delete(f.tasks, id)
-	for key := range f.granted {
-		if key.taskID == id {
-			delete(f.granted, key)
-			delete(f.roles, key)
-		}
-	}
 	return nil
 }
 
@@ -141,18 +119,16 @@ func (f *fakeProjectStore) List(context.Context) ([]core.Project, error) {
 }
 
 // ListForUser mirrors the SQL query: memberships and task grants both reveal a project,
-// but only a membership carries the task form defaults.
-func (f *fakeProjectStore) ListForUser(_ context.Context, userID uuid.UUID) ([]core.Project, error) {
-	result := make([]core.Project, 0)
+// but only a membership carries its role.
+func (f *fakeProjectStore) ListForUser(_ context.Context, userID uuid.UUID) ([]core.ProjectAccess, error) {
+	result := make([]core.ProjectAccess, 0)
 	for id, project := range f.projects {
-		_, isMember := f.members[id][userID]
-		if isMember {
-			result = append(result, project)
+		if member, ok := f.members[id][userID]; ok {
+			result = append(result, core.ProjectAccess{Project: project, UserID: userID, Role: member.Role, AllTasks: true})
 			continue
 		}
 		if f.tasks != nil && f.tasks.anyGrantIn(id, userID) {
-			project.DefaultEnv = map[string]string{}
-			result = append(result, project)
+			result = append(result, core.ProjectAccess{Project: project, UserID: userID, Role: core.ProjectRoleViewer})
 		}
 	}
 	return result, nil
@@ -160,7 +136,7 @@ func (f *fakeProjectStore) ListForUser(_ context.Context, userID uuid.UUID) ([]c
 
 func (f *fakeTaskStore) anyGrantIn(projectID, userID uuid.UUID) bool {
 	for _, task := range f.tasks {
-		if task.ProjectID == projectID && f.granted[grantKey{task.ID, userID}] {
+		if task.ProjectID == projectID && f.roles[grantKey{task.ID, userID}] != "" {
 			return true
 		}
 	}
@@ -177,11 +153,6 @@ func (f *fakeProjectStore) GetBySlug(_ context.Context, slug string) (core.Proje
 }
 
 func (f *fakeProjectStore) Create(_ context.Context, project core.Project) (core.Project, error) {
-	for _, existing := range f.projects {
-		if existing.Slug == project.Slug {
-			return core.Project{}, core.ErrAlreadyExists
-		}
-	}
 	project.ID = uuid.New()
 	project.CreatedAt, project.UpdatedAt = time.Now(), time.Now()
 	f.projects[project.ID] = project
@@ -189,22 +160,12 @@ func (f *fakeProjectStore) Create(_ context.Context, project core.Project) (core
 }
 
 func (f *fakeProjectStore) Update(_ context.Context, project core.Project) (core.Project, error) {
-	if _, ok := f.projects[project.ID]; !ok {
-		return core.Project{}, core.ErrNotFound
-	}
 	project.UpdatedAt = time.Now()
 	f.projects[project.ID] = project
 	return project, nil
 }
 
-func (f *fakeProjectStore) Delete(_ context.Context, id uuid.UUID) error {
-	if _, ok := f.projects[id]; !ok {
-		return core.ErrNotFound
-	}
-	delete(f.projects, id)
-	delete(f.members, id)
-	return nil
-}
+func (*fakeProjectStore) Delete(context.Context, uuid.UUID) error { return nil }
 
 func (f *fakeProjectStore) Count(context.Context) (int, error) { return len(f.projects), nil }
 
@@ -234,9 +195,6 @@ func (f *fakeProjectStore) AddMember(_ context.Context, member core.ProjectMembe
 }
 
 func (f *fakeProjectStore) RemoveMember(_ context.Context, projectID, userID uuid.UUID) error {
-	if _, ok := f.members[projectID][userID]; !ok {
-		return core.ErrNotFound
-	}
 	delete(f.members[projectID], userID)
 	return nil
 }
@@ -282,8 +240,7 @@ func (f *fakeCredentialStore) Delete(_ context.Context, id uuid.UUID) error {
 
 type fakeNotificationStore struct {
 	notifications []core.Notification
-	seen          map[grantKey]bool // keyed by (notification ID, user ID)
-	tasks         *fakeTaskStore    // resolves task names to grants, as the SQL join does
+	tasks         *fakeTaskStore // resolves task names, as the SQL join does
 }
 
 func newFakeNotificationStore(tasks *fakeTaskStore) *fakeNotificationStore {
@@ -291,59 +248,30 @@ func newFakeNotificationStore(tasks *fakeTaskStore) *fakeNotificationStore {
 }
 
 func (f *fakeNotificationStore) Create(_ context.Context, n core.Notification) (core.Notification, error) {
-	n.ID, n.CreatedAt = uuid.New(), time.Now()
 	f.notifications = append(f.notifications, n)
 	return n, nil
 }
 
-func (f *fakeNotificationStore) List(
-	_ context.Context, projectID, userID uuid.UUID, allTasks bool, limit int,
-) ([]core.Notification, error) {
-	result := make([]core.Notification, 0, len(f.notifications))
-	// Newest first, matching the SQL store's ordering.
-	for i := len(f.notifications) - 1; i >= 0 && len(result) < limit; i-- {
-		n := f.notifications[i]
-		if n.ProjectID != projectID {
-			continue
-		}
-		if !allTasks && (f.tasks == nil || !f.tasks.grantedName(projectID, userID, n.TaskName)) {
-			continue
-		}
-		n.Seen = f.seen[grantKey{n.ID, userID}]
-		result = append(result, n)
-	}
-	return result, nil
+func (*fakeNotificationStore) List(context.Context, uuid.UUID, bool, *uuid.UUID, *uuid.UUID, int) ([]core.Notification, error) {
+	return nil, nil
 }
 
-func (f *fakeNotificationStore) MarkSeen(_ context.Context, id, projectID, userID uuid.UUID, allTasks bool) error {
-	for _, n := range f.notifications {
-		if n.ID != id || n.ProjectID != projectID {
-			continue
-		}
-		if !allTasks && (f.tasks == nil || !f.tasks.grantedName(projectID, userID, n.TaskName)) {
-			continue
-		}
-		if f.seen == nil {
-			f.seen = map[grantKey]bool{}
-		}
-		f.seen[grantKey{id, userID}] = true
-	}
+func (*fakeNotificationStore) MarkSeen(context.Context, uuid.UUID, bool, []uuid.UUID) error {
 	return nil
 }
 
-func (f *fakeNotificationStore) MarkUnseen(_ context.Context, id, userID uuid.UUID) error {
-	delete(f.seen, grantKey{id, userID})
-	return nil
-}
+func (*fakeNotificationStore) MarkUnseen(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 
-// grantedName resolves a notification's task name to a grant the way the SQL join does.
-func (f *fakeTaskStore) grantedName(projectID, userID uuid.UUID, name string) bool {
-	for _, task := range f.tasks {
-		if task.ProjectID == projectID && task.Name == name {
-			return f.granted[grantKey{task.ID, userID}]
+func (f *fakeNotificationStore) LastDeploys(context.Context) (map[uuid.UUID]core.Notification, error) {
+	deploys := map[uuid.UUID]core.Notification{}
+	for id, task := range f.tasks.tasks {
+		for _, n := range f.notifications {
+			if n.ProjectID == task.ProjectID && n.TaskName == task.Name && n.Status != core.NotificationInfo {
+				deploys[id] = n // oldest first, so the newest wins
+			}
 		}
 	}
-	return false
+	return deploys, nil
 }
 
 type fakeGrantStore struct{ tasks *fakeTaskStore }
@@ -362,52 +290,35 @@ func (f *fakeGrantStore) Role(
 }
 
 func (f *fakeGrantStore) AnyInProject(_ context.Context, projectID, userID uuid.UUID) (bool, error) {
-	for _, task := range f.tasks.tasks {
-		if task.ProjectID == projectID && f.tasks.granted[grantKey{task.ID, userID}] {
-			return true, nil
-		}
-	}
-	return false, nil
+	return f.tasks.anyGrantIn(projectID, userID), nil
 }
 
-func (f *fakeGrantStore) ListForTask(_ context.Context, taskID uuid.UUID) ([]core.TaskGrant, error) {
-	var result []core.TaskGrant
+func (f *fakeGrantStore) ForUser(_ context.Context, userID uuid.UUID) (map[uuid.UUID]core.ProjectRole, error) {
+	roles := map[uuid.UUID]core.ProjectRole{}
 	for key, role := range f.tasks.roles {
-		if key.taskID == taskID {
-			result = append(result, core.TaskGrant{TaskID: taskID, UserID: key.userID, Role: role})
+		if key.userID == userID {
+			roles[key.taskID] = role
 		}
 	}
-	return result, nil
+	return roles, nil
+}
+
+func (*fakeGrantStore) ListForTask(context.Context, uuid.UUID) ([]core.TaskGrant, error) {
+	return nil, nil
 }
 
 func (f *fakeGrantStore) Grant(_ context.Context, grant core.TaskGrant) error {
-	key := grantKey{grant.TaskID, grant.UserID}
-	f.tasks.granted[key] = true
-	f.tasks.roles[key] = grant.Role
+	f.tasks.roles[grantKey{grant.TaskID, grant.UserID}] = grant.Role
 	return nil
 }
 
-func (f *fakeGrantStore) Revoke(_ context.Context, taskID, userID uuid.UUID) error {
-	key := grantKey{taskID, userID}
-	if !f.tasks.granted[key] {
-		return core.ErrNotFound
-	}
-	delete(f.tasks.granted, key)
-	delete(f.tasks.roles, key)
-	return nil
-}
+func (*fakeGrantStore) Revoke(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 
 type fakeUserStore struct{ users map[uuid.UUID]core.User }
 
 func newFakeUserStore() *fakeUserStore { return &fakeUserStore{users: map[uuid.UUID]core.User{}} }
 
-func (f *fakeUserStore) List(context.Context) ([]core.User, error) {
-	result := make([]core.User, 0, len(f.users))
-	for _, user := range f.users {
-		result = append(result, user)
-	}
-	return result, nil
-}
+func (*fakeUserStore) List(context.Context) ([]core.User, error) { return nil, nil }
 
 func (f *fakeUserStore) Get(_ context.Context, id uuid.UUID) (core.User, error) {
 	user, ok := f.users[id]
@@ -429,11 +340,6 @@ func (f *fakeUserStore) GetByUsername(_ context.Context, username string) (core.
 func (f *fakeUserStore) Count(context.Context) (int, error) { return len(f.users), nil }
 
 func (f *fakeUserStore) Create(_ context.Context, user core.User) (core.User, error) {
-	for _, existing := range f.users {
-		if strings.EqualFold(existing.Username, user.Username) {
-			return core.User{}, core.ErrAlreadyExists
-		}
-	}
 	user.ID = uuid.New()
 	user.CreatedAt, user.UpdatedAt = time.Now(), time.Now()
 	f.users[user.ID] = user
@@ -441,9 +347,6 @@ func (f *fakeUserStore) Create(_ context.Context, user core.User) (core.User, er
 }
 
 func (f *fakeUserStore) Update(_ context.Context, user core.User) (core.User, error) {
-	if _, ok := f.users[user.ID]; !ok {
-		return core.User{}, core.ErrNotFound
-	}
 	user.UpdatedAt = time.Now()
 	f.users[user.ID] = user
 	return user, nil
@@ -464,12 +367,7 @@ func newFakeTokenStore() *fakeTokenStore {
 }
 
 func (f *fakeTokenStore) Create(_ context.Context, token core.AuthToken) (core.AuthToken, error) {
-	if token.ID == uuid.Nil {
-		token.ID = uuid.New()
-	}
-	if token.CreatedAt.IsZero() {
-		token.CreatedAt = time.Now().UTC()
-	}
+	token.ID = uuid.New()
 	f.tokens[token.TokenHash] = token
 	return token, nil
 }
@@ -506,11 +404,9 @@ func (f *fakeTokenStore) Revoke(_ context.Context, hash string) error {
 func (f *fakeTokenStore) RevokeByID(_ context.Context, userID, tokenID uuid.UUID) error {
 	for hash, token := range f.tokens {
 		if token.ID == tokenID && token.UserID == userID && token.Kind == core.TokenKindAPI {
-			if token.RevokedAt == nil {
-				now := time.Now()
-				token.RevokedAt = &now
-				f.tokens[hash] = token
-			}
+			now := time.Now()
+			token.RevokedAt = &now
+			f.tokens[hash] = token
 			return nil
 		}
 	}
@@ -530,7 +426,6 @@ func (f *fakeTokenStore) RevokeAllForUser(_ context.Context, userID uuid.UUID) e
 
 type fakeRuntime struct {
 	states                    map[string]core.ContainerState
-	nextID                    string
 	created, recreated        []core.ContainerSpec
 	pulled                    []*core.RegistryCredential
 	pulledImages              []string
@@ -543,7 +438,7 @@ type fakeRuntime struct {
 }
 
 func newFakeRuntime() *fakeRuntime {
-	return &fakeRuntime{states: map[string]core.ContainerState{}, nextID: "container-1"}
+	return &fakeRuntime{states: map[string]core.ContainerState{}}
 }
 
 func (f *fakeRuntime) Pull(_ context.Context, image string, credential *core.RegistryCredential) error {
@@ -556,7 +451,7 @@ func (f *fakeRuntime) Pull(_ context.Context, image string, credential *core.Reg
 func (f *fakeRuntime) Create(_ context.Context, s core.ContainerSpec) (string, error) {
 	f.created = append(f.created, s)
 	f.calls = append(f.calls, "create")
-	id := f.nextID
+	const id = "container-1"
 	f.states[id] = core.ContainerState{Exists: true, Status: core.StatusStopped}
 	return id, nil
 }
@@ -592,11 +487,7 @@ func (f *fakeRuntime) Remove(_ context.Context, id string) error {
 }
 
 func (f *fakeRuntime) Inspect(_ context.Context, id string) (core.ContainerState, error) {
-	state, ok := f.states[id]
-	if !ok {
-		return core.ContainerState{}, core.ErrNotFound
-	}
-	return state, nil
+	return f.states[id], nil
 }
 
 func (f *fakeRuntime) Logs(context.Context, string, core.LogOptions) (io.ReadCloser, error) {
@@ -625,10 +516,7 @@ func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (<-chan cor
 	return out, nil
 }
 
-type fakeRoutes struct {
-	registered   map[string]string
-	unregistered []string
-}
+type fakeRoutes struct{ registered map[string]string }
 
 func newFakeRoutes() *fakeRoutes { return &fakeRoutes{registered: map[string]string{}} }
 
@@ -638,8 +526,6 @@ func (f *fakeRoutes) Register(_ context.Context, project, task, ip string, _ int
 }
 
 func (f *fakeRoutes) Unregister(_ context.Context, project, task string) error {
-	key := project + "/" + task
-	delete(f.registered, key)
-	f.unregistered = append(f.unregistered, key)
+	delete(f.registered, project+"/"+task)
 	return nil
 }

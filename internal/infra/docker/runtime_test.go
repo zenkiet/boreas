@@ -40,102 +40,51 @@ func testSpec(name string) core.ContainerSpec {
 	return core.ContainerSpec{Project: "boreastest", Name: name, Image: testImage, Port: 80}
 }
 
-// Re-creation must reclaim an orphan left after Boreas loses its database record.
-func TestCreateReplacesAnOrphanedContainerOfTheSameTask(t *testing.T) {
+// Re-creation must reclaim an orphan left after Boreas loses its database record,
+// even when the container ID it recorded no longer exists.
+func TestRecreateReclaimsAnOrphanBehindAStaleID(t *testing.T) {
 	r := newRuntime(t)
 	ctx := context.Background()
 	spec := testSpec("orphan")
 
-	first, err := r.Create(ctx, spec)
-	if err != nil {
-		t.Fatalf("first create: %v", err)
-	}
-	t.Cleanup(func() { _ = r.Remove(context.Background(), first) })
-
-	second, err := r.Create(ctx, spec)
-	if err != nil {
-		t.Fatalf("second create must reclaim the name, got %v", err)
-	}
-	t.Cleanup(func() { _ = r.Remove(context.Background(), second) })
-
-	if second == first {
-		t.Fatal("expected a new container")
-	}
-	state, err := r.Inspect(ctx, first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Exists {
-		t.Fatal("the superseded container was not removed")
-	}
-}
-
-// Foreign ownership labels must prevent destructive name reclamation.
-func TestCreateRefusesToTakeAForeignContainerName(t *testing.T) {
-	r := newRuntime(t)
-	ctx := context.Background()
-	spec := testSpec("foreign")
-	name := containerName(spec)
-
-	created, err := r.client.ContainerCreate(ctx,
-		&container.Config{Image: testImage, Labels: map[string]string{"managed-by": "someone-else"}},
-		&container.HostConfig{}, &network.NetworkingConfig{}, nil, name)
-	if err != nil {
-		t.Fatalf("seed foreign container: %v", err)
-	}
-	t.Cleanup(func() { _ = r.Remove(context.Background(), created.ID) })
-
-	if _, err := r.Create(ctx, spec); !errors.Is(err, core.ErrConflict) {
-		t.Fatalf("want ErrConflict, got %v", err)
-	}
-	state, err := r.Inspect(ctx, created.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !state.Exists {
-		t.Fatal("a container Boreas does not manage was removed")
-	}
-}
-
-func TestCreateRefusesToTakeAnotherTasksContainer(t *testing.T) {
-	r := newRuntime(t)
-	ctx := context.Background()
-	spec := testSpec("mine")
-	name := containerName(spec)
-
-	created, err := r.client.ContainerCreate(ctx,
-		&container.Config{Image: testImage, Labels: map[string]string{
-			"managed-by": "boreas", "project": spec.Project, "task": "someone-elses-task",
-		}},
-		&container.HostConfig{}, &network.NetworkingConfig{}, nil, name)
-	if err != nil {
-		t.Fatalf("seed container: %v", err)
-	}
-	t.Cleanup(func() { _ = r.Remove(context.Background(), created.ID) })
-
-	if _, err := r.Create(ctx, spec); !errors.Is(err, core.ErrConflict) {
-		t.Fatalf("want ErrConflict, got %v", err)
-	}
-}
-
-func TestRecreateSurvivesAStaleContainerID(t *testing.T) {
-	r := newRuntime(t)
-	ctx := context.Background()
-	spec := testSpec("stale")
-
-	existing, err := r.Create(ctx, spec)
+	orphan, err := r.Create(ctx, spec)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	t.Cleanup(func() { _ = r.Remove(context.Background(), existing) })
+	t.Cleanup(func() { _ = r.Remove(context.Background(), orphan) })
 
-	// An ID Boreas recorded before the container was replaced out of band.
 	id, err := r.Recreate(ctx, "0000000000000000000000000000000000000000000000000000000000000000", spec)
 	if err != nil {
-		t.Fatalf("recreate: %v", err)
+		t.Fatalf("recreate must reclaim the name, got %v", err)
 	}
 	t.Cleanup(func() { _ = r.Remove(context.Background(), id) })
-	if id == existing {
-		t.Fatal("expected a new container")
+	if state, err := r.Inspect(ctx, orphan); err != nil || id == orphan || state.Exists {
+		t.Fatalf("the orphan was not replaced: id=%s state=%+v err=%v", id, state, err)
+	}
+}
+
+// Ownership labels must prevent destructive name reclamation.
+func TestCreateRefusesToTakeAContainerItDoesNotOwn(t *testing.T) {
+	r := newRuntime(t)
+	ctx := context.Background()
+	spec := testSpec("foreign")
+	for name, labels := range map[string]map[string]string{
+		"foreign manager": {"managed-by": "someone-else"},
+		"another task":    {"managed-by": "boreas", "project": spec.Project, "task": "someone-elses-task"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			created, err := r.client.ContainerCreate(ctx, &container.Config{Image: testImage, Labels: labels},
+				&container.HostConfig{}, &network.NetworkingConfig{}, nil, containerName(spec))
+			if err != nil {
+				t.Fatalf("seed container: %v", err)
+			}
+			t.Cleanup(func() { _ = r.Remove(context.Background(), created.ID) })
+			if _, err := r.Create(ctx, spec); !errors.Is(err, core.ErrConflict) {
+				t.Fatalf("want ErrConflict, got %v", err)
+			}
+			if state, err := r.Inspect(ctx, created.ID); err != nil || !state.Exists {
+				t.Fatalf("a container Boreas does not own was removed: %+v, %v", state, err)
+			}
+		})
 	}
 }

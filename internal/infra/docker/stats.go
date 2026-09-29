@@ -70,9 +70,5 @@ func cpuPercent(s container.StatsResponse) float64 {
 // Usage counts reclaimable page cache, so an idle container looks like it is leaking;
 // `docker stats` subtracts inactive_file and so do we.
 func memoryBytes(s container.StatsResponse) int64 {
-	usage := int64(s.MemoryStats.Usage)
-	if inactive, ok := s.MemoryStats.Stats["inactive_file"]; ok {
-		usage -= int64(inactive)
-	}
-	return max(usage, 0)
+	return max(int64(s.MemoryStats.Usage)-int64(s.MemoryStats.Stats["inactive_file"]), 0)
 }

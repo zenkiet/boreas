@@ -16,8 +16,7 @@ import (
 type Sender struct {
 	url    string
 	client *http.Client
-	// Targets, when set, restricts delivery to the devices allowed to see this
-	// notification; Apprise's configured destinations are then not used.
+	// Targets, when set, replaces Apprise's configured destinations with the devices allowed to see n.
 	Targets func(context.Context, core.Notification) []string
 }
 
@@ -34,11 +33,7 @@ func (s *Sender) Send(ctx context.Context, n core.Notification) error {
 	if s.url == "" {
 		return nil
 	}
-	body := map[string]any{
-		"title": n.Title,
-		"body":  n.Body,
-		"type":  string(n.Status),
-	}
+	body := map[string]any{"title": n.Title, "body": n.Body, "type": string(n.Status)}
 	if s.Targets != nil {
 		urls := s.Targets(ctx, n)
 		if len(urls) == 0 {

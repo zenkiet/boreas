@@ -9,26 +9,16 @@ import (
 
 func TestHandlerServesFilesAndFallsBackToShell(t *testing.T) {
 	h := Handler()
-
-	for _, path := range []string{"/", "/robots.txt"} {
+	for path, contentType := range map[string]string{
+		"/":                        "text/html",
+		"/robots.txt":              "text/plain",
+		"/_app/version.json":       "application/json",
+		"/blogic-view/pos-express": "text/html",
+	} {
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
-		if rr.Code != http.StatusOK {
-			t.Fatalf("%s status=%d, want 200 (run 'make frontend')", path, rr.Code)
+		if got := rr.Header().Get("Content-Type"); rr.Code != http.StatusOK || !strings.HasPrefix(got, contentType) {
+			t.Fatalf("%s: status=%d type=%q, want 200 %s (run 'make frontend')", path, rr.Code, got, contentType)
 		}
-	}
-
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/blogic-view/pos-express", nil))
-	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "<!doctype html>") {
-		t.Fatalf("shell status=%d body=%.60q", rr.Code, rr.Body.String())
-	}
-}
-
-func TestHandlerCachesImmutableAssets(t *testing.T) {
-	rr := httptest.NewRecorder()
-	Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/_app/version.json", nil))
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status=%d, want the embedded _app tree (all: prefix missing?)", rr.Code)
 	}
 }

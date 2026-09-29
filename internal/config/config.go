@@ -23,9 +23,7 @@ type FCMConfig struct {
 	Keyfile string
 }
 
-func (c FCMConfig) Enabled() bool {
-	return c.Project != "" && c.Keyfile != ""
-}
+func (c FCMConfig) Enabled() bool { return c.Project != "" && c.Keyfile != "" }
 
 type PostgresConfig struct {
 	Host     string
@@ -45,9 +43,7 @@ type AdminConfig struct {
 	Password string
 }
 
-func (c AdminConfig) Provided() bool {
-	return c.Username != "" && c.Email != "" && c.Password != ""
-}
+func (c AdminConfig) Provided() bool { return c.Username != "" && c.Email != "" && c.Password != "" }
 
 // DSN uses url.URL so reserved characters in passwords are escaped.
 func (p PostgresConfig) DSN() string {
@@ -112,11 +108,9 @@ func (c Config) validate() error {
 	if c.Port < 1 || c.Port > 65535 {
 		result = errors.Join(result, errors.New("BOREAS_PORT must be between 1 and 65535"))
 	}
-	if c.Postgres.URL == "" {
-		if strings.TrimSpace(c.Postgres.Host) == "" || strings.TrimSpace(c.Postgres.Port) == "" ||
-			strings.TrimSpace(c.Postgres.User) == "" || strings.TrimSpace(c.Postgres.DB) == "" {
-			result = errors.Join(result, errors.New("database host, port, user, and name are required"))
-		}
+	if c.Postgres.URL == "" && (strings.TrimSpace(c.Postgres.Host) == "" || strings.TrimSpace(c.Postgres.Port) == "" ||
+		strings.TrimSpace(c.Postgres.User) == "" || strings.TrimSpace(c.Postgres.DB) == "") {
+		result = errors.Join(result, errors.New("database host, port, user, and name are required"))
 	}
 	if (c.FCM.Project == "") != (c.FCM.Keyfile == "") {
 		result = errors.Join(result, errors.New("BOREAS_FCM_PROJECT and BOREAS_FCM_KEYFILE must be set together"))
@@ -132,10 +126,7 @@ func (c Config) validate() error {
 
 func statelessNotifyURL(notifyURL string) bool {
 	parsed, err := url.Parse(notifyURL)
-	if err != nil {
-		return false
-	}
-	return strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/notify")
+	return err == nil && strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/notify")
 }
 
 // ListenAddr binds all interfaces; deployment controls external exposure.

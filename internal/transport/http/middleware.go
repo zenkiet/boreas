@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"cmp"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -56,13 +57,9 @@ func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 		started := time.Now()
 		rw := &responseRecorder{ResponseWriter: w}
 		defer func() {
-			status := rw.status
-			if status == 0 {
-				status = http.StatusOK
-			}
 			logger.Info("request",
 				"method", r.Method, "uri", r.URL.RequestURI(),
-				"status", status, "bytes", rw.bytes, "duration", time.Since(started))
+				"status", cmp.Or(rw.status, http.StatusOK), "bytes", rw.bytes, "duration", time.Since(started))
 		}()
 		next.ServeHTTP(rw, r)
 	})

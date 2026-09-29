@@ -8,9 +8,6 @@ import (
 
 // ApplicationHandler routes the protected API separately so proxied task traffic stays public.
 func ApplicationHandler(api, proxy http.Handler, logger *slog.Logger) http.Handler {
-	if logger == nil {
-		logger = slog.Default()
-	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/"):
