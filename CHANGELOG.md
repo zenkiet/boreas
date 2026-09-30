@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.13.0 - 2026-09-30
+#### 🚀 Features
+- ✨ implement binding volumes for task - (92e85c7) - *zenkiet*
+
+- - -
+
 ## v1.12.0 - 2026-09-29
 #### ⚡ Performance Improvements
 - ⚡ improve new api - (b6ac250) - *zenkiet*
