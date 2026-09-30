@@ -64,13 +64,13 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 		ProjectID: project.ID, Name: "web", Description: "front door", Note: "## Setup\n`make db`",
 		Image: "nginx:alpine", Status: core.StatusCreating, Port: 8080,
 		Labels: map[string]string{"tier": "front"},
-		Env:    map[string]string{"KEY": "value"},
+		Env:    map[string]string{"KEY": "value"}, Volumes: map[string]string{"/app/certs": "certs"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.ID == uuid.Nil || created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() ||
-		created.Labels["tier"] != "front" || created.Env["KEY"] != "value" ||
+		created.Labels["tier"] != "front" || created.Env["KEY"] != "value" || created.Volumes["/app/certs"] != "certs" ||
 		created.Description != "front door" || created.Note != "## Setup\n`make db`" {
 		t.Fatalf("create round trip lost data: %+v", created)
 	}

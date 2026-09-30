@@ -60,7 +60,10 @@ func TestValidateProjectSlug(t *testing.T) {
 }
 
 func TestContainerSpecValidation(t *testing.T) {
-	base := ContainerSpec{Project: "team", Name: "task-1", Image: "image:tag", Port: 8080}
+	base := ContainerSpec{
+		Project: "team", Name: "task-1", Image: "image:tag", Port: 8080,
+		Volumes: map[string]string{"/app/certs": "certs"},
+	}
 	if err := base.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +77,12 @@ func TestContainerSpecValidation(t *testing.T) {
 		"reserved env":    func(s *ContainerSpec) { s.Env = map[string]string{"BOREAS_PORT": "1"} },
 		"reserved label":  func(s *ContainerSpec) { s.Labels = map[string]string{"task": "other"} },
 		"reserved label2": func(s *ContainerSpec) { s.Labels = map[string]string{"project": "other"} },
+		"relative target": func(s *ContainerSpec) { s.Volumes = map[string]string{"app": "certs"} },
+		"root target":     func(s *ContainerSpec) { s.Volumes = map[string]string{"/": "certs"} },
+		"unclean target":  func(s *ContainerSpec) { s.Volumes = map[string]string{"/a/../b": "certs"} },
+		"nested folder":   func(s *ContainerSpec) { s.Volumes = map[string]string{"/a": "configs/nginx"} },
+		"parent folder":   func(s *ContainerSpec) { s.Volumes = map[string]string{"/a": ".."} },
+		"empty folder":    func(s *ContainerSpec) { s.Volumes = map[string]string{"/a": ""} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := base

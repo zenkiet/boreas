@@ -119,6 +119,7 @@ type taskDTO struct {
 	UpdatedAt       time.Time         `json:"updated_at"`
 	Labels          map[string]string `json:"labels,omitempty"`
 	Env             map[string]string `json:"env"`
+	Volumes         map[string]string `json:"volumes,omitempty"`
 	Error           string            `json:"error,omitempty"`
 	PendingRecreate bool              `json:"pending_recreate,omitempty"`
 	MyRole          core.ProjectRole  `json:"my_role"`
@@ -133,7 +134,7 @@ func taskFromCore(t core.Task, role core.ProjectRole) taskDTO {
 		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
-		Labels: t.Labels, Env: t.Env, Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role,
+		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role,
 	}
 }
 
@@ -155,6 +156,7 @@ type createTaskRequest struct {
 	Port        int               `json:"port,omitempty" example:"80"`
 	Labels      map[string]string `json:"labels,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+	Volumes     map[string]string `json:"volumes,omitempty" example:"{\"/app/certs\":\"certs\"}"`
 }
 
 type updateTaskRequest struct {
@@ -167,6 +169,7 @@ type updateTaskRequest struct {
 	Port        *int               `json:"port,omitempty" example:"80"`
 	Labels      *map[string]string `json:"labels,omitempty"`
 	Env         *map[string]string `json:"env,omitempty"`
+	Volumes     *map[string]string `json:"volumes,omitempty"`
 	AutoRestart *bool              `json:"auto_restart,omitempty"`
 }
 
@@ -194,6 +197,11 @@ type streamLogsRequest struct {
 	Name    string    `json:"-" path:"name" example:"web"`
 	Tail    int       `query:"tail" minimum:"0" default:"100"`
 	Since   time.Time `query:"since"`
+}
+
+type foldersResponse struct {
+	Folders []string `json:"folders" example:"[\"certs\",\"init\"]"`
+	Total   int      `json:"total"`
 }
 
 type taskResponse struct {

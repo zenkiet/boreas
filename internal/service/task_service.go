@@ -76,6 +76,7 @@ type CreateTaskInput struct {
 	Port        int
 	Labels      map[string]string
 	Env         map[string]string
+	Volumes     map[string]string
 }
 
 func (s *TaskService) List(ctx context.Context, acc core.ProjectAccess) ([]core.Task, error) {
@@ -145,16 +146,19 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 	port := cmp.Or(in.Port, s.cfg.DefaultPort)
 	spec := core.ContainerSpec{
 		Project: project.Slug, Name: in.Name, Image: strings.TrimSpace(in.Image), Port: port,
-		Labels: maps.Clone(in.Labels), Env: maps.Clone(in.Env),
+		Labels: maps.Clone(in.Labels), Env: maps.Clone(in.Env), Volumes: maps.Clone(in.Volumes),
 	}
 	if err := spec.Validate(); err != nil {
+		return core.Task{}, err
+	}
+	if err := s.checkFolders(ctx, spec); err != nil {
 		return core.Task{}, err
 	}
 
 	task, err := s.tasks.Create(ctx, core.Task{
 		ProjectID: project.ID, Name: in.Name, Description: in.Description, Note: in.Note, Image: spec.Image,
 		Status: core.StatusCreating, DevStatus: core.DevInProgress, Port: port,
-		Labels: spec.Labels, Env: spec.Env,
+		Labels: spec.Labels, Env: spec.Env, Volumes: spec.Volumes,
 	})
 	if err != nil {
 		return core.Task{}, fmt.Errorf("reserve task %q: %w", in.Name, err)
@@ -301,6 +305,7 @@ type UpdateTaskInput struct {
 	Port        *int
 	Labels      *map[string]string
 	Env         *map[string]string
+	Volumes     *map[string]string
 }
 
 // Update avoids container churn for metadata-only edits and can defer container changes until the next start.
@@ -385,6 +390,12 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	if in.Env != nil {
 		spec.Env = maps.Clone(*in.Env)
 	}
+	if in.Volumes != nil {
+		spec.Volumes = maps.Clone(*in.Volumes)
+		if err := s.checkFolders(ctx, spec); err != nil {
+			return core.Task{}, err
+		}
+	}
 	if err := spec.Validate(); err != nil {
 		return core.Task{}, err
 	}
@@ -397,7 +408,7 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	noteChanged := in.Note != nil && *in.Note != task.Note
 	devStatusChanged := in.DevStatus != nil && *in.DevStatus != task.DevStatus
 	containerChanged := (recreate && task.PendingRecreate) || spec.Image != task.Image || spec.Port != task.Port ||
-		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env)
+		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env) || !maps.Equal(spec.Volumes, task.Volumes)
 	if !descriptionChanged && !noteChanged && !devStatusChanged && !containerChanged {
 		return task.Clone(), nil
 	}
@@ -434,7 +445,7 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 		}
 		_ = s.routes.Unregister(ctx, project.Slug, task.Name)
 	}
-	task.Image, task.Port, task.Labels, task.Env = spec.Image, spec.Port, spec.Labels, spec.Env
+	task.Image, task.Port, task.Labels, task.Env, task.Volumes = spec.Image, spec.Port, spec.Labels, spec.Env, spec.Volumes
 	// Clear stale failures because this configuration may fix them.
 	task.PendingRecreate, task.Status, task.ContainerIP, task.Error = true, core.StatusStopped, "", ""
 	if task, err = s.tasks.Update(ctx, task); err != nil {
@@ -459,6 +470,31 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 		return s.failTask(ctx, task, fmt.Errorf("start recreated container: %w", err))
 	}
 	return s.finishStart(ctx, task, project.Slug)
+}
+
+func (s *TaskService) Folders(ctx context.Context, slug string) ([]string, error) {
+	if err := core.ValidateProjectSlug(slug); err != nil {
+		return nil, err
+	}
+	folders, err := s.runtime.Folders(ctx, slug)
+	return folders, wrap("list folders", err)
+}
+
+// checkFolders turns a missing folder into a 400 at save time rather than a container that cannot start.
+func (s *TaskService) checkFolders(ctx context.Context, spec core.ContainerSpec) error {
+	if len(spec.Volumes) == 0 {
+		return nil
+	}
+	folders, err := s.Folders(ctx, spec.Project)
+	if err != nil {
+		return err
+	}
+	for _, folder := range spec.Volumes {
+		if !slices.Contains(folders, folder) {
+			return errors.Join(core.ErrInvalidInput, errors.New("folder does not exist: "+folder))
+		}
+	}
+	return nil
 }
 
 func (s *TaskService) Logs(ctx context.Context, slug, name string, opts core.LogOptions) (io.ReadCloser, error) {

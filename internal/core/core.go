@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -281,6 +282,7 @@ type Task struct {
 	ContainerIP     string
 	Labels          map[string]string
 	Env             map[string]string
+	Volumes         map[string]string
 	PendingRecreate bool
 	Error           string
 	CreatedAt       time.Time
@@ -296,12 +298,14 @@ func (t Task) Spec(projectSlug string) ContainerSpec {
 		Port:    t.Port,
 		Labels:  maps.Clone(t.Labels),
 		Env:     maps.Clone(t.Env),
+		Volumes: maps.Clone(t.Volumes),
 	}
 }
 
 func (t Task) Clone() Task {
 	t.Labels = maps.Clone(t.Labels)
 	t.Env = maps.Clone(t.Env)
+	t.Volumes = maps.Clone(t.Volumes)
 	return t
 }
 
@@ -332,6 +336,8 @@ type ContainerSpec struct {
 	Port    int
 	Labels  map[string]string
 	Env     map[string]string
+	// Container path to a folder of the project in the shared volume, mounted read-only.
+	Volumes map[string]string
 }
 
 func (s ContainerSpec) Validate() error {
@@ -354,6 +360,12 @@ func (s ContainerSpec) Validate() error {
 		switch key {
 		case "managed-by", "project", "task":
 			return errors.Join(ErrInvalidInput, errors.New("container label is reserved by Boreas: "+key))
+		}
+	}
+	for target, folder := range s.Volumes {
+		if !path.IsAbs(target) || path.Clean(target) != target || target == "/" ||
+			folder == "" || folder == "." || folder == ".." || strings.Contains(folder, "/") {
+			return errors.Join(ErrInvalidInput, errors.New("volume must map a clean absolute path other than / to a folder name: "+target))
 		}
 	}
 	return nil
@@ -400,6 +412,7 @@ type ContainerRuntime interface {
 	Start(context.Context, string) error
 	Stop(context.Context, string) error
 	Remove(context.Context, string) error
+	Folders(ctx context.Context, project string) ([]string, error)
 	Inspect(context.Context, string) (ContainerState, error)
 	Logs(context.Context, string, LogOptions) (io.ReadCloser, error)
 	TotalMemory(context.Context) (int64, error)

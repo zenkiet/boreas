@@ -87,6 +87,8 @@ func (s stubTasks) Metrics(c context.Context, acc core.ProjectAccess, name strin
 	return closed, nil
 }
 
+func (stubTasks) Folders(context.Context, string) ([]string, error) { return []string{}, nil }
+
 func (s stubTasks) SystemStats(c context.Context) (core.SystemStats, error) {
 	if s.stats != nil {
 		return s.stats(c)

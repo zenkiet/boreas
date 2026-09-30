@@ -23,6 +23,7 @@ type TaskService interface {
 	Restart(ctx context.Context, project, name string) (core.Task, error)
 	Delete(ctx context.Context, project, name string) error
 	Logs(ctx context.Context, project, name string, opts core.LogOptions) (io.ReadCloser, error)
+	Folders(ctx context.Context, project string) ([]string, error)
 	Metrics(ctx context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error)
 	SystemStats(context.Context) (core.SystemStats, error)
 }

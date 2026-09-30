@@ -181,10 +181,11 @@ All API routes are under `/api/v1`.
 | `POST`   | `/notifications/seen`                          | user          | Mark notifications seen                         |
 | `GET`    | `/projects/{project}/notifications`            | viewer        | List a project's notifications                  |
 | `GET`    | `/projects/{project}/metrics/stream`           | viewer        | Stream metrics for every running task over SSE  |
+| `GET`    | `/projects/{project}/folders`                  | viewer        | List the folders task volumes can mount         |
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
-| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, description, note, or dev status |
+| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, volumes, description, note, or dev status |
 | `POST`   | `/projects/{project}/tasks/{name}/deploy`      | operator      | Deploy an image built elsewhere                 |
 | `PUT`    | `/projects/{project}/tasks/{name}/state`       | operator      | Start, stop, or restart                         |
 | `DELETE` | `/projects/{project}/tasks/{name}`             | member        | Delete a task and its container                 |
@@ -274,6 +275,39 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
 
 Send `""` for `default_image` or `{}` for `default_env` to clear a default;
 omit a field to leave it unchanged. New projects start at `""`, `80`, and `{}`.
+
+## Volumes
+
+`volumes` mounts folders prepared by an administrator into a task, read-only:
+certificates, configuration, seed scripts. It maps a path in the container to
+one of the project's folders, and saving fails with `400` when the folder does
+not exist.
+
+```bash
+curl -H "$AUTH" http://localhost:8080/api/v1/projects/demo/folders
+# {"folders":["certs","init"],"total":2}
+
+curl -X PATCH -H "$AUTH" -H "$JSON" \
+  -d '{"volumes":{"/etc/certs":"certs","/docker-entrypoint-initdb.d":"init"}}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/db
+```
+
+The folders live in the `boreas-appdata` volume, one directory per project
+(`demo/certs`). A task reaches only its own project's folders; to share one
+between projects, symlink inside the volume (`demo/certs -> ../_shared/certs`).
+Boreas lists them through its own mount at `/opt/appdata`, so on a server back
+the volume with a host directory reserved for Boreas (Docker Engine 26 or later):
+
+```yaml
+volumes:
+  appdata:
+    name: boreas-appdata
+    driver: local
+    driver_opts: { type: none, o: bind, device: /opt/appdata/boreas }
+```
+
+Nothing a task writes survives its container: deploys, restarts and
+configuration changes start from the image again.
 
 ## Deploy from a build pipeline
 

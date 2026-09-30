@@ -372,6 +372,11 @@ func (h *Handler) revokeGrant(w http.ResponseWriter, r *http.Request) {
 		h.projects.Revoke(r.Context(), r.PathValue("project"), r.PathValue("name"), userID))
 }
 
+func (h *Handler) listFolders(w http.ResponseWriter, r *http.Request) {
+	folders, err := h.tasks.Folders(r.Context(), r.PathValue("project"))
+	h.reply(w, http.StatusOK, foldersResponse{Folders: folders, Total: len(folders)}, err)
+}
+
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	acc := accessFrom(r.Context())
 	tasks, err := h.tasks.List(r.Context(), acc)
@@ -396,7 +401,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 	task, err := h.tasks.Create(r.Context(), r.PathValue("project"), service.CreateTaskInput{
 		Name: req.Name, Description: req.Description, Note: req.Note, Image: req.Image,
-		Port: req.Port, Labels: req.Labels, Env: req.Env,
+		Port: req.Port, Labels: req.Labels, Env: req.Env, Volumes: req.Volumes,
 	})
 	h.reply(w, http.StatusCreated, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
 }
@@ -409,7 +414,7 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.tasks.Update(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		service.UpdateTaskInput{
 			Description: req.Description, Note: req.Note, DevStatus: req.DevStatus, Image: req.Image, Port: req.Port,
-			Labels: req.Labels, Env: req.Env,
+			Labels: req.Labels, Env: req.Env, Volumes: req.Volumes,
 		}, req.AutoRestart == nil || *req.AutoRestart)
 	h.reply(w, http.StatusOK, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
 }

@@ -676,3 +676,16 @@ func waitUntil(cond func() bool) bool {
 	}
 	return false
 }
+
+// A missing folder must fail the save, before a task row or container exists.
+func TestVolumesNeedAnExistingFolder(t *testing.T) {
+	h := newHarness(t)
+	in := CreateTaskInput{Name: "web", Image: "img", Volumes: map[string]string{"/app/certs": "certs"}}
+	if _, err := h.svc.Create(context.Background(), "team", in); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("missing folder: got %v, want ErrInvalidInput", err)
+	}
+	h.runtime.folders = []string{"certs"}
+	if _, err := h.svc.Create(context.Background(), "team", in); err != nil || h.runtime.created[0].Volumes["/app/certs"] != "certs" {
+		t.Fatalf("existing folder: %v, %+v", err, h.runtime.created)
+	}
+}

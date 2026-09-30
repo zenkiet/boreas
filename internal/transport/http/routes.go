@@ -251,6 +251,12 @@ var routeTable = [...]route{
 	},
 
 	{
+		method: http.MethodGet, path: "/api/v1/projects/{project}/folders", access: accessViewer, handler: (*Handler).listFolders,
+		tag: "projects", summary: "List the project's shared folders",
+		description: "The project's folders in the boreas-appdata volume, which task volumes mount read-only.",
+		req:         new(projectPath), resp: new(foldersResponse),
+	},
+	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks", access: accessViewer, handler: (*Handler).listTasks,
 		tag: "tasks", summary: "List tasks",
 		req: new(projectPath), resp: new(tasksResponse),
@@ -258,8 +264,9 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks", access: accessMember, handler: (*Handler).createTask,
 		tag: "tasks", summary: "Create a task",
-		description: "Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.",
-		req:         new(createTaskRequest), resp: new(taskResponse), status: http.StatusCreated,
+		description: "Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$. " +
+			"volumes maps a container path to one of the project's folders, mounted read-only; the folder must exist.",
+		req: new(createTaskRequest), resp: new(taskResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
@@ -270,7 +277,7 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPatch, path: "/api/v1/projects/{project}/tasks/{name}", access: accessMember, handler: (*Handler).updateTask,
 		tag: "tasks", summary: "Update a task",
-		description: "Only the fields sent are changed. image, port, labels and env need a new " +
+		description: "Only the fields sent are changed. image, port, labels, env and volumes need a new " +
 			"container: auto_restart applies it at once and defaults to true, otherwise the next " +
 			"start or restart does. description and dev_status leave a running container untouched. " +
 			"dev_status tracks the code, not the container: in_progress on create, blocked is not " +

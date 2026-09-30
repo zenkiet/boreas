@@ -8,13 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
@@ -110,6 +114,7 @@ func (r *Runtime) Create(ctx context.Context, spec core.ContainerSpec) (string, 
 			NetworkMode:   container.NetworkMode(r.network),
 			PortBindings:  nat.PortMap{port: []nat.PortBinding{}},
 			RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyMode(r.restartPolicy)},
+			Mounts:        mounts(spec),
 		}, &network.NetworkingConfig{}, nil, name)
 	}
 
@@ -124,6 +129,45 @@ func (r *Runtime) Create(ctx context.Context, spec core.ContainerSpec) (string, 
 		return "", mapError("create container for task "+spec.Project+"/"+spec.Name, err)
 	}
 	return response.ID, nil
+}
+
+// The admin-provided volume holds one folder per project; Boreas lists them through its own mount.
+const (
+	appdataVolume = "boreas-appdata"
+	appdataMount  = "/opt/appdata"
+)
+
+func mounts(spec core.ContainerSpec) []mount.Mount {
+	var result []mount.Mount
+	for target, folder := range spec.Volumes {
+		result = append(result, mount.Mount{
+			Type: mount.TypeVolume, Source: appdataVolume, Target: target, ReadOnly: true,
+			VolumeOptions: &mount.VolumeOptions{Subpath: spec.Project + "/" + folder},
+		})
+	}
+	return result
+}
+
+func (r *Runtime) Folders(_ context.Context, project string) ([]string, error) {
+	return folders(filepath.Join(appdataMount, project))
+}
+
+func folders(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list folders: %w", err)
+	}
+	names := []string{}
+	for _, entry := range entries {
+		// Stat follows symlinks, which is how an admin shares one folder between projects.
+		if info, err := os.Stat(filepath.Join(dir, entry.Name())); err == nil && info.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	return names, nil
 }
 
 // containerName keeps Docker identity stable when Boreas loses its database record.
@@ -173,7 +217,7 @@ func (r *Runtime) Stop(ctx context.Context, id string) error {
 }
 
 func (r *Runtime) Remove(ctx context.Context, id string) error {
-	return mapError("remove container "+id, r.client.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}))
+	return mapError("remove container "+id, r.client.ContainerRemove(ctx, id, container.RemoveOptions{Force: true, RemoveVolumes: true}))
 }
 
 func (r *Runtime) Inspect(ctx context.Context, id string) (core.ContainerState, error) {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,5 +88,35 @@ func TestCreateRefusesToTakeAContainerItDoesNotOwn(t *testing.T) {
 				t.Fatalf("a container Boreas does not own was removed: %+v, %v", state, err)
 			}
 		})
+	}
+}
+
+func TestMounts(t *testing.T) {
+	got := mounts(core.ContainerSpec{Project: "shop", Volumes: map[string]string{"/app/certs": "certs"}})
+	if len(got) != 1 || got[0].Source != appdataVolume || got[0].Target != "/app/certs" || !got[0].ReadOnly ||
+		got[0].VolumeOptions.Subpath != "shop/certs" {
+		t.Fatalf("mounts = %+v", got)
+	}
+}
+
+func TestFolders(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"certs", "init", "_shared"} {
+		if err := os.Mkdir(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("_shared", filepath.Join(dir, "tls")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := folders(dir)
+	if err != nil || strings.Join(got, ",") != "_shared,certs,init,tls" {
+		t.Fatalf("folders = %v, %v", got, err)
+	}
+	if missing, err := folders(filepath.Join(dir, "absent")); err != nil || len(missing) != 0 {
+		t.Fatalf("a project without a folder must list none: %v, %v", missing, err)
 	}
 }

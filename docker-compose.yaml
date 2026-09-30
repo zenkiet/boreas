@@ -31,6 +31,7 @@ services:
       - boreas-net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - appdata:/opt/appdata:ro
     environment:
       TZ: ${TZ:-Etc/UTC}
       BOREAS_DB_HOST: boreas-db
@@ -59,6 +60,10 @@ services:
     volumes:
       - ${APPRISE_PATH:-./apprise}:/config
     restart: ${RESTART_POLICY:-unless-stopped}
+
+volumes:
+  appdata:
+    name: boreas-appdata
 
 networks:
   boreas-net:

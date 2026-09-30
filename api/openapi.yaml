@@ -572,6 +572,54 @@ paths:
       summary: Update a project
       tags:
       - projects
+  /api/v1/projects/{project}/folders:
+    get:
+      description: The project's folders in the boreas-appdata volume, which task
+        volumes mount read-only.
+      operationId: get-projects-project-folders
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoldersResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List the project's shared folders
+      tags:
+      - projects
   /api/v1/projects/{project}/members:
     get:
       operationId: get-projects-project-members
@@ -1019,6 +1067,8 @@ paths:
       - tasks
     post:
       description: Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.
+        volumes maps a container path to one of the project's folders, mounted read-only;
+        the folder must exist.
       operationId: post-projects-project-tasks
       parameters:
       - in: path
@@ -1185,10 +1235,10 @@ paths:
       tags:
       - tasks
     patch:
-      description: 'Only the fields sent are changed. image, port, labels and env
-        need a new container: auto_restart applies it at once and defaults to true,
-        otherwise the next start or restart does. description and dev_status leave
-        a running container untouched. dev_status tracks the code, not the container:
+      description: 'Only the fields sent are changed. image, port, labels, env and
+        volumes need a new container: auto_restart applies it at once and defaults
+        to true, otherwise the next start or restart does. description and dev_status
+        leave a running container untouched. dev_status tracks the code, not the container:
         in_progress on create, blocked is not fit for QA, ready is.'
       operationId: patch-projects-project-tasks-name
       parameters:
@@ -2409,6 +2459,12 @@ components:
         port:
           example: 80
           type: integer
+        volumes:
+          additionalProperties:
+            type: string
+          example:
+            /app/certs: certs
+          type: object
       required:
       - name
       - image
@@ -2567,6 +2623,22 @@ components:
       - status
       - dev_status
       - my_role
+      type: object
+    FoldersResponse:
+      properties:
+        folders:
+          example:
+          - certs
+          - init
+          items:
+            type: string
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - folders
+      - total
       type: object
     Grant:
       properties:
@@ -2980,6 +3052,10 @@ components:
         updated_at:
           format: date-time
           type: string
+        volumes:
+          additionalProperties:
+            type: string
+          type: object
       required:
       - id
       - project_id
@@ -3110,6 +3186,11 @@ components:
           example: 80
           nullable: true
           type: integer
+        volumes:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
       type: object
     UpdateUserRequest:
       properties:

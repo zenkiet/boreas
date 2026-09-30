@@ -435,6 +435,7 @@ type fakeRuntime struct {
 	calls                     []string
 	// One scripted stream per container id; a missing id makes Stats fail.
 	statsFor map[string][]core.TaskMetric
+	folders  []string
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -485,6 +486,8 @@ func (f *fakeRuntime) Remove(_ context.Context, id string) error {
 	delete(f.states, id)
 	return nil
 }
+
+func (f *fakeRuntime) Folders(context.Context, string) ([]string, error) { return f.folders, nil }
 
 func (f *fakeRuntime) Inspect(_ context.Context, id string) (core.ContainerState, error) {
 	return f.states[id], nil
