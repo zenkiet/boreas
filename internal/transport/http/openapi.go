@@ -52,7 +52,7 @@ func requiredFromOmitEmpty(params jsonschema.InterceptPropParams) error {
 		return nil
 	}
 	tag, ok := params.Field.Tag.Lookup("json")
-	if !ok || strings.Contains(tag, ",omitempty") {
+	if !ok || strings.Contains(tag, ",omitempty") || strings.Contains(tag, ",omitzero") {
 		return nil
 	}
 	if !slices.Contains(params.ParentSchema.Required, params.Name) {

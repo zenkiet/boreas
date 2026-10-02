@@ -112,7 +112,7 @@ Within a project, four roles stack, each adding to the one before it:
 | Role       | Adds                                              |
 | ---------- | ------------------------------------------------- |
 | `viewer`   | Read tasks, logs, and deploy notifications        |
-| `operator` | Start, stop, restart, and deploy                  |
+| `operator` | Start, stop, restart, deploy, and report builds   |
 | `member`   | Create, update, and delete tasks                  |
 | `owner`    | Project settings, membership, and task grants     |
 
@@ -188,6 +188,7 @@ All API routes are under `/api/v1`.
 | `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, volumes, description, note, or dev status |
 | `POST`   | `/projects/{project}/tasks/{name}/deploy`      | operator      | Deploy an image built elsewhere                 |
 | `PUT`    | `/projects/{project}/tasks/{name}/state`       | operator      | Start, stop, or restart                         |
+| `PUT`    | `/projects/{project}/tasks/{name}/build`       | operator      | Report CI build progress                        |
 | `DELETE` | `/projects/{project}/tasks/{name}`             | member        | Delete a task and its container                 |
 | `GET`    | `/projects/{project}/tasks/{name}/logs`        | viewer        | Read task logs                                  |
 | `GET`    | `/projects/{project}/tasks/{name}/logs/stream` | viewer        | Stream logs over SSE                            |
@@ -348,6 +349,75 @@ Boreas pulls the image and recreates the container, restarting a running task
 and leaving a stopped one stopped. Deploying the image a task already runs
 changes nothing, so a pipeline may retry its callback safely.
 
+### Report build progress
+
+The same token can report the pipeline's progress, so the build shows in Boreas
+before anything is deployed. Any CI can do it with curl: call it as each stage
+starts, and once more when the run ends.
+
+```bash
+curl -X PUT -H "$AUTH" -H "$JSON" \
+  -d '{"state":"running","stage":"Test","progress":40,"url":"https://jenkins.example.com/job/web/42/"}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/web/build
+```
+
+- `state` is `running`, `success`, `failure` or `canceled`; `stage`, `progress`
+  (0-100, worked out by the pipeline) and `url` are optional.
+- Only the latest report is kept, shown as `build` on the task and in
+  `GET /projects`. `running` starts afresh; any other state keeps the stage,
+  progress and url it does not send, so a final hook needs only the outcome.
+- A build that turns to `failure` records a `build_failed` notification; other
+  states notify nothing, since a deploy already does.
+- Run one build per task at a time: a late report from an older run overwrites
+  the newer one until its next report.
+
+This script maps each CI's result words and never fails the build:
+
+```sh
+#!/bin/sh
+# boreas-report.sh STATE [STAGE] [PROGRESS]
+# env: BOREAS_URL BOREAS_TOKEN BOREAS_PROJECT BOREAS_TASK [BOREAS_RUN_URL]
+case "$1" in
+  running) state=running ;;
+  success|SUCCESS) state=success ;;
+  failure|failed|FAILURE|UNSTABLE) state=failure ;;
+  canceled|cancelled|ABORTED|NOT_BUILT) state=canceled ;;
+  *) echo "boreas-report: unknown state '$1'" >&2; exit 0 ;;
+esac
+curl -fsS --max-time 10 -X PUT -H "Authorization: Bearer $BOREAS_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"state\":\"$state\",\"stage\":\"${2:-}\",\"progress\":${3:-0},\"url\":\"${BOREAS_RUN_URL:-}\"}" \
+  "$BOREAS_URL/api/v1/projects/$BOREAS_PROJECT/tasks/$BOREAS_TASK/build" >/dev/null \
+  || echo "boreas-report: $state not recorded" >&2
+```
+
+Jenkins (declarative):
+
+```groovy
+environment {
+    BOREAS_TOKEN = credentials('boreas-token')
+    BOREAS_RUN_URL = "${env.BUILD_URL}"   // with BOREAS_URL, BOREAS_PROJECT and BOREAS_TASK
+}
+stages {
+    stage('Test')   { steps { sh 'ci/boreas-report.sh running Test 0';   sh 'make test' } }
+    stage('Image')  { steps { sh 'ci/boreas-report.sh running Image 40'; sh 'make image' } }
+    stage('Deploy') { steps { sh 'ci/boreas-report.sh running Deploy 90'; sh 'ci/deploy.sh' } }
+}
+post { always { sh "ci/boreas-report.sh ${currentBuild.currentResult}" } }
+```
+
+GitHub Actions ends the job with a step that always runs. GitLab CI runs each
+stage as its own job, so `after_script` reports only a job that did not succeed
+and the last job ends its `script` with `ci/boreas-report.sh success`:
+
+```yaml
+- if: always()
+  run: ci/boreas-report.sh ${{ job.status }}
+```
+
+```yaml
+after_script: ['[ "$CI_JOB_STATUS" = success ] || ci/boreas-report.sh "$CI_JOB_STATUS"']
+```
+
 List token metadata or revoke a token by ID with the login session:
 
 ```bash
@@ -419,6 +489,7 @@ arrival timestamp.
 | `task_created`   | `info`    | `📋 Task Created • Shop` / `web: Customer checkout service`                      |
 | `task_assigned`  | `info`    | `👤 Task Assigned • Shop` / `web: assigned to nam (member)`                      |
 | `status_changed` | `info`    | `🔄 Status Changed • Shop` / `web: In Progress ➔ Ready`                          |
+| `build_failed`   | `failure` | `🔨 Build Failed • Shop` / `web: failed at Test`                                 |
 
 Route on `type` and `project` (the slug), not on the title, which is for people.
 

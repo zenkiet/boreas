@@ -307,6 +307,14 @@ var routeTable = [...]route{
 		req: new(updateStateRequest), resp: new(taskStateResponse), extraErrors: []int{http.StatusBadRequest},
 	},
 	{
+		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/build", access: accessOperator, handler: (*Handler).reportBuild,
+		tag: "tasks", summary: "Report CI build progress",
+		description: "For a pipeline to call as each stage starts and once more when it ends, with the token it deploys with. " +
+			"Only the latest report is kept. A final report keeps the stage, progress and url of the running build it ends, " +
+			"and a build that turns to failure records a build_failed notification.",
+		req: new(reportBuildRequest), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest},
+	},
+	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/tasks/{name}/logs", access: accessViewer, handler: (*Handler).logs,
 		tag: "tasks", summary: "Read task logs",
 		req: new(logsRequest), resp: new(string),

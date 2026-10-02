@@ -57,6 +57,8 @@ func (s stubTasks) Update(c context.Context, project, name string, in service.Up
 	return core.Task{}, nil
 }
 
+func (stubTasks) ReportBuild(context.Context, string, string, core.Build) error { return nil }
+
 func (s stubTasks) Deploy(c context.Context, project, name, image string) (core.Task, error) {
 	if s.deploy != nil {
 		return s.deploy(c, project, name, image)

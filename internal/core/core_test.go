@@ -103,3 +103,21 @@ func TestTaskCloneDoesNotAliasMaps(t *testing.T) {
 		t.Fatal("Clone aliases task maps")
 	}
 }
+
+func TestBuildValidate(t *testing.T) {
+	if err := (Build{State: BuildRunning}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, b := range map[string]Build{
+		"state":         {State: "stale"},
+		"progress":      {State: BuildRunning, Progress: 101},
+		"long stage":    {State: BuildRunning, Stage: strings.Repeat("x", 101)},
+		"control stage": {State: BuildRunning, Stage: "a\x00b"},
+		"script url":    {State: BuildRunning, URL: "javascript:alert(1)"},
+		"relative url":  {State: BuildRunning, URL: "/job/42"},
+	} {
+		if err := b.Validate(); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("%s: got %v, want ErrInvalidInput", name, err)
+		}
+	}
+}

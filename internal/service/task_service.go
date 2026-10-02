@@ -472,6 +472,36 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	return s.finishStart(ctx, task, project.Slug)
 }
 
+// ReportBuild skips the task lock, which a deploy holds through its pull and readiness wait.
+func (s *TaskService) ReportBuild(ctx context.Context, slug, name string, build core.Build) error {
+	build.Stage = strings.TrimSpace(build.Stage)
+	if err := build.Validate(); err != nil {
+		return err
+	}
+	task, project, err := s.get(ctx, slug, name)
+	if err != nil {
+		return err
+	}
+	previous := task.Build
+	if build.State != core.BuildRunning {
+		// A post hook does not know the stage it failed at; keep where the run got to. Only running starts afresh.
+		build.Stage, build.Progress = cmp.Or(build.Stage, previous.Stage), cmp.Or(build.Progress, previous.Progress)
+		build.URL = cmp.Or(build.URL, previous.URL)
+	}
+	build.At = time.Now().UTC()
+	if err := s.tasks.SetBuild(ctx, task.ID, build); err != nil {
+		return fmt.Errorf("record build: %w", err)
+	}
+	if build.State == core.BuildFailure && previous.State != core.BuildFailure {
+		detail := "build failed"
+		if build.Stage != "" {
+			detail = "failed at " + build.Stage
+		}
+		s.cfg.Notify(ctx, notification(project, name, core.NotificationBuildFailed, "🔨 Build Failed", detail))
+	}
+	return nil
+}
+
 func (s *TaskService) Folders(ctx context.Context, slug string) ([]string, error) {
 	if err := core.ValidateProjectSlug(slug); err != nil {
 		return nil, err

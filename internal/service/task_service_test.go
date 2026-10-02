@@ -689,3 +689,31 @@ func TestVolumesNeedAnExistingFolder(t *testing.T) {
 		t.Fatalf("existing folder: %v, %+v", err, h.runtime.created)
 	}
 }
+
+// A post hook reports only the outcome: it must keep the stage and notify a failure once.
+func TestReportBuild(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Create(context.Background(), "team", CreateTaskInput{Name: "web", Image: "img"}); err != nil {
+		t.Fatal(err)
+	}
+	h.notified, h.runtime.calls = nil, nil
+	running := core.Build{State: core.BuildRunning, Stage: "Test", Progress: 40, URL: "https://ci.example.com/42"}
+	for _, b := range []core.Build{running, {State: core.BuildFailure}, {State: core.BuildFailure}} {
+		if err := h.svc.ReportBuild(context.Background(), "team", "web", b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	task, _ := h.svc.Get(context.Background(), "team", "web")
+	if b := task.Build; b.State != core.BuildFailure || b.Stage != "Test" || b.Progress != 40 || b.URL != running.URL || b.At.IsZero() {
+		t.Fatalf("build = %+v", b)
+	}
+	if len(h.notified) != 1 || h.notified[0].Type != core.NotificationBuildFailed || h.notified[0].Body != "web: failed at Test" {
+		t.Fatalf("notified %+v, want one build_failed", h.notified)
+	}
+	if len(h.runtime.calls) != 0 {
+		t.Fatalf("a build report touched the runtime: %v", h.runtime.calls)
+	}
+	if err := h.svc.ReportBuild(context.Background(), "team", "absent", running); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("unknown task: got %v, want ErrNotFound", err)
+	}
+}

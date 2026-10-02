@@ -1307,6 +1307,73 @@ paths:
       summary: Update a task
       tags:
       - tasks
+  /api/v1/projects/{project}/tasks/{name}/build:
+    put:
+      description: For a pipeline to call as each stage starts and once more when
+        it ends, with the token it deploys with. Only the latest report is kept. A
+        final report keeps the stage, progress and url of the running build it ends,
+        and a build that turns to failure records a build_failed notification.
+      operationId: put-projects-project-tasks-name-build
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportBuildRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Report CI build progress
+      tags:
+      - tasks
   /api/v1/projects/{project}/tasks/{name}/deploy:
     post:
       description: For a build pipeline to call after pushing an image. The image
@@ -2368,6 +2435,30 @@ components:
       required:
       - user_id
       type: object
+    Build:
+      properties:
+        at:
+          format: date-time
+          type: string
+        progress:
+          type: integer
+        stage:
+          type: string
+        state:
+          $ref: '#/components/schemas/BuildState'
+        url:
+          type: string
+      required:
+      - state
+      - at
+      type: object
+    BuildState:
+      enum:
+      - running
+      - success
+      - failure
+      - canceled
+      type: string
     CreateAPITokenRequest:
       properties:
         name:
@@ -2601,6 +2692,8 @@ components:
       type: object
     FleetTask:
       properties:
+        build:
+          $ref: '#/components/schemas/Build'
         description:
           type: string
         dev_status:
@@ -2817,6 +2910,7 @@ components:
       - status_changed
       - task_created
       - task_assigned
+      - build_failed
       type: string
     NotificationsResponse:
       properties:
@@ -2973,6 +3067,26 @@ components:
       - ghcr
       - dockerhub
       type: string
+    ReportBuildRequest:
+      properties:
+        progress:
+          example: 40
+          maximum: 100
+          minimum: 0
+          type: integer
+        stage:
+          example: Test
+          maxLength: 100
+          type: string
+        state:
+          $ref: '#/components/schemas/BuildState'
+        url:
+          example: https://jenkins.example.com/job/web/42/
+          format: uri
+          type: string
+      required:
+      - state
+      type: object
     SuccessResponse:
       properties:
         success:
@@ -3003,6 +3117,8 @@ components:
       type: object
     Task:
       properties:
+        build:
+          $ref: '#/components/schemas/Build'
         container_id:
           type: string
         container_ip:

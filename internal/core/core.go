@@ -6,11 +6,14 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"net/url"
 	"path"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -122,12 +125,13 @@ const (
 	NotificationStatusChanged NotificationType = "status_changed"
 	NotificationTaskCreated   NotificationType = "task_created"
 	NotificationTaskAssigned  NotificationType = "task_assigned"
+	NotificationBuildFailed   NotificationType = "build_failed"
 )
 
 func (NotificationType) Enum() []any {
 	return []any{
 		NotificationDeployed, NotificationDeployFailed, NotificationStatusChanged,
-		NotificationTaskCreated, NotificationTaskAssigned,
+		NotificationTaskCreated, NotificationTaskAssigned, NotificationBuildFailed,
 	}
 }
 
@@ -136,7 +140,7 @@ func (t NotificationType) Status() NotificationStatus {
 	switch t {
 	case NotificationDeployed:
 		return NotificationSuccess
-	case NotificationDeployFailed:
+	case NotificationDeployFailed, NotificationBuildFailed:
 		return NotificationFailure
 	}
 	return NotificationInfo
@@ -283,6 +287,7 @@ type Task struct {
 	Labels          map[string]string
 	Env             map[string]string
 	Volumes         map[string]string
+	Build           Build
 	PendingRecreate bool
 	Error           string
 	CreatedAt       time.Time
@@ -307,6 +312,41 @@ func (t Task) Clone() Task {
 	t.Env = maps.Clone(t.Env)
 	t.Volumes = maps.Clone(t.Volumes)
 	return t
+}
+
+type BuildState string
+
+const (
+	BuildRunning  BuildState = "running"
+	BuildSuccess  BuildState = "success"
+	BuildFailure  BuildState = "failure"
+	BuildCanceled BuildState = "canceled"
+)
+
+func (BuildState) Enum() []any { return []any{BuildRunning, BuildSuccess, BuildFailure, BuildCanceled} }
+
+// Build is the latest report a CI pipeline sent for a task; the zero value means none yet.
+type Build struct {
+	State    BuildState `json:"state"`
+	Stage    string     `json:"stage,omitempty"`
+	Progress int        `json:"progress,omitempty"`
+	URL      string     `json:"url,omitempty"`
+	At       time.Time  `json:"at"`
+}
+
+func (b Build) Validate() error {
+	link, err := url.Parse(b.URL)
+	switch {
+	case !slices.Contains([]BuildState{BuildRunning, BuildSuccess, BuildFailure, BuildCanceled}, b.State):
+		return errors.Join(ErrInvalidInput, errors.New("build state must be running, success, failure, or canceled"))
+	case utf8.RuneCountInString(b.Stage) > 100 || strings.ContainsFunc(b.Stage, unicode.IsControl):
+		return errors.Join(ErrInvalidInput, errors.New("build stage must be at most 100 printable characters"))
+	case b.Progress < 0 || b.Progress > 100:
+		return errors.Join(ErrInvalidInput, errors.New("build progress must be between 0 and 100"))
+	case b.URL != "" && (err != nil || len(b.URL) > 2048 || link.Host == "" || (link.Scheme != "http" && link.Scheme != "https")):
+		return errors.Join(ErrInvalidInput, errors.New("build url must be an absolute http or https URL"))
+	}
+	return nil
 }
 
 // FleetTask is a task as one caller sees it across every project they reach.
@@ -426,6 +466,7 @@ type TaskStore interface {
 	GetByName(ctx context.Context, projectID uuid.UUID, name string) (Task, error)
 	Create(context.Context, Task) (Task, error)
 	Update(context.Context, Task) (Task, error)
+	SetBuild(ctx context.Context, id uuid.UUID, build Build) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 

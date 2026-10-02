@@ -54,6 +54,36 @@ func seedProject(t *testing.T, pool *pgxpool.Pool) core.Project {
 	return project
 }
 
+// A report must neither look like a task edit nor be lost to a whole-row Update from an older copy.
+func TestSetBuild(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	store := NewTaskStore(pool)
+	task, err := store.Create(ctx, core.Task{ProjectID: seedProject(t, pool).ID, Name: "web", Image: "img", Status: core.StatusRunning, Port: 80})
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := core.Build{State: core.BuildRunning, Stage: "Test", Progress: 40, At: time.Now().UTC().Truncate(time.Microsecond)}
+	if err := store.SetBuild(ctx, task.ID, build); err != nil {
+		t.Fatal(err)
+	}
+	stale := task
+	stale.Description = "edited"
+	if _, err := store.Update(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetByName(ctx, task.ProjectID, "web")
+	if err != nil || got.Build.Stage != "Test" || got.Build.Progress != 40 || !got.Build.At.Equal(build.At) {
+		t.Fatalf("build lost: %+v, %v", got.Build, err)
+	}
+	if err := store.SetBuild(ctx, task.ID, core.Build{State: core.BuildFailure}); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := store.GetByName(ctx, task.ProjectID, "web"); !after.UpdatedAt.Equal(got.UpdatedAt) {
+		t.Fatalf("a build report bumped updated_at: %v -> %v", got.UpdatedAt, after.UpdatedAt)
+	}
+}
+
 func TestTaskStoreRoundTrip(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
@@ -310,6 +340,7 @@ func TestLastDeploys(t *testing.T) {
 	web, idle := create("web"), create("idle")
 	notify(core.NotificationDeployed)
 	notify(core.NotificationStatusChanged)
+	notify(core.NotificationBuildFailed)
 
 	deploys, err := notifications.LastDeploys(ctx)
 	if err != nil {

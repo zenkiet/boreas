@@ -18,6 +18,7 @@ type TaskService interface {
 	Create(ctx context.Context, project string, in service.CreateTaskInput) (core.Task, error)
 	Update(ctx context.Context, project, name string, in service.UpdateTaskInput, recreate bool) (core.Task, error)
 	Deploy(ctx context.Context, project, name, image string) (core.Task, error)
+	ReportBuild(ctx context.Context, project, name string, build core.Build) error
 	Start(ctx context.Context, project, name string) (core.Task, error)
 	Stop(ctx context.Context, project, name string) (core.Task, error)
 	Restart(ctx context.Context, project, name string) (core.Task, error)

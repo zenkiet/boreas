@@ -122,6 +122,7 @@ type taskDTO struct {
 	Volumes         map[string]string `json:"volumes,omitempty"`
 	Error           string            `json:"error,omitempty"`
 	PendingRecreate bool              `json:"pending_recreate,omitempty"`
+	Build           core.Build        `json:"build,omitzero"`
 	MyRole          core.ProjectRole  `json:"my_role"`
 }
 
@@ -135,6 +136,7 @@ func taskFromCore(t core.Task, role core.ProjectRole) taskDTO {
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role,
+		Build: t.Build,
 	}
 }
 
@@ -171,6 +173,15 @@ type updateTaskRequest struct {
 	Env         *map[string]string `json:"env,omitempty"`
 	Volumes     *map[string]string `json:"volumes,omitempty"`
 	AutoRestart *bool              `json:"auto_restart,omitempty"`
+}
+
+type reportBuildRequest struct {
+	Project  string          `json:"-" path:"project" example:"demo"`
+	Name     string          `json:"-" path:"name" example:"web"`
+	State    core.BuildState `json:"state"`
+	Stage    string          `json:"stage,omitempty" maxLength:"100" example:"Test"`
+	Progress int             `json:"progress,omitempty" minimum:"0" maximum:"100" example:"40"`
+	URL      string          `json:"url,omitempty" format:"uri" example:"https://jenkins.example.com/job/web/42/"`
 }
 
 type deployTaskRequest struct {
@@ -316,6 +327,7 @@ type fleetTaskDTO struct {
 	DevStatus   core.DevStatus   `json:"dev_status"`
 	MyRole      core.ProjectRole `json:"my_role"`
 	LastDeploy  *lastDeployDTO   `json:"last_deploy,omitempty"`
+	Build       core.Build       `json:"build,omitzero"`
 }
 
 type lastDeployDTO struct {

@@ -183,7 +183,7 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 		for j, task := range fleet[acc.Project.ID] {
 			tasks[j] = fleetTaskDTO{
 				Name: task.Name, Description: task.Description, Image: task.Image,
-				Status: task.Status, DevStatus: task.DevStatus, MyRole: task.Role,
+				Status: task.Status, DevStatus: task.DevStatus, MyRole: task.Role, Build: task.Build,
 			}
 			if task.LastDeploy != nil {
 				tasks[j].LastDeploy = &lastDeployDTO{Status: task.LastDeploy.Status, At: task.LastDeploy.CreatedAt}
@@ -426,6 +426,15 @@ func (h *Handler) deployTask(w http.ResponseWriter, r *http.Request) {
 	}
 	task, err := h.tasks.Deploy(r.Context(), r.PathValue("project"), r.PathValue("name"), req.Image)
 	h.reply(w, http.StatusOK, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
+}
+
+func (h *Handler) reportBuild(w http.ResponseWriter, r *http.Request) {
+	var req reportBuildRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	h.reply(w, http.StatusOK, succeeded, h.tasks.ReportBuild(r.Context(), r.PathValue("project"), r.PathValue("name"),
+		core.Build{State: req.State, Stage: req.Stage, Progress: req.Progress, URL: req.URL}))
 }
 
 func (h *Handler) updateState(w http.ResponseWriter, r *http.Request) {

@@ -226,7 +226,7 @@ func TestFleetScopesTasksAndRoles(t *testing.T) {
 		}
 	}
 	if _, err := svc.notifications.Create(ctx, core.Notification{
-		ProjectID: project.ID, TaskName: "web", Status: core.NotificationSuccess,
+		ProjectID: project.ID, TaskName: "web", Type: core.NotificationDeployed, Status: core.NotificationSuccess,
 	}); err != nil {
 		t.Fatal(err)
 	}

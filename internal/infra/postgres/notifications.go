@@ -75,7 +75,7 @@ func (s *NotificationStore) LastDeploys(ctx context.Context) (map[uuid.UUID]core
 		CROSS JOIN LATERAL (
 			SELECT n.status, n.created_at FROM notifications n
 			WHERE n.project_id = t.project_id AND n.task_name = t.name
-			  AND n.status <> 'info' AND n.created_at >= t.created_at
+			  AND n.type IN ('deployed', 'deploy_failed') AND n.created_at >= t.created_at
 			ORDER BY n.created_at DESC LIMIT 1) d`)
 	if err != nil {
 		return nil, mapError("list last deploys", err)

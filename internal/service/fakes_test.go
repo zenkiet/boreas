@@ -81,9 +81,17 @@ func (f *fakeTaskStore) Create(_ context.Context, task core.Task) (core.Task, er
 }
 
 func (f *fakeTaskStore) Update(_ context.Context, task core.Task) (core.Task, error) {
-	task.CreatedAt, task.UpdatedAt = f.tasks[task.ID].CreatedAt, f.tick()
+	existing := f.tasks[task.ID]
+	task.CreatedAt, task.Build, task.UpdatedAt = existing.CreatedAt, existing.Build, f.tick()
 	f.tasks[task.ID] = task.Clone()
 	return task.Clone(), nil
+}
+
+func (f *fakeTaskStore) SetBuild(_ context.Context, id uuid.UUID, build core.Build) error {
+	task := f.tasks[id]
+	task.Build = build
+	f.tasks[id] = task
+	return nil
 }
 
 func (f *fakeTaskStore) Delete(_ context.Context, id uuid.UUID) error {
@@ -266,7 +274,7 @@ func (f *fakeNotificationStore) LastDeploys(context.Context) (map[uuid.UUID]core
 	deploys := map[uuid.UUID]core.Notification{}
 	for id, task := range f.tasks.tasks {
 		for _, n := range f.notifications {
-			if n.ProjectID == task.ProjectID && n.TaskName == task.Name && n.Status != core.NotificationInfo {
+			if n.ProjectID == task.ProjectID && n.TaskName == task.Name && (n.Type == core.NotificationDeployed || n.Type == core.NotificationDeployFailed) {
 				deploys[id] = n // oldest first, so the newest wins
 			}
 		}

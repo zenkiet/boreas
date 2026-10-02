@@ -15,7 +15,7 @@ type TaskStore struct{ pool *pgxpool.Pool }
 func NewTaskStore(pool *pgxpool.Pool) *TaskStore { return &TaskStore{pool: pool} }
 
 const taskColumns = `id, project_id, name, description, note, image, status, dev_status, port,
-	container_id, container_ip, labels, env, volumes, pending_recreate, error, created_at, updated_at`
+	container_id, container_ip, labels, env, volumes, build, pending_recreate, error, created_at, updated_at`
 
 func (s *TaskStore) List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool) ([]core.Task, error) {
 	return many(ctx, s.pool, scanTask, "list tasks", "scan tasks", `
@@ -61,6 +61,11 @@ func (s *TaskStore) Update(ctx context.Context, task core.Task) (core.Task, erro
 		nonNilMap(task.Volumes), task.PendingRecreate, task.Error)
 }
 
+// SetBuild writes only build: Update rewrites the row from a copy read earlier, so it must never carry it.
+func (s *TaskStore) SetBuild(ctx context.Context, id uuid.UUID, build core.Build) error {
+	return deleteRow(ctx, s.pool, "set task build", `UPDATE tasks SET build = $2 WHERE id = $1`, id, build)
+}
+
 func (s *TaskStore) Delete(ctx context.Context, id uuid.UUID) error {
 	return deleteRow(ctx, s.pool, "delete task", `DELETE FROM tasks WHERE id = $1`, id)
 }
@@ -68,7 +73,7 @@ func (s *TaskStore) Delete(ctx context.Context, id uuid.UUID) error {
 func scanTask(row pgx.CollectableRow) (core.Task, error) {
 	var t core.Task
 	err := row.Scan(&t.ID, &t.ProjectID, &t.Name, &t.Description, &t.Note, &t.Image, &t.Status, &t.DevStatus, &t.Port,
-		&t.ContainerID, &t.ContainerIP, &t.Labels, &t.Env, &t.Volumes, &t.PendingRecreate, &t.Error,
+		&t.ContainerID, &t.ContainerIP, &t.Labels, &t.Env, &t.Volumes, &t.Build, &t.PendingRecreate, &t.Error,
 		&t.CreatedAt, &t.UpdatedAt)
 	t.Labels, t.Env, t.Volumes = nonNilMap(t.Labels), nonNilMap(t.Env), nonNilMap(t.Volumes)
 	return t, err
