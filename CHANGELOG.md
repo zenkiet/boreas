@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.14.0 - 2026-10-02
+#### 🚀 Features
+- (**task**) ✨ add build progress tracking for tasks - (016d327) - *zenkiet*
+
+- - -
+
 ## v1.13.0 - 2026-09-30
 #### 🚀 Features
 - ✨ implement binding volumes for task - (92e85c7) - *zenkiet*
