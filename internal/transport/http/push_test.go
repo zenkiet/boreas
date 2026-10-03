@@ -13,7 +13,7 @@ import (
 const testDeviceToken = "cH9x2Qk7RtqB:APA91bH-x9Kd2Qw_ErTyUiOp"
 
 func pushHandler(push PushStore) http.Handler {
-	return APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, push, "test", slog.New(slog.DiscardHandler))
+	return APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, push, nil, "test", slog.New(slog.DiscardHandler))
 }
 
 // Both directions pass the caller's own ID, which is what scopes the store to their devices.

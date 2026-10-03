@@ -72,8 +72,8 @@ type PushStore interface {
 const maxRequestBytes = 1 << 20
 
 // APIHandler serves the API and applies each route's declared access policy.
-func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, version string, logger *slog.Logger) http.Handler {
-	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, version: version, logger: logger}
+func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, events *Hub, version string, logger *slog.Logger) http.Handler {
+	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, events: events, version: version, logger: logger}
 
 	mux := http.NewServeMux()
 	for _, r := range routeTable {

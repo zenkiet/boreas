@@ -28,6 +28,7 @@ func sse[T any](w http.ResponseWriter, r *http.Request, events <-chan T, encode 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // nginx would otherwise hold events back
 	w.WriteHeader(http.StatusOK)
 	rc := http.NewResponseController(w)
 	_ = rc.Flush()

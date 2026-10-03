@@ -710,6 +710,10 @@ func TestReportBuild(t *testing.T) {
 	if len(h.notified) != 1 || h.notified[0].Type != core.NotificationBuildFailed || h.notified[0].Body != "web: failed at Test" {
 		t.Fatalf("notified %+v, want one build_failed", h.notified)
 	}
+	nextRun := core.Build{State: core.BuildFailure, URL: "https://ci.example.com/43"}
+	if err := h.svc.ReportBuild(context.Background(), "team", "web", nextRun); err != nil || len(h.notified) != 2 {
+		t.Fatalf("another run failing: err %v, notified %d, want 2", err, len(h.notified))
+	}
 	if len(h.runtime.calls) != 0 {
 		t.Fatalf("a build report touched the runtime: %v", h.runtime.calls)
 	}

@@ -492,7 +492,8 @@ func (s *TaskService) ReportBuild(ctx context.Context, slug, name string, build 
 	if err := s.tasks.SetBuild(ctx, task.ID, build); err != nil {
 		return fmt.Errorf("record build: %w", err)
 	}
-	if build.State == core.BuildFailure && previous.State != core.BuildFailure {
+	// A run with another URL is a new failure; a hook repeating the same run's result is not.
+	if build.State == core.BuildFailure && (previous.State != core.BuildFailure || build.URL != previous.URL) {
 		detail := "build failed"
 		if build.Stage != "" {
 			detail = "failed at " + build.Stage

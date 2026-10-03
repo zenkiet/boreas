@@ -162,6 +162,7 @@ All API routes are under `/api/v1`.
 | `POST`   | `/auth/tokens`                                 | login session | Create an API token                             |
 | `DELETE` | `/auth/tokens/{id}`                            | login session | Revoke one of your API tokens                   |
 | `GET`    | `/stats`                                       | user          | Service statistics                              |
+| `GET`    | `/events/stream`                               | login session | Signal changes over SSE, so clients refetch     |
 | `GET`    | `/users`                                       | admin         | List users                                      |
 | `POST`   | `/users`                                       | admin         | Create a user                                   |
 | `PATCH`  | `/users/{id}`                                  | admin         | Update a user                                   |
@@ -433,6 +434,13 @@ after a disconnect, pass the last timestamp received as `since`:
 curl -N -H "Authorization: Bearer $TOKEN" \
   'http://localhost:8080/api/v1/projects/demo/tasks/web/logs/stream?since=2026-01-02T03:04:05.123456789Z'
 ```
+
+To keep a screen current without polling, hold `GET /api/v1/events/stream`
+open with the login session. It sends `{}` on connect and after any task or
+notification change, never what changed, so refetch what the screen shows,
+such as `GET /api/v1/projects`. A burst of changes arrives as one event. A proxy
+in front of Boreas must pass streams through unbuffered; Boreas sends
+`X-Accel-Buffering: no` for nginx.
 
 ## Resource metrics
 

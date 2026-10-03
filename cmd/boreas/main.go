@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/config"
 	"github.com/zenkiet/boreas/internal/core"
 	"github.com/zenkiet/boreas/internal/infra/apprise"
@@ -69,7 +70,8 @@ func run(logger *slog.Logger) error {
 	users := pginfra.NewUserStore(pool)
 	tokens := pginfra.NewTokenStore(pool)
 	projectStore := pginfra.NewProjectStore(pool)
-	taskStore := pginfra.NewTaskStore(pool)
+	events := httptransport.NewHub()
+	taskStore := publishingTasks{pginfra.NewTaskStore(pool), events}
 	credentials := pginfra.NewCredentialStore(pool)
 	notifications := pginfra.NewNotificationStore(pool)
 	grants := pginfra.NewGrantStore(pool)
@@ -112,7 +114,7 @@ func run(logger *slog.Logger) error {
 		}
 	}
 	teamSender := apprise.New(cfg.TeamNotifyURL(), notifyTimeout)
-	notify := notifier(notifications, sender, teamSender, logger)
+	notify := notifier(notifications, events, sender, teamSender, logger)
 
 	projects, err := service.NewProjectService(projectStore, credentials, notifications, grants, taskStore)
 	if err != nil {
@@ -137,7 +139,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	handler := httptransport.ApplicationHandler(
-		httptransport.APIHandler(tasks, auth, projects, push, version, logger),
+		httptransport.APIHandler(tasks, auth, projects, push, events, version, logger),
 		routes,
 		logger,
 	)
@@ -148,6 +150,7 @@ func run(logger *slog.Logger) error {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	server.RegisterOnShutdown(events.Close)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -175,7 +178,7 @@ func run(logger *slog.Logger) error {
 	return nil
 }
 
-func notifier(store *pginfra.NotificationStore, sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
+func notifier(store *pginfra.NotificationStore, events *httptransport.Hub, sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
 	return func(ctx context.Context, n core.Notification) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), notifyTimeout)
@@ -183,6 +186,7 @@ func notifier(store *pginfra.NotificationStore, sender, team *apprise.Sender, lo
 			if _, err := store.Create(ctx, n); err != nil {
 				logger.Error("record notification", "error", err)
 			}
+			events.Publish() // the fleet's last deploy reads this row
 			if err := sender.Send(ctx, n); err != nil {
 				logger.Error("push notification", "error", err)
 			}
@@ -213,4 +217,31 @@ func seedAdmin(ctx context.Context, auth *service.AuthService, users *pginfra.Us
 		return errors.New("no users exist: set BOREAS_ADMIN_USERNAME, BOREAS_ADMIN_EMAIL, and BOREAS_ADMIN_PASSWORD to create the first administrator")
 	}
 	return nil
+}
+
+// publishingTasks signals open event streams after every task write, a deploy's interim states included;
+// a write method added to core.TaskStore must be wrapped here too.
+type publishingTasks struct {
+	core.TaskStore
+	events *httptransport.Hub
+}
+
+func (s publishingTasks) Create(ctx context.Context, task core.Task) (core.Task, error) {
+	defer s.events.Publish()
+	return s.TaskStore.Create(ctx, task)
+}
+
+func (s publishingTasks) Update(ctx context.Context, task core.Task) (core.Task, error) {
+	defer s.events.Publish()
+	return s.TaskStore.Update(ctx, task)
+}
+
+func (s publishingTasks) SetBuild(ctx context.Context, id uuid.UUID, build core.Build) error {
+	defer s.events.Publish()
+	return s.TaskStore.SetBuild(ctx, id, build)
+}
+
+func (s publishingTasks) Delete(ctx context.Context, id uuid.UUID) error {
+	defer s.events.Publish()
+	return s.TaskStore.Delete(ctx, id)
 }

@@ -53,6 +53,14 @@ var routeTable = [...]route{
 		tag: "system", summary: "Service statistics",
 		resp: new(systemStatsDTO),
 	},
+	{
+		method: http.MethodGet, path: "/api/v1/events/stream", access: accessSession, handler: (*Handler).streamEvents,
+		tag: "system", summary: "Stream change signals",
+		description: "Server-Sent Events carrying {} once on connect and after any task or notification change, " +
+			"with nothing about what changed: refetch what you show, such as GET /api/v1/projects. " +
+			"Bursts arrive as one event, and a comment heartbeat fills idle time. " + readSSE,
+		resp: new(string), contentType: "text/event-stream",
+	},
 
 	{
 		method: http.MethodPost, path: "/api/v1/auth/login", access: accessPublic, handler: (*Handler).login,

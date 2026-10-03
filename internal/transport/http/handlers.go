@@ -19,6 +19,7 @@ type Handler struct {
 	auth     AuthService
 	projects ProjectService
 	push     PushStore
+	events   *Hub
 	version  string
 	logger   *slog.Logger
 }

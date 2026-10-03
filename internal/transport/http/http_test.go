@@ -27,7 +27,7 @@ func testHandler(tasks TaskService, auth AuthService, projects ProjectService) h
 	if projects == nil {
 		projects = &stubProjects{}
 	}
-	return APIHandler(tasks, auth, projects, &stubPush{}, "test", slog.New(slog.DiscardHandler))
+	return APIHandler(tasks, auth, projects, &stubPush{}, nil, "test", slog.New(slog.DiscardHandler))
 }
 
 func authed(method, target string, body io.Reader) *http.Request {
@@ -568,7 +568,7 @@ func TestUpdateTaskForwardsOnlySuppliedFields(t *testing.T) {
 
 // Preflight must advertise every routed method because browsers reject missing methods.
 func TestCORSAdvertisesEveryRoutedMethod(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, "test", slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, nil, "test", slog.New(slog.DiscardHandler))
 	r := httptest.NewRequest(http.MethodOptions, "/api/v1/projects/team/tasks/T", nil)
 	r.Header.Set("Origin", "http://localhost:4200")
 	headers := do(h, r).Header()
@@ -723,5 +723,25 @@ func TestMetricsStreamPropagatesServiceErrors(t *testing.T) {
 	}
 	if ct := rr.Header().Get("Content-Type"); strings.Contains(ct, "event-stream") {
 		t.Fatalf("a failed stream must not claim to be SSE: %q", ct)
+	}
+}
+
+func TestEventsStream(t *testing.T) {
+	hub := NewHub()
+	events, unsubscribe := hub.subscribe()
+	defer unsubscribe()
+	<-events // sent on connect
+	hub.Publish()
+	hub.Publish() // must not block: the pending event already covers it
+	<-events
+	select {
+	case <-events:
+		t.Fatal("two publishes left two events")
+	default:
+	}
+	hub.Close()
+	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
+	if rr := do(h, authed(http.MethodGet, "/api/v1/events/stream", nil)); rr.Body.String() != "data: {}\n\n" {
+		t.Fatalf("stream after close = %d %q", rr.Code, rr.Body.String())
 	}
 }
