@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.15.0 - 2026-10-03
+#### 🚀 Features
+- (**events**) ✨ signal every successful write - (7f859d3) - *zenkiet*
+- (**events**) ✨ stream change signals over SSE - (a496c90) - *zenkiet*
+
+- - -
+
 ## v1.14.0 - 2026-10-02
 #### 🚀 Features
 - (**task**) ✨ add build progress tracking for tasks - (016d327) - *zenkiet*
