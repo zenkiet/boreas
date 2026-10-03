@@ -52,6 +52,16 @@ func (w *responseRecorder) Write(p []byte) (int, error) {
 	return n, err
 }
 
+func (h *Handler) publishing(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rw := &responseRecorder{ResponseWriter: w}
+		next(rw, r)
+		if cmp.Or(rw.status, http.StatusOK) < http.StatusBadRequest {
+			h.events.Publish()
+		}
+	}
+}
+
 func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()

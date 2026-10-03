@@ -79,6 +79,10 @@ func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, pu
 	for _, r := range routeTable {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { r.handler(h, w, req) })
 		if r.access != accessPublic {
+			// Public writes never publish: a failed login must not make every open client refetch.
+			if r.method != http.MethodGet {
+				handler = h.publishing(handler)
+			}
 			handler = h.authorize(r.access, handler)
 		}
 		mux.Handle(r.method+" "+r.path, handler)

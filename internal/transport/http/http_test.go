@@ -27,7 +27,7 @@ func testHandler(tasks TaskService, auth AuthService, projects ProjectService) h
 	if projects == nil {
 		projects = &stubProjects{}
 	}
-	return APIHandler(tasks, auth, projects, &stubPush{}, nil, "test", slog.New(slog.DiscardHandler))
+	return APIHandler(tasks, auth, projects, &stubPush{}, NewHub(), "test", slog.New(slog.DiscardHandler))
 }
 
 func authed(method, target string, body io.Reader) *http.Request {
@@ -568,7 +568,7 @@ func TestUpdateTaskForwardsOnlySuppliedFields(t *testing.T) {
 
 // Preflight must advertise every routed method because browsers reject missing methods.
 func TestCORSAdvertisesEveryRoutedMethod(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, nil, "test", slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, NewHub(), "test", slog.New(slog.DiscardHandler))
 	r := httptest.NewRequest(http.MethodOptions, "/api/v1/projects/team/tasks/T", nil)
 	r.Header.Set("Origin", "http://localhost:4200")
 	headers := do(h, r).Header()
@@ -743,5 +743,36 @@ func TestEventsStream(t *testing.T) {
 	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
 	if rr := do(h, authed(http.MethodGet, "/api/v1/events/stream", nil)); rr.Body.String() != "data: {}\n\n" {
 		t.Fatalf("stream after close = %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestOnlySuccessfulAuthenticatedWritesPublish(t *testing.T) {
+	hub := NewHub()
+	events, unsubscribe := hub.subscribe()
+	defer unsubscribe()
+	<-events
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
+	member := `{"user_id":"` + uuid.NewString() + `","role":"operator"}`
+	for _, tc := range []struct {
+		name string
+		r    *http.Request
+		want bool
+	}{
+		{"write", authed(http.MethodPost, "/api/v1/projects/demo/members", strings.NewReader(member)), true},
+		{"read", authed(http.MethodGet, "/api/v1/projects", nil), false},
+		{"rejected write", authed(http.MethodPost, "/api/v1/projects/demo/members", strings.NewReader(`{`)), false},
+		{"public write", httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"alice","password":"pw"}`)), false},
+	} {
+		code := do(h, tc.r).Code
+		select {
+		case <-events:
+			if !tc.want {
+				t.Errorf("%s (%d) published", tc.name, code)
+			}
+		default:
+			if tc.want {
+				t.Errorf("%s (%d) did not publish", tc.name, code)
+			}
+		}
 	}
 }

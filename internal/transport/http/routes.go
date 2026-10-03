@@ -56,7 +56,8 @@ var routeTable = [...]route{
 	{
 		method: http.MethodGet, path: "/api/v1/events/stream", access: accessSession, handler: (*Handler).streamEvents,
 		tag: "system", summary: "Stream change signals",
-		description: "Server-Sent Events carrying {} once on connect and after any task or notification change, " +
+		description: "Server-Sent Events carrying {} once on connect and after any successful authenticated write, " +
+			"a deploy's interim task states and each recorded notification, " +
 			"with nothing about what changed: refetch what you show, such as GET /api/v1/projects. " +
 			"Bursts arrive as one event, and a comment heartbeat fills idle time. " + readSSE,
 		resp: new(string), contentType: "text/event-stream",

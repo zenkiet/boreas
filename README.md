@@ -436,9 +436,10 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 ```
 
 To keep a screen current without polling, hold `GET /api/v1/events/stream`
-open with the login session. It sends `{}` on connect and after any task or
-notification change, never what changed, so refetch what the screen shows,
-such as `GET /api/v1/projects`. A burst of changes arrives as one event. A proxy
+open with the login session. It sends `{}` on connect, after every successful
+authenticated write through the API, during a deploy as the task's status
+moves, and when a notification is recorded. It never says what changed, so
+refetch what the screen shows, such as `GET /api/v1/projects`. A burst of changes arrives as one event. A proxy
 in front of Boreas must pass streams through unbuffered; Boreas sends
 `X-Accel-Buffering: no` for nginx.
 
