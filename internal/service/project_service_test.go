@@ -371,3 +371,134 @@ func TestCredentialLifecycleAndValidation(t *testing.T) {
 		t.Fatalf("a deleted credential was accepted: got %v, want ErrNotFound", err)
 	}
 }
+
+type fakeCode struct{ indexed []string }
+
+func (f fakeCode) Repos(context.Context) ([]string, error) { return f.indexed, nil }
+
+func (fakeCode) Search(_ context.Context, repos []string, _ string) ([]core.CodeMatch, error) {
+	return []core.CodeMatch{{Repo: repos[0]}}, nil
+}
+
+func (fakeCode) Read(context.Context, []string, string, string) (core.CodeFile, error) {
+	return core.CodeFile{}, nil
+}
+
+func TestProjectRepositoriesMustBeIndexed(t *testing.T) {
+	svc, _ := newProjects(t)
+	svc.Code = fakeCode{indexed: []string{"github.com/acme/web"}}
+	ctx := context.Background()
+	if _, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, repos := range [][]string{{"acme/web"}, {"github.com/acme/other"}, {"github.com/acme/web", "github.com/acme/web"}} {
+		if _, err := svc.Update(ctx, "team", UpdateProjectInput{Repositories: &repos}); !errors.Is(err, core.ErrInvalidInput) {
+			t.Errorf("repositories %v: %v", repos, err)
+		}
+	}
+	repos := []string{"github.com/acme/web"}
+	project, err := svc.Update(ctx, "team", UpdateProjectInput{Repositories: &repos})
+	if err != nil || !slices.Equal(project.Repositories, repos) {
+		t.Fatalf("project %+v, err %v", project, err)
+	}
+}
+
+type fakeChats struct{ chats map[uuid.UUID]core.Chat }
+
+func (f *fakeChats) Create(_ context.Context, chat core.Chat) (core.Chat, error) {
+	chat.ID, chat.ProjectSlug = uuid.New(), "team"
+	f.chats[chat.ID] = chat
+	return chat, nil
+}
+
+func (f *fakeChats) Get(_ context.Context, id, userID uuid.UUID) (core.Chat, error) {
+	chat, ok := f.chats[id]
+	if !ok || chat.UserID != userID {
+		return core.Chat{}, core.ErrNotFound
+	}
+	return chat, nil
+}
+
+func (f *fakeChats) List(_ context.Context, userID uuid.UUID) ([]core.Chat, error) {
+	var chats []core.Chat
+	for _, chat := range f.chats {
+		if chat.UserID == userID {
+			chats = append(chats, chat)
+		}
+	}
+	return chats, nil
+}
+
+func (f *fakeChats) Append(_ context.Context, id uuid.UUID, messages []core.ChatMessage) error {
+	chat := f.chats[id]
+	chat.Messages = append(chat.Messages, messages...)
+	f.chats[id] = chat
+	return nil
+}
+
+func (f *fakeChats) Delete(_ context.Context, id, _ uuid.UUID) error {
+	delete(f.chats, id)
+	return nil
+}
+
+func TestChatsArePrivateToMembers(t *testing.T) {
+	svc, _ := newProjects(t)
+	svc.Code = fakeCode{indexed: []string{"github.com/acme/web"}}
+	svc.Chats = &fakeChats{chats: map[uuid.UUID]core.Chat{}}
+	var histories [][]core.ChatMessage
+	svc.Assist = func(_ context.Context, _ uuid.UUID, _ []string, history []core.ChatMessage, question string) (core.ChatMessage, error) {
+		histories = append(histories, history)
+		return core.ChatMessage{Role: core.ChatAssistant, Content: "answer to " + question}, nil
+	}
+	ctx, owner, stranger := context.Background(), member(), member()
+	if _, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "team"}); err != nil {
+		t.Fatal(err)
+	}
+	repos := []string{"github.com/acme/web"}
+	if _, err := svc.Update(ctx, "team", UpdateProjectInput{Repositories: &repos}); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := svc.Access(ctx, owner, "team", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chat, err := svc.StartChat(ctx, acc, "  How is the\nsurcharge shown?  ")
+	if err != nil || chat.Title != "How is the surcharge shown?" || len(chat.Messages) != 2 {
+		t.Fatalf("chat %+v, err %v", chat, err)
+	}
+	if _, err := svc.StartChat(ctx, core.ProjectAccess{Project: acc.Project}, "q"); !errors.Is(err, core.ErrForbidden) {
+		t.Fatalf("a task grantee started a chat: %v", err)
+	}
+	if _, err := svc.Reply(ctx, stranger, chat.ID, "Refunds?"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("someone else replied in the chat: %v", err)
+	}
+	if _, err := svc.Reply(ctx, owner, chat.ID, "Refunds?"); err != nil || len(histories) != 2 || len(histories[1]) != 2 {
+		t.Fatalf("reply err %v, histories %v", err, histories)
+	}
+	if stored, err := svc.GetChat(ctx, owner, chat.ID); err != nil || len(stored.Messages) != 4 {
+		t.Fatalf("stored chat %+v, err %v", stored, err)
+	}
+
+	leaver := member()
+	if err := svc.AddMember(ctx, "team", leaver.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	acc, _ = svc.Access(ctx, leaver, "team", "")
+	left, err := svc.StartChat(ctx, acc, "Refunds?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveMember(ctx, "team", leaver.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetChat(ctx, leaver, left.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("a former member read the project's chat: %v", err)
+	}
+	if chats, err := svc.ListChats(ctx, leaver); err != nil || len(chats) != 0 {
+		t.Fatalf("a former member listed %v, err %v", chats, err)
+	}
+	if chats, err := svc.ListChats(ctx, owner); err != nil || len(chats) != 1 {
+		t.Fatalf("owner listed %v, err %v", chats, err)
+	}
+}

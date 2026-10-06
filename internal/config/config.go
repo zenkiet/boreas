@@ -16,6 +16,8 @@ type Config struct {
 	Admin     AdminConfig
 	NotifyURL string
 	FCM       FCMConfig
+	AI        AIConfig
+	Sourcebot SourcebotConfig
 }
 
 type FCMConfig struct {
@@ -25,6 +27,21 @@ type FCMConfig struct {
 
 func (c FCMConfig) Enabled() bool { return c.Project != "" && c.Keyfile != "" }
 
+type AIConfig struct {
+	BaseURL string
+	APIKey  string
+	Model   string
+}
+
+func (c AIConfig) Enabled() bool { return c.BaseURL != "" && c.Model != "" }
+
+type SourcebotConfig struct {
+	URL    string
+	APIKey string
+}
+
+func (c SourcebotConfig) Enabled() bool { return c.URL != "" && c.APIKey != "" }
+
 type PostgresConfig struct {
 	Host     string
 	Port     string
@@ -32,11 +49,9 @@ type PostgresConfig struct {
 	Password string
 	DB       string
 	SSLMode  string
-	// URL, when set, is used verbatim and the fields above are ignored.
-	URL string
+	URL      string
 }
 
-// AdminConfig seeds the first administrator only while the users table is empty.
 type AdminConfig struct {
 	Username string
 	Email    string
@@ -45,7 +60,6 @@ type AdminConfig struct {
 
 func (c AdminConfig) Provided() bool { return c.Username != "" && c.Email != "" && c.Password != "" }
 
-// DSN uses url.URL so reserved characters in passwords are escaped.
 func (p PostgresConfig) DSN() string {
 	if p.URL != "" {
 		return p.URL
@@ -82,6 +96,11 @@ func Load() (*Config, error) {
 	setString("BOREAS_NOTIFY_URL", &cfg.NotifyURL)
 	setString("BOREAS_FCM_PROJECT", &cfg.FCM.Project)
 	setString("BOREAS_FCM_KEYFILE", &cfg.FCM.Keyfile)
+	setString("BOREAS_AI_BASE_URL", &cfg.AI.BaseURL)
+	setString("BOREAS_AI_API_KEY", &cfg.AI.APIKey)
+	setString("BOREAS_AI_MODEL", &cfg.AI.Model)
+	setString("BOREAS_SOURCEBOT_URL", &cfg.Sourcebot.URL)
+	setString("BOREAS_SOURCEBOT_API_KEY", &cfg.Sourcebot.APIKey)
 
 	if value, ok := os.LookupEnv("BOREAS_PORT"); ok {
 		port, err := strconv.Atoi(value)
@@ -115,6 +134,12 @@ func (c Config) validate() error {
 	if (c.FCM.Project == "") != (c.FCM.Keyfile == "") {
 		result = errors.Join(result, errors.New("BOREAS_FCM_PROJECT and BOREAS_FCM_KEYFILE must be set together"))
 	}
+	if (c.Sourcebot.URL == "") != (c.Sourcebot.APIKey == "") {
+		result = errors.Join(result, errors.New("BOREAS_SOURCEBOT_URL and BOREAS_SOURCEBOT_API_KEY must be set together"))
+	}
+	if (c.AI.BaseURL == "") != (c.AI.Model == "") {
+		result = errors.Join(result, errors.New("BOREAS_AI_BASE_URL and BOREAS_AI_MODEL must be set together"))
+	}
 	if c.FCM.Enabled() && !statelessNotifyURL(c.NotifyURL) {
 		result = errors.Join(result, errors.New(
 			"BOREAS_FCM_PROJECT and BOREAS_FCM_KEYFILE require BOREAS_NOTIFY_URL to end in /notify, "+
@@ -129,7 +154,6 @@ func statelessNotifyURL(notifyURL string) bool {
 	return err == nil && strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/notify")
 }
 
-// ListenAddr binds all interfaces; deployment controls external exposure.
 func (c Config) ListenAddr() string { return "0.0.0.0:" + strconv.Itoa(c.Port) }
 
 func (c Config) TeamNotifyURL() string {

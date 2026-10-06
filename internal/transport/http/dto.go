@@ -215,6 +215,54 @@ type foldersResponse struct {
 	Total   int      `json:"total"`
 }
 
+type repositoriesRequest struct {
+	Query string `query:"query" example:"blogic"`
+}
+
+type repositoriesResponse struct {
+	Repositories []string `json:"repositories" example:"[\"github.com/acme/web\"]"`
+}
+
+type chatDTO struct {
+	ID        uuid.UUID          `json:"id"`
+	Project   string             `json:"project" example:"demo"`
+	Title     string             `json:"title" example:"How is the card surcharge shown on receipts?"`
+	Messages  []core.ChatMessage `json:"messages,omitempty"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+func chatFromCore(c core.Chat) chatDTO {
+	return chatDTO{ID: c.ID, Project: c.ProjectSlug, Title: c.Title, Messages: c.Messages, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
+}
+
+type chatResponse struct {
+	Chat chatDTO `json:"chat"`
+}
+
+type chatsResponse struct {
+	Chats []chatDTO `json:"chats"`
+	Total int       `json:"total"`
+}
+
+type chatMessagesResponse struct {
+	Messages []core.ChatMessage `json:"messages"`
+}
+
+type chatPath struct {
+	ID uuid.UUID `json:"-" path:"id"`
+}
+
+type startChatRequest struct {
+	Project string `json:"-" path:"project" example:"demo"`
+	Message string `json:"message" minLength:"1" maxLength:"2000" example:"How is the card surcharge shown on receipts?"`
+}
+
+type replyChatRequest struct {
+	ID      uuid.UUID `json:"-" path:"id"`
+	Message string    `json:"message" minLength:"1" maxLength:"2000"`
+}
+
 type taskResponse struct {
 	Task taskDTO `json:"task"`
 }
@@ -242,6 +290,7 @@ type projectDTO struct {
 	DefaultImage         string            `json:"default_image" example:"nginx:alpine"`
 	DefaultPort          int               `json:"default_port" example:"80"`
 	DefaultEnv           map[string]string `json:"default_env"`
+	Repositories         []string          `json:"repositories"`
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
 	MyRole               core.ProjectRole  `json:"my_role"`
@@ -251,11 +300,14 @@ func projectFromCore(p core.Project, role core.ProjectRole) projectDTO {
 	if p.DefaultEnv == nil {
 		p.DefaultEnv = map[string]string{}
 	}
+	if p.Repositories == nil {
+		p.Repositories = []string{}
+	}
 	return projectDTO{
 		ID: p.ID, Slug: p.Slug, Name: p.Name,
 		RegistryCredentialID: p.RegistryCredentialID,
 		DefaultImage:         p.DefaultImage, DefaultPort: p.DefaultPort, DefaultEnv: p.DefaultEnv,
-		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
+		Repositories: p.Repositories, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
 	}
 }
 
@@ -275,6 +327,7 @@ type updateProjectRequest struct {
 	DefaultImage         *string            `json:"default_image,omitempty" example:"nginx:alpine"`
 	DefaultPort          *int               `json:"default_port,omitempty" example:"80"`
 	DefaultEnv           *map[string]string `json:"default_env,omitempty"`
+	Repositories         *[]string          `json:"repositories,omitempty"`
 }
 
 type addMemberRequest struct {

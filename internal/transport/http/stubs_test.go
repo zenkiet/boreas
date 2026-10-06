@@ -197,6 +197,26 @@ func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (
 	return acc, nil
 }
 
+func (s *stubProjects) StartChat(_ context.Context, acc core.ProjectAccess, question string) (core.Chat, error) {
+	return core.Chat{ProjectSlug: acc.Project.Slug, Title: question}, nil
+}
+
+func (s *stubProjects) Reply(context.Context, core.User, uuid.UUID, string) ([]core.ChatMessage, error) {
+	return nil, nil
+}
+
+func (s *stubProjects) ListChats(context.Context, core.User) ([]core.Chat, error) { return nil, nil }
+
+func (s *stubProjects) GetChat(context.Context, core.User, uuid.UUID) (core.Chat, error) {
+	return core.Chat{}, core.ErrNotFound
+}
+
+func (s *stubProjects) DeleteChat(context.Context, core.User, uuid.UUID) error { return nil }
+
+func (s *stubProjects) SearchRepositories(context.Context, string) ([]string, error) {
+	return []string{"github.com/acme/web"}, nil
+}
+
 func (s *stubProjects) Fleet(c context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
 	if s.fleet != nil {
 		return s.fleet(c, actor)

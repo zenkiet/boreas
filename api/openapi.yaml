@@ -227,6 +227,204 @@ paths:
       summary: Revoke one of your API tokens
       tags:
       - auth
+  /api/v1/chats:
+    get:
+      description: Your 100 most recent chats, newest first, without their messages.
+      operationId: get-chats
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatsResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List your chats
+      tags:
+      - chats
+  /api/v1/chats/{id}:
+    delete:
+      operationId: delete-chats-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Delete one of your chats
+      tags:
+      - chats
+    get:
+      operationId: get-chats-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get one of your chats
+      tags:
+      - chats
+  /api/v1/chats/{id}/messages:
+    post:
+      description: Returns the new question and its answer; the last 12 messages go
+        along as context.
+      operationId: post-chats-id-messages
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyChatRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessagesResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Ask a follow-up question
+      tags:
+      - chats
+  /api/v1/code/repositories:
+    get:
+      description: Repositories Sourcebot indexes whose name contains query, at most
+        20, for a project's repositories. 409 when no Sourcebot is configured.
+      operationId: get-code-repositories
+      parameters:
+      - in: query
+        name: query
+        schema:
+          example: blogic
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepositoriesResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Search indexed code repositories
+      tags:
+      - projects
   /api/v1/events/stream:
     get:
       description: 'Server-Sent Events carrying {} once on connect and after any successful
@@ -554,8 +752,9 @@ paths:
       - projects
     patch:
       description: registry_credential_id null detaches the credential, omitted leaves
-        it unchanged. An empty default_image or default_env clears that form default.
-        Existing tasks and containers are never touched.
+        it unchanged. Only admins may set repositories, the Sourcebot repositories
+        members chat about. An empty default_image or default_env clears that form
+        default. Existing tasks and containers are never touched.
       operationId: patch-projects-project
       parameters:
       - in: path
@@ -611,6 +810,79 @@ paths:
       summary: Update a project
       tags:
       - projects
+  /api/v1/projects/{project}/chats:
+    post:
+      description: Answers the first message from the code of the project's repositories,
+        which can take up to a minute. Only project members may ask; 409 when the
+        project has no repositories or no assistant is configured, 429 while you already
+        have 3 answers running or the server 20.
+      operationId: post-projects-project-chats
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartChatRequest'
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Start a chat about the project's code
+      tags:
+      - chats
   /api/v1/projects/{project}/folders:
     get:
       description: The project's folders in the boreas-appdata volume, which task
@@ -2498,6 +2770,98 @@ components:
       - failure
       - canceled
       type: string
+    Chat:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        messages:
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          type: array
+        project:
+          example: demo
+          type: string
+        title:
+          example: How is the card surcharge shown on receipts?
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - project
+      - title
+      - created_at
+      - updated_at
+      type: object
+    ChatMessage:
+      properties:
+        at:
+          format: date-time
+          type: string
+        content:
+          type: string
+        role:
+          $ref: '#/components/schemas/ChatRole'
+        sources:
+          items:
+            $ref: '#/components/schemas/CodeSource'
+          type: array
+      required:
+      - role
+      - content
+      - at
+      type: object
+    ChatMessagesResponse:
+      properties:
+        messages:
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          nullable: true
+          type: array
+      required:
+      - messages
+      type: object
+    ChatResponse:
+      properties:
+        chat:
+          $ref: '#/components/schemas/Chat'
+      required:
+      - chat
+      type: object
+    ChatRole:
+      enum:
+      - user
+      - assistant
+      type: string
+    ChatsResponse:
+      properties:
+        chats:
+          items:
+            $ref: '#/components/schemas/Chat'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - chats
+      - total
+      type: object
+    CodeSource:
+      properties:
+        path:
+          type: string
+        repo:
+          type: string
+        url:
+          type: string
+      required:
+      - repo
+      - path
+      type: object
     CreateAPITokenRequest:
       properties:
         name:
@@ -2706,6 +3070,11 @@ components:
           type: string
         registry_credential_id:
           $ref: '#/components/schemas/UUID'
+        repositories:
+          items:
+            type: string
+          nullable: true
+          type: array
         slug:
           example: demo
           type: string
@@ -2724,6 +3093,7 @@ components:
       - default_image
       - default_port
       - default_env
+      - repositories
       - created_at
       - updated_at
       - my_role
@@ -2993,6 +3363,11 @@ components:
           type: string
         registry_credential_id:
           $ref: '#/components/schemas/UUID'
+        repositories:
+          items:
+            type: string
+          nullable: true
+          type: array
         slug:
           example: demo
           type: string
@@ -3006,6 +3381,7 @@ components:
       - default_image
       - default_port
       - default_env
+      - repositories
       - created_at
       - updated_at
       - my_role
@@ -3106,6 +3482,15 @@ components:
       - ghcr
       - dockerhub
       type: string
+    ReplyChatRequest:
+      properties:
+        message:
+          maxLength: 2000
+          minLength: 1
+          type: string
+      required:
+      - message
+      type: object
     ReportBuildRequest:
       properties:
         progress:
@@ -3125,6 +3510,28 @@ components:
           type: string
       required:
       - state
+      type: object
+    RepositoriesResponse:
+      properties:
+        repositories:
+          example:
+          - github.com/acme/web
+          items:
+            type: string
+          nullable: true
+          type: array
+      required:
+      - repositories
+      type: object
+    StartChatRequest:
+      properties:
+        message:
+          example: How is the card surcharge shown on receipts?
+          maxLength: 2000
+          minLength: 1
+          type: string
+      required:
+      - message
       type: object
     SuccessResponse:
       properties:
@@ -3297,6 +3704,11 @@ components:
           type: string
         registry_credential_id:
           $ref: '#/components/schemas/NullableUUID'
+        repositories:
+          items:
+            type: string
+          nullable: true
+          type: array
       type: object
     UpdateStateRequest:
       properties:

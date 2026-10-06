@@ -25,6 +25,7 @@ var (
 	ErrConflict      = errors.New("conflict")
 	ErrUnauthorized  = errors.New("unauthorized")
 	ErrForbidden     = errors.New("forbidden")
+	ErrTooMany       = errors.New("too many requests")
 )
 
 type TaskStatus string
@@ -242,6 +243,7 @@ type Project struct {
 	DefaultImage         string
 	DefaultPort          int
 	DefaultEnv           map[string]string
+	Repositories         []string
 	CreatedBy            *uuid.UUID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -443,6 +445,66 @@ type TaskMetric struct {
 	NetworkRXBytes int64
 	NetworkTXBytes int64
 	ObservedAt     time.Time
+}
+
+// CodeIndex reads indexed source code; every call is confined to the repos it is given.
+type CodeIndex interface {
+	Repos(ctx context.Context) ([]string, error)
+	Search(ctx context.Context, repos []string, query string) ([]CodeMatch, error)
+	Read(ctx context.Context, repos []string, repo, path string) (CodeFile, error)
+}
+
+type CodeMatch struct {
+	Repo, Path string
+	Line       int
+	Snippet    string
+}
+
+type CodeFile struct {
+	Repo, Path, Content, URL string
+}
+
+type ChatRole string
+
+const (
+	ChatUser      ChatRole = "user"
+	ChatAssistant ChatRole = "assistant"
+)
+
+func (ChatRole) Enum() []any { return []any{ChatUser, ChatAssistant} }
+
+type CodeSource struct {
+	Repo string `json:"repo"`
+	Path string `json:"path"`
+	URL  string `json:"url,omitempty"`
+}
+
+type ChatMessage struct {
+	Role    ChatRole     `json:"role"`
+	Content string       `json:"content"`
+	Sources []CodeSource `json:"sources,omitempty"`
+	At      time.Time    `json:"at"`
+}
+
+type Chat struct {
+	ID          uuid.UUID
+	ProjectID   uuid.UUID
+	ProjectSlug string
+	UserID      uuid.UUID
+	Title       string
+	Messages    []ChatMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type ChatStore interface {
+	Create(context.Context, Chat) (Chat, error)
+	// Get and Delete see only the user's own chats.
+	Get(ctx context.Context, id, userID uuid.UUID) (Chat, error)
+	// List omits messages, newest first.
+	List(ctx context.Context, userID uuid.UUID) ([]Chat, error)
+	Append(ctx context.Context, id uuid.UUID, messages []ChatMessage) error
+	Delete(ctx context.Context, id, userID uuid.UUID) error
 }
 
 type ContainerRuntime interface {

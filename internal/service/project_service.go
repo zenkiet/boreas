@@ -8,6 +8,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
@@ -22,6 +24,10 @@ type ProjectService struct {
 	// Optional wiring: Notify reports task assignments; Users, when also set, names the grantee.
 	Notify func(context.Context, core.Notification)
 	Users  core.UserStore
+	// Code, Chats and Assist together let members ask about the code of the repositories a project lists.
+	Code   core.CodeIndex
+	Chats  core.ChatStore
+	Assist func(ctx context.Context, userID uuid.UUID, repos []string, history []core.ChatMessage, question string) (core.ChatMessage, error)
 }
 
 func NewProjectService(
@@ -171,6 +177,7 @@ type UpdateProjectInput struct {
 	DefaultImage         *string
 	DefaultPort          *int
 	DefaultEnv           *map[string]string
+	Repositories         *[]string
 }
 
 func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProjectInput) (core.Project, error) {
@@ -205,8 +212,129 @@ func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProje
 		}
 		project.RegistryCredentialID = *in.RegistryCredentialID
 	}
+	if in.Repositories != nil {
+		if err := s.checkRepositories(ctx, *in.Repositories); err != nil {
+			return core.Project{}, err
+		}
+		project.Repositories = *in.Repositories
+	}
 	updated, err := s.projects.Update(ctx, project)
 	return updated, wrap("update project", err)
+}
+
+// checkRepositories needs no name format: only names Sourcebot already indexes pass.
+func (s *ProjectService) checkRepositories(ctx context.Context, repos []string) error {
+	if len(repos) == 0 {
+		return nil
+	}
+	if len(repos) > 20 || s.Code == nil {
+		return errors.Join(core.ErrInvalidInput, errors.New("at most 20 repositories, and code search must be configured"))
+	}
+	indexed, err := s.Code.Repos(ctx)
+	if err != nil {
+		return fmt.Errorf("list indexed repositories: %w", err)
+	}
+	for i, repo := range repos {
+		if slices.Contains(repos[:i], repo) || !slices.Contains(indexed, repo) {
+			return errors.Join(core.ErrInvalidInput, errors.New("repository "+repo+" is repeated or not indexed"))
+		}
+	}
+	return nil
+}
+
+// SearchRepositories lists indexed repositories whose name contains query, for picking a project's repositories.
+func (s *ProjectService) SearchRepositories(ctx context.Context, query string) ([]string, error) {
+	if s.Code == nil {
+		return nil, core.ErrConflict
+	}
+	indexed, err := s.Code.Repos(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list indexed repositories: %w", err)
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	found := slices.DeleteFunc(indexed, func(repo string) bool { return !strings.Contains(strings.ToLower(repo), query) })
+	return found[:min(len(found), 20)], nil
+}
+
+const chatHistory = 12
+
+func (s *ProjectService) StartChat(ctx context.Context, acc core.ProjectAccess, question string) (core.Chat, error) {
+	turn, err := s.ask(ctx, acc, nil, question)
+	if err != nil {
+		return core.Chat{}, err
+	}
+	title := []rune(strings.Join(strings.Fields(question), " "))
+	chat, err := s.Chats.Create(ctx, core.Chat{
+		ProjectID: acc.Project.ID, UserID: acc.UserID, Title: string(title[:min(len(title), 80)]), Messages: turn,
+	})
+	return chat, wrap("create chat", err)
+}
+
+func (s *ProjectService) Reply(ctx context.Context, actor core.User, id uuid.UUID, question string) ([]core.ChatMessage, error) {
+	chat, acc, err := s.ownChat(ctx, actor, id)
+	if err != nil {
+		return nil, err
+	}
+	turn, err := s.ask(ctx, acc, chat.Messages[max(0, len(chat.Messages)-chatHistory):], question)
+	if err != nil {
+		return nil, err
+	}
+	return turn, wrap("append chat messages", s.Chats.Append(ctx, id, turn))
+}
+
+func (s *ProjectService) ask(ctx context.Context, acc core.ProjectAccess, history []core.ChatMessage, question string) ([]core.ChatMessage, error) {
+	// Grantees stay out: one granted task does not open the project's whole codebase.
+	if !acc.AllTasks {
+		return nil, core.ErrForbidden
+	}
+	if s.Assist == nil || len(acc.Project.Repositories) == 0 {
+		return nil, core.ErrConflict
+	}
+	if question = strings.TrimSpace(question); question == "" || utf8.RuneCountInString(question) > 2000 {
+		return nil, errors.Join(core.ErrInvalidInput, errors.New("message must be 1 to 2000 characters"))
+	}
+	asked := core.ChatMessage{Role: core.ChatUser, Content: question, At: time.Now().UTC()}
+	answer, err := s.Assist(ctx, acc.UserID, acc.Project.Repositories, history, question)
+	if err != nil {
+		return nil, err
+	}
+	return []core.ChatMessage{asked, answer}, nil
+}
+
+func (s *ProjectService) ListChats(ctx context.Context, actor core.User) ([]core.Chat, error) {
+	chats, err := s.Chats.List(ctx, actor.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list chats: %w", err)
+	}
+	accesses, err := s.List(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(chats, func(chat core.Chat) bool {
+		return !slices.ContainsFunc(accesses, func(acc core.ProjectAccess) bool { return acc.AllTasks && acc.Project.ID == chat.ProjectID })
+	}), nil
+}
+
+func (s *ProjectService) GetChat(ctx context.Context, actor core.User, id uuid.UUID) (core.Chat, error) {
+	chat, _, err := s.ownChat(ctx, actor, id)
+	return chat, err
+}
+
+// ownChat answers a chat of a project the caller has since left as not found.
+func (s *ProjectService) ownChat(ctx context.Context, actor core.User, id uuid.UUID) (core.Chat, core.ProjectAccess, error) {
+	chat, err := s.Chats.Get(ctx, id, actor.ID)
+	if err != nil {
+		return core.Chat{}, core.ProjectAccess{}, wrap("get chat", err)
+	}
+	acc, err := s.Access(ctx, actor, chat.ProjectSlug, "")
+	if err == nil && !acc.AllTasks {
+		err = core.ErrNotFound
+	}
+	return chat, acc, err
+}
+
+func (s *ProjectService) DeleteChat(ctx context.Context, actor core.User, id uuid.UUID) error {
+	return wrap("delete chat", s.Chats.Delete(ctx, id, actor.ID))
 }
 
 func (s *ProjectService) Delete(ctx context.Context, slug string) error {

@@ -56,6 +56,12 @@ type ProjectService interface {
 	MarkNotificationsSeen(ctx context.Context, actor core.User, ids []uuid.UUID) error
 	MarkNotificationUnseen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error
 	Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error)
+	SearchRepositories(ctx context.Context, query string) ([]string, error)
+	StartChat(ctx context.Context, acc core.ProjectAccess, question string) (core.Chat, error)
+	Reply(ctx context.Context, actor core.User, id uuid.UUID, question string) ([]core.ChatMessage, error)
+	ListChats(ctx context.Context, actor core.User) ([]core.Chat, error)
+	GetChat(ctx context.Context, actor core.User, id uuid.UUID) (core.Chat, error)
+	DeleteChat(ctx context.Context, actor core.User, id uuid.UUID) error
 	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
 	Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error
 	Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error
@@ -80,7 +86,7 @@ func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, pu
 		handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { r.handler(h, w, req) })
 		if r.access != accessPublic {
 			// Public writes never publish: a failed login must not make every open client refetch.
-			if r.method != http.MethodGet {
+			if r.method != http.MethodGet && !r.quiet {
 				handler = h.publishing(handler)
 			}
 			handler = h.authorize(r.access, handler)

@@ -183,6 +183,12 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/notifications`            | viewer        | List a project's notifications                  |
 | `GET`    | `/projects/{project}/metrics/stream`           | viewer        | Stream metrics for every running task over SSE  |
 | `GET`    | `/projects/{project}/folders`                  | viewer        | List the folders task volumes can mount         |
+| `GET`    | `/code/repositories`                           | admin         | Search the repositories Sourcebot indexes       |
+| `POST`   | `/projects/{project}/chats`                    | viewer        | Start a chat about the project's code           |
+| `GET`    | `/chats`                                       | user          | List your chats                                 |
+| `GET`    | `/chats/{id}`                                  | chat author   | Read one of your chats                          |
+| `POST`   | `/chats/{id}/messages`                         | chat author   | Ask a follow-up question                        |
+| `DELETE` | `/chats/{id}`                                  | chat author   | Delete one of your chats                        |
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
@@ -310,6 +316,44 @@ volumes:
 
 Nothing a task writes survives its container: deploys, restarts and
 configuration changes start from the image again.
+
+## Chat about a project's code
+
+Project members can ask how a project behaves and get answers drawn from its
+source code. Boreas reads the code through a self-hosted
+[Sourcebot](https://www.sourcebot.dev) (its free plan is enough) set by
+`BOREAS_SOURCEBOT_URL` and `BOREAS_SOURCEBOT_API_KEY`, and answers with the
+OpenAI-compatible model in `BOREAS_AI_*`, which must support tool calling. An
+admin picks the repositories each project reads:
+
+```bash
+curl -H "$AUTH" 'http://localhost:8080/api/v1/code/repositories?query=acme'
+curl -X PATCH -H "$AUTH" -H "$JSON" \
+  -d '{"repositories":["github.com/acme/web","github.com/acme/api"]}' \
+  http://localhost:8080/api/v1/projects/demo
+```
+
+A member starts a chat and follows up in it; chats are private to their author:
+
+```bash
+curl -X POST -H "$AUTH" -H "$JSON" -d '{"message":"How is the card surcharge shown on receipts?"}' \
+  http://localhost:8080/api/v1/projects/demo/chats
+curl -X POST -H "$AUTH" -H "$JSON" -d '{"message":"And on refunds?"}' \
+  http://localhost:8080/api/v1/chats/<id>/messages
+```
+
+An answer takes up to 55 seconds and is never streamed. The assistant reads each
+repository's default branch, and only for project members: a user granted a
+single task cannot chat about the project, and leaving a project hides its
+chats. Files that usually hold secrets (`*.config`, `appsettings*.json`, env
+files, keys, certificates, cloud and Terraform credentials) are never read.
+In other files, quoted values named like passwords, keys or tokens, connection
+string passwords, credentials in URLs, private keys, and well-known token
+formats become `[redacted]` before the model sees them; a secret in any other
+shape still goes, with every file the assistant reads, to the model provider.
+Each user may have three answers running at once and the server twenty; past
+that a question gets 429 at once instead of queueing. Set a spending limit at
+the model provider too: these caps bound load, not cost.
 
 ## Deploy from a build pipeline
 
@@ -636,6 +680,11 @@ the database connection and the initial administrator.
 | `BOREAS_NOTIFY_URL`     | unset             | Apprise stateless endpoint (`…/notify`); Boreas derives `…/notify/boreas` itself |
 | `BOREAS_FCM_PROJECT`    | unset             | Firebase project ID; with the keyfile, enables browser push subscriptions    |
 | `BOREAS_FCM_KEYFILE`    | unset             | Service-account JSON path *inside the Apprise container*                     |
+| `BOREAS_AI_BASE_URL`    | unset             | OpenAI-compatible endpoint the project chat answers with                     |
+| `BOREAS_AI_MODEL`       | unset             | Model name at that endpoint                                                  |
+| `BOREAS_AI_API_KEY`     | unset             | Bearer key for that endpoint; local servers such as Ollama need none         |
+| `BOREAS_SOURCEBOT_URL`  | unset             | Sourcebot that indexes the code the project chat reads                       |
+| `BOREAS_SOURCEBOT_API_KEY` | unset          | Sourcebot API key                                                            |
 
 Registry credentials are no longer configuration. Store them once through
 `/api/v1/registry-credentials` and attach one to a project; Boreas uses it when

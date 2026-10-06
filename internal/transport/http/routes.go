@@ -38,6 +38,8 @@ type route struct {
 	status      int
 	contentType string
 	extraErrors []int
+	// quiet writes skip the change signal: a chat is private, so it must not wake everyone's fleet.
+	quiet bool
 }
 
 const readSSE = "Read it with fetch and a stream reader: EventSource cannot send the Authorization header."
@@ -196,6 +198,7 @@ var routeTable = [...]route{
 		method: http.MethodPatch, path: "/api/v1/projects/{project}", access: accessOwner, handler: (*Handler).updateProject,
 		tag: "projects", summary: "Update a project",
 		description: "registry_credential_id null detaches the credential, omitted leaves it unchanged. " +
+			"Only admins may set repositories, the Sourcebot repositories members chat about. " +
 			"An empty default_image or default_env clears that form default. " +
 			"Existing tasks and containers are never touched.",
 		req: new(updateProjectRequest), resp: new(projectResponse), extraErrors: []int{http.StatusBadRequest},
@@ -259,6 +262,45 @@ var routeTable = [...]route{
 		req:         new(notificationSeenPath), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest},
 	},
 
+	{
+		method: http.MethodGet, path: "/api/v1/chats", access: accessAuthed, handler: (*Handler).listChats,
+		tag: "chats", summary: "List your chats",
+		description: "Your 100 most recent chats, newest first, without their messages.",
+		resp:        new(chatsResponse),
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/projects/{project}/chats", access: accessViewer, handler: (*Handler).startChat,
+		tag: "chats", summary: "Start a chat about the project's code",
+		description: "Answers the first message from the code of the project's repositories, which can take up to a minute. " +
+			"Only project members may ask; 409 when the project has no repositories or no assistant is configured, " +
+			"429 while you already have 3 answers running or the server 20.",
+		req: new(startChatRequest), resp: new(chatResponse), status: http.StatusCreated,
+		extraErrors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusTooManyRequests}, quiet: true,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/chats/{id}", access: accessAuthed, handler: (*Handler).getChat,
+		tag: "chats", summary: "Get one of your chats",
+		req: new(chatPath), resp: new(chatResponse),
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/chats/{id}/messages", access: accessAuthed, handler: (*Handler).replyChat,
+		tag: "chats", summary: "Ask a follow-up question",
+		description: "Returns the new question and its answer; the last 12 messages go along as context.",
+		req:         new(replyChatRequest), resp: new(chatMessagesResponse),
+		extraErrors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusTooManyRequests}, quiet: true,
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/chats/{id}", access: accessAuthed, handler: (*Handler).deleteChat,
+		tag: "chats", summary: "Delete one of your chats",
+		req: new(chatPath), resp: new(successResponse), quiet: true,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/code/repositories", access: accessAdmin, handler: (*Handler).searchRepositories,
+		tag: "projects", summary: "Search indexed code repositories",
+		description: "Repositories Sourcebot indexes whose name contains query, at most 20, for a project's repositories. " +
+			"409 when no Sourcebot is configured.",
+		req: new(repositoriesRequest), resp: new(repositoriesResponse), extraErrors: []int{http.StatusConflict},
+	},
 	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/folders", access: accessViewer, handler: (*Handler).listFolders,
 		tag: "projects", summary: "List the project's shared folders",

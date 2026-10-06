@@ -229,7 +229,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
 	dto := projectFromCore(acc.Project, acc.Role)
 	if !acc.AllTasks {
 		// Task form defaults may carry project secrets, so grantees do not receive them.
-		dto.DefaultEnv = map[string]string{}
+		dto.DefaultEnv, dto.Repositories = map[string]string{}, []string{}
 	}
 	writeJSON(w, http.StatusOK, projectResponse{Project: dto})
 }
@@ -239,9 +239,13 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if req.Repositories != nil && !userFrom(r.Context()).IsAdmin() {
+		writeServiceError(w, h.logger, core.ErrForbidden)
+		return
+	}
 	in := service.UpdateProjectInput{
 		Name: req.Name, DefaultImage: req.DefaultImage,
-		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv,
+		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv, Repositories: req.Repositories,
 	}
 	if req.RegistryCredentialID.Set {
 		in.RegistryCredentialID = &req.RegistryCredentialID.Value
@@ -376,6 +380,58 @@ func (h *Handler) revokeGrant(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listFolders(w http.ResponseWriter, r *http.Request) {
 	folders, err := h.tasks.Folders(r.Context(), r.PathValue("project"))
 	h.reply(w, http.StatusOK, foldersResponse{Folders: folders, Total: len(folders)}, err)
+}
+
+func (h *Handler) listChats(w http.ResponseWriter, r *http.Request) {
+	chats, err := h.projects.ListChats(r.Context(), userFrom(r.Context()))
+	h.reply(w, http.StatusOK, chatsResponse{Chats: convert(chats, chatFromCore), Total: len(chats)}, err)
+}
+
+func (h *Handler) startChat(w http.ResponseWriter, r *http.Request) {
+	var req startChatRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	chat, err := h.projects.StartChat(r.Context(), accessFrom(r.Context()), req.Message)
+	h.reply(w, http.StatusCreated, chatResponse{Chat: chatFromCore(chat)}, err)
+}
+
+func (h *Handler) getChat(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	chat, err := h.projects.GetChat(r.Context(), userFrom(r.Context()), id)
+	h.reply(w, http.StatusOK, chatResponse{Chat: chatFromCore(chat)}, err)
+}
+
+func (h *Handler) replyChat(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	var req replyChatRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	messages, err := h.projects.Reply(r.Context(), userFrom(r.Context()), id, req.Message)
+	h.reply(w, http.StatusOK, chatMessagesResponse{Messages: messages}, err)
+}
+
+func (h *Handler) deleteChat(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	h.reply(w, http.StatusOK, succeeded, h.projects.DeleteChat(r.Context(), userFrom(r.Context()), id))
+}
+
+func (h *Handler) searchRepositories(w http.ResponseWriter, r *http.Request) {
+	repos, err := h.projects.SearchRepositories(r.Context(), r.URL.Query().Get("query"))
+	h.reply(w, http.StatusOK, repositoriesResponse{Repositories: repos}, err)
 }
 
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {

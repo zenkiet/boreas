@@ -14,7 +14,7 @@ type ProjectStore struct{ pool *pgxpool.Pool }
 func NewProjectStore(pool *pgxpool.Pool) *ProjectStore { return &ProjectStore{pool: pool} }
 
 const projectColumns = `id, slug, name, registry_credential_id,
-	default_image, default_port, default_env, created_by, created_at, updated_at`
+	default_image, default_port, default_env, repositories, created_by, created_at, updated_at`
 
 func (s *ProjectStore) List(ctx context.Context) ([]core.Project, error) {
 	return many(ctx, s.pool, scanProject, "list projects", "scan projects",
@@ -28,13 +28,14 @@ func (s *ProjectStore) ListForUser(ctx context.Context, userID uuid.UUID) ([]cor
 		acc := core.ProjectAccess{UserID: userID}
 		p := &acc.Project
 		err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.RegistryCredentialID, &p.DefaultImage, &p.DefaultPort,
-			&p.DefaultEnv, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &acc.Role, &acc.AllTasks)
+			&p.DefaultEnv, &p.Repositories, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &acc.Role, &acc.AllTasks)
 		p.DefaultEnv = nonNilMap(p.DefaultEnv)
 		return acc, err
 	}
 	return many(ctx, s.pool, scan, "list user projects", "scan user projects", `
 		SELECT p.id, p.slug, p.name, p.registry_credential_id, p.default_image, p.default_port,
 			CASE WHEN m.user_id IS NULL THEN '{}'::jsonb ELSE p.default_env END,
+			CASE WHEN m.user_id IS NULL THEN '{}'::text[] ELSE p.repositories END,
 			p.created_by, p.created_at, p.updated_at, COALESCE(m.role, 'viewer'), m.user_id IS NOT NULL
 		FROM projects p
 		LEFT JOIN project_members m ON m.project_id = p.id AND m.user_id = $1
@@ -66,11 +67,11 @@ func (s *ProjectStore) Create(ctx context.Context, project core.Project) (core.P
 func (s *ProjectStore) Update(ctx context.Context, project core.Project) (core.Project, error) {
 	return one(ctx, s.pool, scanProject, "update project", `
 		UPDATE projects SET name = $2, registry_credential_id = $3,
-			default_image = $4, default_port = $5, default_env = $6
+			default_image = $4, default_port = $5, default_env = $6, repositories = $7
 		WHERE id = $1
 		RETURNING `+projectColumns,
 		project.ID, project.Name, project.RegistryCredentialID,
-		project.DefaultImage, project.DefaultPort, nonNilMap(project.DefaultEnv))
+		project.DefaultImage, project.DefaultPort, nonNilMap(project.DefaultEnv), append([]string{}, project.Repositories...))
 }
 
 func (s *ProjectStore) Delete(ctx context.Context, id uuid.UUID) error {
@@ -111,7 +112,7 @@ func (s *ProjectStore) RemoveMember(ctx context.Context, projectID, userID uuid.
 func scanProject(row pgx.CollectableRow) (core.Project, error) {
 	var p core.Project
 	err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.RegistryCredentialID,
-		&p.DefaultImage, &p.DefaultPort, &p.DefaultEnv, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
+		&p.DefaultImage, &p.DefaultPort, &p.DefaultEnv, &p.Repositories, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
 	p.DefaultEnv = nonNilMap(p.DefaultEnv)
 	return p, err
 }

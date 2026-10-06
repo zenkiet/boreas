@@ -54,6 +54,8 @@ func writeServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		status, message = http.StatusNotFound, "not found"
 	case errors.Is(err, core.ErrAlreadyExists), errors.Is(err, core.ErrConflict):
 		status, message = http.StatusConflict, "conflict"
+	case errors.Is(err, core.ErrTooMany):
+		status, message = http.StatusTooManyRequests, "too many requests"
 	default:
 		logger.Error("http transport", "error", err)
 	}

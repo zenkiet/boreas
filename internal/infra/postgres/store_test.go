@@ -151,6 +151,7 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 
 	project.DefaultImage, project.DefaultPort = "nginx:alpine", 8080
 	project.DefaultEnv = map[string]string{"APP_ENV": "dev"}
+	project.Repositories = []string{"github.com/acme/web", "github.com/acme/api"}
 	updated, err := store.Update(ctx, project)
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +164,8 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" {
+	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" ||
+		!slices.Equal(fetched.Repositories, project.Repositories) {
 		t.Fatalf("select round trip = %+v", fetched)
 	}
 
@@ -832,5 +834,41 @@ func TestPushSubscriptionMovesToItsLatestOwner(t *testing.T) {
 	}
 	if err := push.Delete(ctx, second.ID, shared); err != nil {
 		t.Fatalf("the current owner must be able to unsubscribe: %v", err)
+	}
+}
+
+func TestChatsRoundTrip(t *testing.T) {
+	pool := newPool(t)
+	ctx, chats := context.Background(), NewChatStore(pool)
+	project, user := seedProject(t, pool), seedUser(t, pool, "chat", core.RoleUser)
+	asked := core.ChatMessage{Role: core.ChatUser, Content: "How?", At: time.Now().UTC().Truncate(time.Second)}
+	answered := core.ChatMessage{Role: core.ChatAssistant, Content: "Like this.", Sources: []core.CodeSource{{Repo: "github.com/acme/web", Path: "a.ts"}}}
+
+	chat, err := chats.Create(ctx, core.Chat{ProjectID: project.ID, UserID: user.ID, Title: "How?", Messages: []core.ChatMessage{asked}})
+	if err != nil || chat.ProjectSlug != project.Slug || len(chat.Messages) != 1 {
+		t.Fatalf("create %+v, err %v", chat, err)
+	}
+	if err := chats.Append(ctx, chat.ID, []core.ChatMessage{answered}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := chats.Get(ctx, chat.ID, user.ID)
+	if err != nil || len(got.Messages) != 2 || !got.Messages[0].At.Equal(asked.At) || got.Messages[1].Sources[0].Path != "a.ts" {
+		t.Fatalf("get %+v, err %v", got, err)
+	}
+	listed, err := chats.List(ctx, user.ID)
+	if err != nil || len(listed) != 1 || listed[0].ID != chat.ID || len(listed[0].Messages) != 0 {
+		t.Fatalf("list %+v, err %v", listed, err)
+	}
+	if _, err := chats.Get(ctx, chat.ID, uuid.New()); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("another user read the chat: %v", err)
+	}
+	if err := chats.Delete(ctx, chat.ID, uuid.New()); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("another user deleted the chat: %v", err)
+	}
+	if err := chats.Delete(ctx, chat.ID, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := chats.Get(ctx, chat.ID, user.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("deleted chat: %v", err)
 	}
 }

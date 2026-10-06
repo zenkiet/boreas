@@ -152,13 +152,13 @@ func TestRouteAccessLadder(t *testing.T) {
 
 // Task form defaults may carry project secrets, so only members receive them.
 func TestGranteeDoesNotReceiveProjectDefaultEnv(t *testing.T) {
-	project := core.Project{Slug: "team", DefaultEnv: map[string]string{"API_KEY": "s3cret"}}
+	project := core.Project{Slug: "team", DefaultEnv: map[string]string{"API_KEY": "s3cret"}, Repositories: []string{"github.com/acme/private-api"}}
 	grantee := false
 	h := testHandler(stubTasks{}, &stubAuth{user: testMember},
 		&stubProjects{role: core.ProjectRoleViewer, project: project, allTasks: &grantee})
 	body := do(h, authed(http.MethodGet, "/api/v1/projects/team", nil)).Body.String()
-	if strings.Contains(body, "s3cret") || strings.Contains(body, "API_KEY") {
-		t.Fatalf("project defaults leaked to a grantee: %s", body)
+	if strings.Contains(body, "s3cret") || strings.Contains(body, "API_KEY") || strings.Contains(body, "private-api") {
+		t.Fatalf("project defaults or repositories leaked to a grantee: %s", body)
 	}
 
 	member := true
@@ -760,6 +760,7 @@ func TestOnlySuccessfulAuthenticatedWritesPublish(t *testing.T) {
 	}{
 		{"write", authed(http.MethodPost, "/api/v1/projects/demo/members", strings.NewReader(member)), true},
 		{"read", authed(http.MethodGet, "/api/v1/projects", nil), false},
+		{"private chat", authed(http.MethodPost, "/api/v1/projects/demo/chats", strings.NewReader(`{"message":"How?"}`)), false},
 		{"rejected write", authed(http.MethodPost, "/api/v1/projects/demo/members", strings.NewReader(`{`)), false},
 		{"public write", httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"alice","password":"pw"}`)), false},
 	} {
@@ -773,6 +774,25 @@ func TestOnlySuccessfulAuthenticatedWritesPublish(t *testing.T) {
 			if tc.want {
 				t.Errorf("%s (%d) did not publish", tc.name, code)
 			}
+		}
+	}
+}
+
+func TestOnlyAdminsPickProjectRepositories(t *testing.T) {
+	projects := &stubProjects{role: core.ProjectRoleOwner, update: func(context.Context, string, service.UpdateProjectInput) (core.Project, error) {
+		return core.Project{}, nil
+	}}
+	for _, tc := range []struct {
+		user core.User
+		want int
+	}{{testMember, http.StatusForbidden}, {testAdmin, http.StatusOK}} {
+		h := testHandler(stubTasks{}, &stubAuth{user: tc.user}, projects)
+		rr := do(h, authed(http.MethodPatch, "/api/v1/projects/demo", strings.NewReader(`{"repositories":["github.com/acme/web"]}`)))
+		if rr.Code != tc.want {
+			t.Errorf("%s sets repositories: %d, want %d", tc.user.Username, rr.Code, tc.want)
+		}
+		if rr := do(h, authed(http.MethodGet, "/api/v1/code/repositories?query=acme", nil)); rr.Code != tc.want {
+			t.Errorf("%s searches repositories: %d, want %d", tc.user.Username, rr.Code, tc.want)
 		}
 	}
 }

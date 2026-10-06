@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -16,8 +17,10 @@ import (
 	"github.com/zenkiet/boreas/internal/core"
 	"github.com/zenkiet/boreas/internal/infra/apprise"
 	dockerinfra "github.com/zenkiet/boreas/internal/infra/docker"
+	"github.com/zenkiet/boreas/internal/infra/llm"
 	pginfra "github.com/zenkiet/boreas/internal/infra/postgres"
 	proxyinfra "github.com/zenkiet/boreas/internal/infra/proxy"
+	"github.com/zenkiet/boreas/internal/infra/sourcebot"
 	"github.com/zenkiet/boreas/internal/pkg/database"
 	"github.com/zenkiet/boreas/internal/pkg/logging"
 	"github.com/zenkiet/boreas/internal/service"
@@ -36,6 +39,10 @@ const (
 	notifyTimeout    = 5 * time.Second
 	startupTimeout   = 30 * time.Second
 	shutdownTimeout  = 10 * time.Second
+	// Under nginx's default 60 s proxy timeout, so a slow answer fails cleanly instead of being cut off.
+	answerTimeout   = 55 * time.Second
+	answersPerUser  = 3
+	answersInFlight = 20
 )
 
 var version = "dev"
@@ -122,6 +129,13 @@ func run(logger *slog.Logger) error {
 	}
 	projects.Notify = notify
 	projects.Users = users
+	projects.Chats = pginfra.NewChatStore(pool)
+	if cfg.Sourcebot.Enabled() {
+		projects.Code = sourcebot.New(cfg.Sourcebot.URL, cfg.Sourcebot.APIKey)
+		if cfg.AI.Enabled() {
+			projects.Assist = assistant(llm.New(cfg.AI.BaseURL, cfg.AI.APIKey, cfg.AI.Model), projects.Code, logger)
+		}
+	}
 	tasks, err := service.NewTaskService(
 		runtime, taskStore, projectStore, credentials, routes,
 		dockerinfra.TCPReadyChecker{DialTimeout: time.Second}.Ready,
@@ -176,6 +190,50 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("HTTP server: %w", err)
 	}
 	return nil
+}
+
+// gate bounds the answers running per user and in total, refusing at once: a queued answer would burn its timeout.
+type gate struct {
+	mu    sync.Mutex
+	users map[uuid.UUID]int
+	total int
+}
+
+func (g *gate) enter(user uuid.UUID) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.users[user] >= answersPerUser || g.total >= answersInFlight {
+		return false
+	}
+	g.users[user]++
+	g.total++
+	return true
+}
+
+func (g *gate) leave(user uuid.UUID) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.total--
+	if g.users[user]--; g.users[user] == 0 {
+		delete(g.users, user)
+	}
+}
+
+// assistant caps how many answers run and for how long, and logs metadata only, never questions or code.
+func assistant(a *llm.Assistant, code core.CodeIndex, logger *slog.Logger) func(context.Context, uuid.UUID, []string, []core.ChatMessage, string) (core.ChatMessage, error) {
+	g := &gate{users: map[uuid.UUID]int{}}
+	return func(ctx context.Context, user uuid.UUID, repos []string, history []core.ChatMessage, question string) (core.ChatMessage, error) {
+		if !g.enter(user) {
+			return core.ChatMessage{}, core.ErrTooMany
+		}
+		defer g.leave(user)
+		ctx, cancel := context.WithTimeout(ctx, answerTimeout)
+		defer cancel()
+		started := time.Now()
+		answer, err := a.Answer(ctx, code, repos, history, question)
+		logger.Info("chat answer", "user", user, "repositories", len(repos), "sources", len(answer.Sources), "duration", time.Since(started), "error", err)
+		return answer, err
+	}
 }
 
 func notifier(store *pginfra.NotificationStore, events *httptransport.Hub, sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
