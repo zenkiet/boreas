@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.16.0 - 2026-10-06
+#### 🚀 Features
+- (**chat**) ✨ add code chat and project repositories - (58141db) - *zenkiet*
+
+- - -
+
 ## v1.15.0 - 2026-10-03
 #### 🚀 Features
 - (**events**) ✨ signal every successful write - (7f859d3) - *zenkiet*
