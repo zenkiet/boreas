@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.17.0 - 2026-10-12
+#### 🚀 Features
+- (**bora**) ✨ implement bora assistant AI - (3977cef) - *zenkiet*
+
+- - -
+
 ## v1.16.0 - 2026-10-06
 #### 🚀 Features
 - (**chat**) ✨ add code chat and project repositories - (58141db) - *zenkiet*
