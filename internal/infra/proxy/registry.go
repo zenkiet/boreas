@@ -83,13 +83,9 @@ func (r *Registry) Register(_ context.Context, project, task, host string, port 
 }
 
 func (r *Registry) Unregister(_ context.Context, project, task string) error {
-	key := routeKey(project, task)
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, exists := r.routes[key]; !exists {
-		return core.ErrNotFound
-	}
-	delete(r.routes, key)
+	delete(r.routes, routeKey(project, task))
+	r.mu.Unlock()
 	return nil
 }
 

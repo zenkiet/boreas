@@ -56,5 +56,5 @@ func (h *Hub) subscribe() (<-chan struct{}, func()) {
 func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
 	events, unsubscribe := h.events.subscribe()
 	defer unsubscribe()
-	sse(w, r, events, func(struct{}) any { return struct{}{} })
+	sse(w, r, events, func(struct{}) (string, any) { return "", struct{}{} })
 }

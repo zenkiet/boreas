@@ -121,3 +121,55 @@ func TestBuildValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactHidesSecretsNotRules(t *testing.T) {
+	text := `const apiKey = "AbC123xyz789";
+db := "Server=db;User Id=sa;Password=Pa55word;"
+url := "postgres://boreas:s3cretpw@db/boreas"
+aws := "AKIAABCDEFGHIJKLMNOP"
+error := "Password must be 8 characters"
+if (password.length < 8 && task-management-component-list) {}
+DB_PASSWORD=hunter2xyz
+STRIPE_KEY=zzqq778899
+api_key: abcdef123
+password = "ab12"
+Authorization: Bearer abcDEF123opaque456
+cache := "redis://:s3cretpw@cache"
+JWT_SECRET = qwerty77
+Authorization: Bearer abcdefghijklmnop
+SECRET_KEY_BASE=kb77base
+DB_PASSWORD_PROD=prodpw99
+Authorization: Basic dXNlcjpwYXNz
+mysql --password hunter3abc -h db
+run --password "abc123q" --verbose
+run --password 'two wordsq'
+args := ["--password", "jsonpw77"]
+curl --api-key "apikey99" https://x
+password:colonpw1
+API_SECRET="correct horse battery"
+2026-10-12T07:59:59Z Loading the signing key from disk
+2026-10-12T08:00:00Z MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7
+2026-10-12T08:00:00Z VJTUt9Us8cKjMzEfYyjiWA4R4/M2bS1GB4t7NXp98C3SC6dVMvDu
+2026-10-12T08:00:00Z -----END PRIVATE KEY-----
+LOG_LEVEL=debug
+if token == nil {
+Send a Bearer token in the header.`
+	got := Redact(text)
+	for _, secret := range []string{
+		"AbC123xyz789", "Pa55word", "s3cretpw", "AKIAABCDEFGHIJKLMNOP", "hunter2xyz", "zzqq778899", "abcdef123", "ab12",
+		"abcDEF123opaque456", "qwerty77", "abcdefghijklmnop", "kb77base", "prodpw99", "dXNlcjpwYXNz", "hunter3abc",
+		"colonpw1", "horse", "MIIEvQIBADAN", "VJTUt9Us8cKj", "abc123q", "wordsq", "jsonpw77", "apikey99",
+	} {
+		if strings.Contains(got, secret) {
+			t.Errorf("%s leaked:\n%s", secret, got)
+		}
+	}
+	for _, rule := range []string{
+		"Password must be 8 characters", "password.length < 8", "task-management-component-list", "-h db",
+		"Loading the signing key from disk", "LOG_LEVEL=debug", "token == nil", "Bearer token",
+	} {
+		if !strings.Contains(got, rule) {
+			t.Errorf("%q lost:\n%s", rule, got)
+		}
+	}
+}

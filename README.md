@@ -34,8 +34,9 @@ Boreas has no cgo dependencies and builds with `CGO_ENABLED=0`.
 
 ## Quick start
 
-`BOREAS_ADMIN_PASSWORD` seeds the first administrator. It is required only
-while the user table is empty and is ignored afterwards.
+`BOREAS_ADMIN_USERNAME`, `BOREAS_ADMIN_EMAIL` and `BOREAS_ADMIN_PASSWORD` seed
+the first administrator; Compose defaults the first two. They are required only
+while the user table is empty and are ignored afterwards.
 
 ```bash
 BOREAS_ADMIN_PASSWORD=change-me docker compose up --build -d
@@ -50,7 +51,7 @@ To run the binary directly against the Compose database:
 
 ```bash
 make db
-BOREAS_ADMIN_PASSWORD=change-me make dev
+BOREAS_ADMIN_USERNAME=admin BOREAS_ADMIN_EMAIL=admin@localhost BOREAS_ADMIN_PASSWORD=change-me make dev
 ```
 
 ## Authenticate
@@ -116,7 +117,8 @@ Within a project, four roles stack, each adding to the one before it:
 | `member`   | Create, update, and delete tasks                  |
 | `owner`    | Project settings, membership, and task grants     |
 
-Add an existing user to a project:
+Add an existing user to a project, or change a member's role; the last owner
+can be neither removed nor demoted:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/projects/demo/members \
@@ -184,11 +186,16 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/metrics/stream`           | viewer        | Stream metrics for every running task over SSE  |
 | `GET`    | `/projects/{project}/folders`                  | viewer        | List the folders task volumes can mount         |
 | `GET`    | `/code/repositories`                           | admin         | Search the repositories Sourcebot indexes       |
-| `POST`   | `/projects/{project}/chats`                    | viewer        | Start a chat about the project's code           |
-| `GET`    | `/chats`                                       | user          | List your chats                                 |
-| `GET`    | `/chats/{id}`                                  | chat author   | Read one of your chats                          |
-| `POST`   | `/chats/{id}/messages`                         | chat author   | Ask a follow-up question                        |
-| `DELETE` | `/chats/{id}`                                  | chat author   | Delete one of your chats                        |
+| `POST`   | `/bora/conversations`                          | login session | Ask Bora in a new conversation, streamed        |
+| `POST`   | `/bora/conversations/{id}/messages`            | login session | Ask a follow-up question, streamed              |
+| `GET`    | `/bora/conversations/{id}/stream`              | login session | Follow a running answer from its start          |
+| `POST`   | `/bora/conversations/{id}/stop`                | login session | Stop a running answer; nothing is saved         |
+| `GET`    | `/bora/conversations`                          | login session | List your conversations                         |
+| `POST`   | `/bora/conversations/search`                   | login session | Search your conversations                       |
+| `GET`    | `/bora/conversations/{id}`                     | login session | Read one of your conversations                  |
+| `POST`   | `/bora/conversations/{id}/messages/{index}/ran` | login session | Record what ran from an answer                 |
+| `DELETE` | `/bora/conversations/{id}`                     | login session | Delete one of your conversations                |
+| `DELETE` | `/bora/conversations`                          | login session | Delete all your conversations                   |
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
@@ -317,14 +324,92 @@ volumes:
 Nothing a task writes survives its container: deploys, restarts and
 configuration changes start from the image again.
 
-## Chat about a project's code
+## Bora
 
-Project members can ask how a project behaves and get answers drawn from its
-source code. Boreas reads the code through a self-hosted
-[Sourcebot](https://www.sourcebot.dev) (its free plan is enough) set by
-`BOREAS_SOURCEBOT_URL` and `BOREAS_SOURCEBOT_API_KEY`, and answers with the
-OpenAI-compatible model in `BOREAS_AI_*`, which must support tool calling. An
-admin picks the repositories each project reads:
+Bora is the app's assistant. Members ask it about the running system (why a
+deploy failed, what a log line means, which tasks need attention) and about how
+a project's code behaves. It answers from their projects, tasks, builds,
+activity, settings, live metrics, task logs (the newest 200 lines, or those
+from a time on) and, where a project lists repositories, its code, with the
+OpenAI-compatible model in `BOREAS_AI_*`, which must support tool calling and
+streaming. Owners also let it read who is a member and who holds a grant. Bora
+takes login sessions only, and only for projects the caller is a member of: a
+project reached through task grants alone gets 403, and anything the caller
+cannot see gets 404.
+
+Every question is asked in a conversation, which Boreas keeps. The first
+question starts one about the whole `fleet`, a `project`, a `task`, its latest
+`build`, an Activity `alert` (`project` and `id`), or a `log` line (`project`,
+`task`, `at`, `line`). Follow-ups go into it, and Boreas gives the model its
+last 12 messages:
+
+```bash
+curl -N -X POST -H "$AUTH" -H "$JSON" http://localhost:8080/api/v1/bora/conversations -d '{
+  "about": {"kind": "task", "project": "demo", "task": "qa-1"},
+  "question": "Why did this fail?"
+}'
+curl -N -X POST -H "$AUTH" -H "$JSON" -d '{"question":"How do I fix it?"}' \
+  http://localhost:8080/api/v1/bora/conversations/<id>/messages
+```
+
+The answer streams as Server-Sent Events:
+
+- `conversation` names a new conversation;
+- a `step` comes before each tool call ("Reading qa-1's logs…");
+- `say` carries the line the phone reads aloud, 1 or 2 plain sentences, before
+  the answer's text, or just before `done` when the model wrote none;
+- each `delta` carries text as it is written, and `reset` drops what came so
+  far, its `say` included, when it turned out to lead into a tool call;
+- `done` carries the saved answer, `error` the failure, and `stopped` ends an
+  answer that was stopped.
+
+A dropped connection does not stop the answer, which is saved anyway, and
+`GET …/{id}/stream` replays a running answer from its start. Only
+`POST …/{id}/stop` cancels one, and then nothing is saved. A new conversation
+is saved with its first answer; until then only its stream and `GET …/{id}`
+reach it.
+
+**Privacy and search:**
+
+- A conversation is its user's alone: anyone else, an administrator included,
+  gets 404, and deleting a user deletes their conversations.
+- It records every project its answers read and stays hidden while one of
+  them that still exists is out of the user's reach; it comes back with
+  access.
+- Nothing is pruned: the user deletes one conversation or all of them.
+- `POST /bora/conversations/search` finds the conversations with a message
+  holding every word of `query` as a prefix, whatever its accents: "loi bui"
+  finds "lỗi build". The query travels in the body, so request logs never hold
+  it. The migration creates Postgres' `unaccent` extension, which needs the
+  database owner.
+
+Bora changes nothing. An answer may carry `actions`, each checked against the
+caller's role as the route that runs it will check again, and run only when
+the user taps it, through the existing routes, with the user's own session.
+For each action it runs, the app posts its own result line to
+`…/messages/{index}/ran` (at most 10 for an answer), and Bora takes those lines
+as fact.
+
+| Role     | Actions                                                                                                         |
+| -------- | --------------------------------------------------------------------------------------------------------------- |
+| operator | `task.start`, `task.stop`, `task.restart`                                                                       |
+| member   | `task.create`, `task.delete`, `task.update` (description, note, dev status, image, port, volumes), `task.env`   |
+| owner    | `member.add`, `member.role`, `member.remove`, `grant.add`, `grant.remove`, `project.update`, `project.delete`   |
+
+Bora turns the names it hears into the ids the routes take. Since only
+administrators may list users and registry credentials:
+
+- an owner can name only people already in the project (members, or holders of
+  a grant there);
+- only an administrator can change a project's registry credential;
+- anyone else named gets the same refusal as a name nobody has.
+
+### Code
+
+Bora reads a project's code through a self-hosted
+[Sourcebot](https://www.sourcebot.dev) (its free plan is enough), set by
+`BOREAS_SOURCEBOT_URL` and `BOREAS_SOURCEBOT_API_KEY`. An admin picks the
+repositories each project reads:
 
 ```bash
 curl -H "$AUTH" 'http://localhost:8080/api/v1/code/repositories?query=acme'
@@ -333,27 +418,50 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
   http://localhost:8080/api/v1/projects/demo
 ```
 
-A member starts a chat and follows up in it; chats are private to their author:
+- It reads each repository's default branch, and lists the files it read under
+  its answer.
+- A turn that can read code gets a 96 KiB tool budget instead of 48 KiB.
+- Code has many authors, so once Bora has read code in a turn, it proposes
+  nothing but start, stop and restart.
+- Files that usually hold secrets (`*.config`, `appsettings*.json`, env files,
+  keys, certificates, cloud and Terraform credentials) are never read.
+
+### Safety and limits
+
+**Screening.** Every question is screened before it is answered, unless it
+answers Bora's own question back. When the question points at several tasks or
+at none, or asks for a change without saying to what, Bora asks back with 2 to
+4 `choices` that the app shows as replies to tap. It may also ask back after
+looking, when what it found fits several tasks or projects.
+
+**What reaches the model.**
+
+- Env values never reach it.
+- What other people wrote (logs, errors, notes, descriptions, Activity, code)
+  reaches it only as tool results or as data under the question.
+- Before that, passwords, keys and tokens in it become `[redacted]`: quoted or
+  not, in flags, in `Authorization` headers, connection strings and URLs,
+  private keys, and well-known token formats. The question and the
+  conversation so far go through the same redaction, and so does everything
+  stored from an answer: its text, spoken line, title, choices and reasons.
+- A secret in any other shape still goes to the model provider.
+
+**Load.**
+
+- Each user may have three answers running at once and the server twenty,
+  answers whose stream dropped included. Past that, a question gets 429 at once
+  instead of queueing.
+- An answer has no time limit beyond each model request's two minutes.
+- A restart drops the answers in flight.
+- Set a spending limit at the model provider too: these caps bound load, not
+  cost.
+
+With `claude-sonnet-5-5`, EVAL_RESULT. Score a model before relying on it:
 
 ```bash
-curl -X POST -H "$AUTH" -H "$JSON" -d '{"message":"How is the card surcharge shown on receipts?"}' \
-  http://localhost:8080/api/v1/projects/demo/chats
-curl -X POST -H "$AUTH" -H "$JSON" -d '{"message":"And on refunds?"}' \
-  http://localhost:8080/api/v1/chats/<id>/messages
+BOREAS_TEST_AI_BASE_URL=https://… BOREAS_TEST_AI_MODEL=claude-sonnet-5-5 BOREAS_TEST_AI_API_KEY=… \
+  go test ./internal/infra/llm -run TestClarifyEval -v
 ```
-
-An answer takes up to 55 seconds and is never streamed. The assistant reads each
-repository's default branch, and only for project members: a user granted a
-single task cannot chat about the project, and leaving a project hides its
-chats. Files that usually hold secrets (`*.config`, `appsettings*.json`, env
-files, keys, certificates, cloud and Terraform credentials) are never read.
-In other files, quoted values named like passwords, keys or tokens, connection
-string passwords, credentials in URLs, private keys, and well-known token
-formats become `[redacted]` before the model sees them; a secret in any other
-shape still goes, with every file the assistant reads, to the model provider.
-Each user may have three answers running at once and the server twenty; past
-that a question gets 429 at once instead of queueing. Set a spending limit at
-the model provider too: these caps bound load, not cost.
 
 ## Deploy from a build pipeline
 
@@ -481,8 +589,8 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 
 To keep a screen current without polling, hold `GET /api/v1/events/stream`
 open with the login session. It sends `{}` on connect, after every successful
-authenticated write through the API, during a deploy as the task's status
-moves, and when a notification is recorded. It never says what changed, so
+authenticated write through the API outside Bora's conversations, during a
+deploy as the task's status moves, and when a notification is recorded. It never says what changed, so
 refetch what the screen shows, such as `GET /api/v1/projects`. A burst of changes arrives as one event. A proxy
 in front of Boreas must pass streams through unbuffered; Boreas sends
 `X-Accel-Buffering: no` for nginx.
@@ -674,16 +782,16 @@ the database connection and the initial administrator.
 | `BOREAS_DB_PASSWORD`    | `postgres`        | Database password                                                            |
 | `BOREAS_DB_NAME`        | `boreas`          | Database name                                                                |
 | `BOREAS_DB_SSLMODE`     | `disable`         | `sslmode` for the connection                                                 |
-| `BOREAS_ADMIN_USERNAME` | `admin`           | Seed administrator username                                                  |
-| `BOREAS_ADMIN_EMAIL`    | `admin@localhost` | Seed administrator email                                                     |
+| `BOREAS_ADMIN_USERNAME` | unset             | Seed administrator username; required only on an empty database              |
+| `BOREAS_ADMIN_EMAIL`    | unset             | Seed administrator email; required only on an empty database                 |
 | `BOREAS_ADMIN_PASSWORD` | unset             | Seed administrator password; required only on an empty database              |
 | `BOREAS_NOTIFY_URL`     | unset             | Apprise stateless endpoint (`…/notify`); Boreas derives `…/notify/boreas` itself |
 | `BOREAS_FCM_PROJECT`    | unset             | Firebase project ID; with the keyfile, enables browser push subscriptions    |
 | `BOREAS_FCM_KEYFILE`    | unset             | Service-account JSON path *inside the Apprise container*                     |
-| `BOREAS_AI_BASE_URL`    | unset             | OpenAI-compatible endpoint the project chat answers with                     |
+| `BOREAS_AI_BASE_URL`    | unset             | OpenAI-compatible endpoint Bora answers with, streaming and calling tools   |
 | `BOREAS_AI_MODEL`       | unset             | Model name at that endpoint                                                  |
 | `BOREAS_AI_API_KEY`     | unset             | Bearer key for that endpoint; local servers such as Ollama need none         |
-| `BOREAS_SOURCEBOT_URL`  | unset             | Sourcebot that indexes the code the project chat reads                       |
+| `BOREAS_SOURCEBOT_URL`  | unset             | Sourcebot that indexes the code Bora reads                                   |
 | `BOREAS_SOURCEBOT_API_KEY` | unset          | Sourcebot API key                                                            |
 
 Registry credentials are no longer configuration. Store them once through

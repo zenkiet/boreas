@@ -25,11 +25,13 @@ make db      # start only PostgreSQL via docker compose
 ```
 
 Configuration is environment variables only (`BOREAS_*`, documented in the
-README Configuration table). A fresh database needs `BOREAS_ADMIN_PASSWORD`
-to seed the first administrator:
+README Configuration table). A fresh database needs `BOREAS_ADMIN_USERNAME`,
+`BOREAS_ADMIN_EMAIL` and `BOREAS_ADMIN_PASSWORD` to seed the first
+administrator; Compose defaults the first two:
 
 ```bash
-BOREAS_ADMIN_PASSWORD=change-me make dev   # go run ./cmd/boreas
+BOREAS_ADMIN_USERNAME=admin BOREAS_ADMIN_EMAIL=admin@localhost \
+  BOREAS_ADMIN_PASSWORD=change-me make dev   # go run ./cmd/boreas
 ```
 
 Or bring up the full stack in one command:
@@ -56,8 +58,11 @@ make test-docker      # Docker runtime tests; needs a running Docker daemon
 
 Integration tests are opt-in by environment variable and skip themselves
 otherwise: `BOREAS_TEST_DATABASE_URL` gates the Postgres store tests and
-`BOREAS_TEST_DOCKER=1` gates the Docker runtime tests. Plain `make test` is
-safe to run anywhere.
+`BOREAS_TEST_DOCKER=1` gates the Docker runtime tests. `BOREAS_TEST_AI_BASE_URL`
+and `BOREAS_TEST_AI_MODEL` (plus `BOREAS_TEST_AI_API_KEY`) gate
+`TestClarifyEval`, which scores a real model on when to ask a clarifying
+question; rerun it before changing the model or Bora's screening prompt.
+Plain `make test` is safe to run anywhere.
 
 Before pushing, the pre-push hook runs lint, the unit tests, and
 `make openapi-check`; run those three locally first to avoid a rejected push.

@@ -12,10 +12,8 @@ func ApplicationHandler(api, proxy http.Handler, logger *slog.Logger) http.Handl
 		switch {
 		case r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/"):
 			api.ServeHTTP(w, r)
-		case proxy != nil:
-			proxy.ServeHTTP(w, r)
 		default:
-			http.NotFound(w, r)
+			proxy.ServeHTTP(w, r)
 		}
 	})
 	return recoverPanic(logger, logRequests(logger, handler))

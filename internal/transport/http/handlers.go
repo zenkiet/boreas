@@ -75,9 +75,8 @@ func (h *Handler) listAPITokens(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) revokeAPIToken(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
+	id, ok := pathID(w, r)
+	if !ok {
 		return
 	}
 	h.reply(w, http.StatusOK, succeeded, h.auth.RevokeAPIToken(r.Context(), userFrom(r.Context()).ID, id))
@@ -122,9 +121,8 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
+	id, ok := pathID(w, r)
+	if !ok {
 		return
 	}
 	var req updateUserRequest
@@ -138,9 +136,8 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
+	id, ok := pathID(w, r)
+	if !ok {
 		return
 	}
 	if id == userFrom(r.Context()).ID {
@@ -168,9 +165,8 @@ func (h *Handler) createCredential(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteCredential(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
+	id, ok := pathID(w, r)
+	if !ok {
 		return
 	}
 	h.reply(w, http.StatusOK, succeeded, h.projects.DeleteCredential(r.Context(), id))
@@ -178,6 +174,7 @@ func (h *Handler) deleteCredential(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 	accesses, fleet, err := h.projects.Fleet(r.Context(), userFrom(r.Context()))
+	bora := h.projects.BoraEnabled()
 	result := make([]fleetProjectDTO, len(accesses))
 	for i, acc := range accesses {
 		tasks := make([]fleetTaskDTO, len(fleet[acc.Project.ID]))
@@ -190,7 +187,7 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 				tasks[j].LastDeploy = &lastDeployDTO{Status: task.LastDeploy.Status, At: task.LastDeploy.CreatedAt}
 			}
 		}
-		result[i] = fleetProjectDTO{projectDTO: projectFromCore(acc.Project, acc.Role), Tasks: tasks}
+		result[i] = fleetProjectDTO{projectDTO: projectFromCore(acc.Project, acc.Role), Tasks: tasks, Bora: bora && acc.AllTasks}
 	}
 	h.reply(w, http.StatusOK, projectsResponse{Projects: result, Total: len(result)}, err)
 }
@@ -314,9 +311,8 @@ func (h *Handler) markNotificationsSeen(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) markNotificationSeen(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
+	id, ok := pathID(w, r)
+	if !ok {
 		return
 	}
 	h.reply(w, http.StatusOK, succeeded,
@@ -324,9 +320,8 @@ func (h *Handler) markNotificationSeen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) markNotificationUnseen(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
+	id, ok := pathID(w, r)
+	if !ok {
 		return
 	}
 	h.reply(w, http.StatusOK, succeeded, h.projects.MarkNotificationUnseen(r.Context(), accessFrom(r.Context()), id))
@@ -382,56 +377,136 @@ func (h *Handler) listFolders(w http.ResponseWriter, r *http.Request) {
 	h.reply(w, http.StatusOK, foldersResponse{Folders: folders, Total: len(folders)}, err)
 }
 
-func (h *Handler) listChats(w http.ResponseWriter, r *http.Request) {
-	chats, err := h.projects.ListChats(r.Context(), userFrom(r.Context()))
-	h.reply(w, http.StatusOK, chatsResponse{Chats: convert(chats, chatFromCore), Total: len(chats)}, err)
-}
-
-func (h *Handler) startChat(w http.ResponseWriter, r *http.Request) {
-	var req startChatRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	chat, err := h.projects.StartChat(r.Context(), accessFrom(r.Context()), req.Message)
-	h.reply(w, http.StatusCreated, chatResponse{Chat: chatFromCore(chat)}, err)
-}
-
-func (h *Handler) getChat(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
-		return
-	}
-	chat, err := h.projects.GetChat(r.Context(), userFrom(r.Context()), id)
-	h.reply(w, http.StatusOK, chatResponse{Chat: chatFromCore(chat)}, err)
-}
-
-func (h *Handler) replyChat(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
-		return
-	}
-	var req replyChatRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	messages, err := h.projects.Reply(r.Context(), userFrom(r.Context()), id, req.Message)
-	h.reply(w, http.StatusOK, chatMessagesResponse{Messages: messages}, err)
-}
-
-func (h *Handler) deleteChat(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeBadRequest(w)
-		return
-	}
-	h.reply(w, http.StatusOK, succeeded, h.projects.DeleteChat(r.Context(), userFrom(r.Context()), id))
-}
-
 func (h *Handler) searchRepositories(w http.ResponseWriter, r *http.Request) {
 	repos, err := h.projects.SearchRepositories(r.Context(), r.URL.Query().Get("query"))
 	h.reply(w, http.StatusOK, repositoriesResponse{Repositories: repos}, err)
+}
+
+func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
+	var req startConversationRequest
+	if decode(w, r, &req) {
+		events, err := h.projects.StartBora(r.Context(), userFrom(r.Context()), req.About, req.Question, req.Screen)
+		h.streamTurn(w, r, events, err)
+	}
+}
+
+func (h *Handler) askConversation(w http.ResponseWriter, r *http.Request) {
+	var req askConversationRequest
+	if id, ok := pathID(w, r); ok && decode(w, r, &req) {
+		events, err := h.projects.AskBora(r.Context(), userFrom(r.Context()), id, req.Question, req.Screen)
+		h.streamTurn(w, r, events, err)
+	}
+}
+
+// streamTurn answers a failure before the stream with a plain status.
+func (h *Handler) streamTurn(w http.ResponseWriter, r *http.Request, events <-chan service.BoraEvent, err error) {
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	sse(w, r, events, h.boraEvent)
+}
+
+func (h *Handler) followConversation(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	if events := h.projects.FollowBora(r.Context(), userFrom(r.Context()), id); events != nil {
+		sse(w, r, events, h.boraEvent)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) stopConversation(w http.ResponseWriter, r *http.Request) {
+	if id, ok := pathID(w, r); ok {
+		h.projects.StopBora(userFrom(r.Context()), id)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (h *Handler) listConversations(w http.ResponseWriter, r *http.Request) {
+	limit, err := strconv.Atoi(cmp.Or(r.URL.Query().Get("limit"), "50"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	h.conversations(w, r, "", r.URL.Query().Get("before"), limit)
+}
+
+func (h *Handler) searchConversations(w http.ResponseWriter, r *http.Request) {
+	var req searchConversationsRequest
+	if decode(w, r, &req) {
+		h.conversations(w, r, req.Query, req.Before, cmp.Or(req.Limit, 50))
+	}
+}
+
+func (h *Handler) conversations(w http.ResponseWriter, r *http.Request, query, before string, limit int) {
+	list, next, err := h.projects.BoraConversations(r.Context(), userFrom(r.Context()), query, before, limit)
+	h.reply(w, http.StatusOK, conversationsResponse{Conversations: convert(list, conversationItemFromCore), Next: next}, err)
+}
+
+func (h *Handler) getConversation(w http.ResponseWriter, r *http.Request) {
+	if id, ok := pathID(w, r); ok {
+		c, err := h.projects.BoraConversation(r.Context(), userFrom(r.Context()), id)
+		h.reply(w, http.StatusOK, conversationResponse{Conversation: conversationDTO{
+			ID: c.ID, Title: c.Title, About: c.About, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Answering: c.Answering, Messages: c.Messages,
+		}}, err)
+	}
+}
+
+func (h *Handler) addRan(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	index, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	var req ranRequest
+	if decode(w, r, &req) {
+		h.noContent(w, h.projects.AddBoraRan(r.Context(), userFrom(r.Context()), id, index, req.Line))
+	}
+}
+
+func (h *Handler) deleteConversation(w http.ResponseWriter, r *http.Request) {
+	if id, ok := pathID(w, r); ok {
+		h.noContent(w, h.projects.DeleteBora(r.Context(), userFrom(r.Context()), &id))
+	}
+}
+
+func (h *Handler) deleteConversations(w http.ResponseWriter, r *http.Request) {
+	h.noContent(w, h.projects.DeleteBora(r.Context(), userFrom(r.Context()), nil))
+}
+
+func (h *Handler) boraEvent(e service.BoraEvent) (name string, data any) {
+	switch e.Name {
+	case "conversation":
+		return e.Name, map[string]uuid.UUID{"id": e.ID}
+	case "done":
+		return e.Name, boraDone{Message: *e.Message, Title: e.Title}
+	case "reset", "stopped":
+		return e.Name, struct{}{}
+	case "error":
+		status, message := errorStatus(e.Err)
+		if status == http.StatusInternalServerError {
+			h.logger.Error("bora turn", "error", e.Err)
+		}
+		return e.Name, map[string]any{"status": status, "kind": errorKind(status), "message": message}
+	}
+	return e.Name, map[string]string{"text": e.Text}
+}
+
+// pathID answers 400 itself when the path's id is not a UUID.
+func pathID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeBadRequest(w)
+	}
+	return id, err == nil
 }
 
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {

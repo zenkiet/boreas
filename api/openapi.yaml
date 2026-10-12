@@ -227,56 +227,25 @@ paths:
       summary: Revoke one of your API tokens
       tags:
       - auth
-  /api/v1/chats:
-    get:
-      description: Your 100 most recent chats, newest first, without their messages.
-      operationId: get-chats
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatsResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Unauthorized
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Internal Server Error
-      security:
-      - bearerAuth: []
-      summary: List your chats
-      tags:
-      - chats
-  /api/v1/chats/{id}:
+  /api/v1/bora/conversations:
     delete:
-      operationId: delete-chats-id
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          $ref: '#/components/schemas/UUID'
+      description: Hidden ones included; also stops their running turns.
+      operationId: delete-bora-conversations
       responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
-          description: OK
+        "204":
+          description: No Content
         "401":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
         "500":
           content:
             application/json:
@@ -285,63 +254,32 @@ paths:
           description: Internal Server Error
       security:
       - bearerAuth: []
-      summary: Delete one of your chats
+      summary: Delete all your conversations
       tags:
-      - chats
+      - bora
     get:
-      operationId: get-chats-id
+      description: Newest first, without messages; answering is true while a turn
+        runs. A conversation is hidden while a project its answers read is out of
+        your reach. To page, pass next as before.
+      operationId: get-bora-conversations
       parameters:
-      - in: path
-        name: id
-        required: true
+      - in: query
+        name: before
         schema:
-          $ref: '#/components/schemas/UUID'
+          type: string
+      - in: query
+        name: limit
+        schema:
+          default: 50
+          maximum: 200
+          minimum: 1
+          type: integer
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ChatResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Unauthorized
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Internal Server Error
-      security:
-      - bearerAuth: []
-      summary: Get one of your chats
-      tags:
-      - chats
-  /api/v1/chats/{id}/messages:
-    post:
-      description: Returns the new question and its answer; the last 12 messages go
-        along as context.
-      operationId: post-chats-id-messages
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          $ref: '#/components/schemas/UUID'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReplyChatRequest'
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatMessagesResponse'
+                $ref: '#/components/schemas/ConversationsResponse'
           description: OK
         "400":
           content:
@@ -355,6 +293,256 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List your conversations
+      tags:
+      - bora
+    post:
+      description: 'Answers a first question about `about`: every project, one project,
+        a task, its latest build, an Activity event or a log line, from the projects
+        the caller is a member of. The answer comes as Server-Sent Events, each an
+        `event: <name>` with a JSON data line: conversation {id} first on a new conversation;
+        step {text} before each tool call; say {text}, the line to read aloud, before
+        the answer''s first delta, or just before done when the model wrote none;
+        delta {text} as the answer is written; reset {} when the text so far, its
+        say included, led into a tool call, so the client drops it; then done {message,
+        title?} with the saved answer, title on a new conversation, error {status,
+        kind, message}, or stopped {} after a stop. A dropped connection does not
+        stop the turn, and a comment heartbeat fills idle time. Read it with fetch
+        and a stream reader: EventSource cannot send the Authorization header. Before
+        the stream begins, 403 answers an API token, task grants alone or no project,
+        404 a subject the caller cannot see, 409 a server without an assistant, and
+        429 a caller with 3 turns running or a server with 20. The conversation is
+        saved with its first answer; until then only its stream and GET reach it.'
+      operationId: post-bora-conversations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartConversationRequest'
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Ask Bora in a new conversation
+      tags:
+      - bora
+  /api/v1/bora/conversations/{id}:
+    delete:
+      description: Also stops its running turn.
+      operationId: delete-bora-conversations-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Delete one of your conversations
+      tags:
+      - bora
+    get:
+      description: With every message; answering holds the question of a running turn.
+      operationId: get-bora-conversations-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get one of your conversations
+      tags:
+      - bora
+  /api/v1/bora/conversations/{id}/messages:
+    post:
+      description: 'Answers from the conversation''s last 12 messages and every ran
+        line. The answer comes as Server-Sent Events, each an `event: <name>` with
+        a JSON data line: conversation {id} first on a new conversation; step {text}
+        before each tool call; say {text}, the line to read aloud, before the answer''s
+        first delta, or just before done when the model wrote none; delta {text} as
+        the answer is written; reset {} when the text so far, its say included, led
+        into a tool call, so the client drops it; then done {message, title?} with
+        the saved answer, title on a new conversation, error {status, kind, message},
+        or stopped {} after a stop. A dropped connection does not stop the turn, and
+        a comment heartbeat fills idle time. Read it with fetch and a stream reader:
+        EventSource cannot send the Authorization header. 409 also while a turn runs
+        in the conversation.'
+      operationId: post-bora-conversations-id-messages
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AskConversationRequest'
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
         "409":
           content:
             application/json:
@@ -377,7 +565,213 @@ paths:
       - bearerAuth: []
       summary: Ask a follow-up question
       tags:
-      - chats
+      - bora
+  /api/v1/bora/conversations/{id}/messages/{index}/ran:
+    post:
+      description: line is the app's own result line for an action the user ran from
+        the answer at index. An answer holds at most 10; 400 also for an index that
+        is not an answer.
+      operationId: post-bora-conversations-id-messages-index-ran
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      - in: path
+        name: index
+        required: true
+        schema:
+          minimum: 0
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RanRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Record what ran from an answer
+      tags:
+      - bora
+  /api/v1/bora/conversations/{id}/stop:
+    post:
+      description: Cancels the turn, which saves nothing. Also 204 when no turn runs.
+      operationId: post-bora-conversations-id-stop
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Stop a running turn
+      tags:
+      - bora
+  /api/v1/bora/conversations/{id}/stream:
+    get:
+      description: 'Replays the running turn of a conversation from its start, then
+        follows it. The answer comes as Server-Sent Events, each an `event: <name>`
+        with a JSON data line: conversation {id} first on a new conversation; step
+        {text} before each tool call; say {text}, the line to read aloud, before the
+        answer''s first delta, or just before done when the model wrote none; delta
+        {text} as the answer is written; reset {} when the text so far, its say included,
+        led into a tool call, so the client drops it; then done {message, title?}
+        with the saved answer, title on a new conversation, error {status, kind, message},
+        or stopped {} after a stop. A dropped connection does not stop the turn, and
+        a comment heartbeat fills idle time. Read it with fetch and a stream reader:
+        EventSource cannot send the Authorization header. 204 when no turn runs.'
+      operationId: get-bora-conversations-id-stream
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Follow a running turn
+      tags:
+      - bora
+  /api/v1/bora/conversations/search:
+    post:
+      description: The list, kept to conversations with a message holding every word
+        of query as a prefix, whatever its accents, each with a snippet of the newest
+        such message. The query travels in the body, so request logs never hold it.
+      operationId: post-bora-conversations-search
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchConversationsRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationsResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Search your conversations
+      tags:
+      - bora
   /api/v1/code/repositories:
     get:
       description: Repositories Sourcebot indexes whose name contains query, at most
@@ -428,11 +822,11 @@ paths:
   /api/v1/events/stream:
     get:
       description: 'Server-Sent Events carrying {} once on connect and after any successful
-        authenticated write, a deploy''s interim task states and each recorded notification,
-        with nothing about what changed: refetch what you show, such as GET /api/v1/projects.
-        Bursts arrive as one event, and a comment heartbeat fills idle time. Read
-        it with fetch and a stream reader: EventSource cannot send the Authorization
-        header.'
+        authenticated write outside Bora''s conversations, a deploy''s interim task
+        states and each recorded notification, with nothing about what changed: refetch
+        what you show, such as GET /api/v1/projects. Bursts arrive as one event, and
+        a comment heartbeat fills idle time. Read it with fetch and a stream reader:
+        EventSource cannot send the Authorization header.'
       operationId: get-events-stream
       responses:
         "200":
@@ -574,7 +968,8 @@ paths:
     get:
       description: Administrators see every project, others their memberships and
         grants. my_role is the caller's role, per project and per task, where a grant
-        can raise it; last_deploy is the newest deploy.
+        can raise it; last_deploy is the newest deploy; bora is whether the caller
+        may ask Bora about the project.
       operationId: get-projects
       responses:
         "200":
@@ -753,8 +1148,8 @@ paths:
     patch:
       description: registry_credential_id null detaches the credential, omitted leaves
         it unchanged. Only admins may set repositories, the Sourcebot repositories
-        members chat about. An empty default_image or default_env clears that form
-        default. Existing tasks and containers are never touched.
+        Bora reads. An empty default_image or default_env clears that form default.
+        Existing tasks and containers are never touched.
       operationId: patch-projects-project
       parameters:
       - in: path
@@ -810,79 +1205,6 @@ paths:
       summary: Update a project
       tags:
       - projects
-  /api/v1/projects/{project}/chats:
-    post:
-      description: Answers the first message from the code of the project's repositories,
-        which can take up to a minute. Only project members may ask; 409 when the
-        project has no repositories or no assistant is configured, 429 while you already
-        have 3 answers running or the server 20.
-      operationId: post-projects-project-chats
-      parameters:
-      - in: path
-        name: project
-        required: true
-        schema:
-          example: demo
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StartChatRequest'
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatResponse'
-          description: Created
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Bad Request
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Unauthorized
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Forbidden
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Conflict
-        "429":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Too Many Requests
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Internal Server Error
-      security:
-      - bearerAuth: []
-      summary: Start a chat about the project's code
-      tags:
-      - chats
   /api/v1/projects/{project}/folders:
     get:
       description: The project's folders in the boreas-appdata volume, which task
@@ -978,6 +1300,7 @@ paths:
       tags:
       - projects
     post:
+      description: Also changes a member's role. Demoting the last owner is refused.
       operationId: post-projects-project-members
       parameters:
       - in: path
@@ -1022,6 +1345,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
         "500":
           content:
             application/json:
@@ -2746,6 +3075,180 @@ components:
       required:
       - user_id
       type: object
+    AskConversationRequest:
+      properties:
+        question:
+          example: And on refunds?
+          maxLength: 2000
+          minLength: 1
+          type: string
+        screen:
+          maxLength: 2000
+          type: string
+      required:
+      - question
+      type: object
+    BoraAbout:
+      properties:
+        at:
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        kind:
+          enum:
+          - fleet
+          - project
+          - task
+          - alert
+          - build
+          - log
+          type: string
+        line:
+          maxLength: 1000
+          type: string
+        project:
+          example: demo
+          type: string
+        task:
+          example: qa-1
+          type: string
+      required:
+      - kind
+      type: object
+    BoraAction:
+      properties:
+        auto_restart:
+          nullable: true
+          type: boolean
+        default_env_set:
+          additionalProperties:
+            type: string
+          type: object
+        default_env_unset:
+          items:
+            type: string
+          type: array
+        default_image:
+          type: string
+        default_port:
+          type: integer
+        description:
+          type: string
+        dev_status:
+          $ref: '#/components/schemas/DevStatus'
+        image:
+          type: string
+        name:
+          type: string
+        note:
+          type: string
+        op:
+          $ref: '#/components/schemas/BoraOp'
+        port:
+          type: integer
+        project:
+          type: string
+        reason:
+          type: string
+        registry_credential_id:
+          $ref: '#/components/schemas/UUID'
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        set:
+          additionalProperties:
+            type: string
+          type: object
+        task:
+          type: string
+        unset:
+          items:
+            type: string
+          type: array
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+        volumes:
+          additionalProperties:
+            type: string
+          type: object
+      required:
+      - op
+      - project
+      - reason
+      type: object
+    BoraMessage:
+      properties:
+        actions:
+          items:
+            $ref: '#/components/schemas/BoraAction'
+          nullable: true
+          type: array
+        at:
+          format: date-time
+          type: string
+        choices:
+          items:
+            type: string
+          nullable: true
+          type: array
+        content:
+          type: string
+        index:
+          type: integer
+        ran:
+          items:
+            type: string
+          nullable: true
+          type: array
+        role:
+          $ref: '#/components/schemas/ChatRole'
+        say:
+          type: string
+        sources:
+          items:
+            $ref: '#/components/schemas/CodeSource'
+          nullable: true
+          type: array
+      required:
+      - index
+      - role
+      - content
+      - say
+      - actions
+      - choices
+      - sources
+      - ran
+      - at
+      type: object
+    BoraOp:
+      enum:
+      - grant.add
+      - grant.remove
+      - member.add
+      - member.remove
+      - member.role
+      - project.delete
+      - project.update
+      - task.create
+      - task.delete
+      - task.env
+      - task.restart
+      - task.start
+      - task.stop
+      - task.update
+      type: string
+    BoraPending:
+      properties:
+        question:
+          type: string
+        since:
+          format: date-time
+          type: string
+      required:
+      - question
+      - since
+      type: object
     Build:
       properties:
         at:
@@ -2770,86 +3273,11 @@ components:
       - failure
       - canceled
       type: string
-    Chat:
-      properties:
-        created_at:
-          format: date-time
-          type: string
-        id:
-          $ref: '#/components/schemas/UUID'
-        messages:
-          items:
-            $ref: '#/components/schemas/ChatMessage'
-          type: array
-        project:
-          example: demo
-          type: string
-        title:
-          example: How is the card surcharge shown on receipts?
-          type: string
-        updated_at:
-          format: date-time
-          type: string
-      required:
-      - id
-      - project
-      - title
-      - created_at
-      - updated_at
-      type: object
-    ChatMessage:
-      properties:
-        at:
-          format: date-time
-          type: string
-        content:
-          type: string
-        role:
-          $ref: '#/components/schemas/ChatRole'
-        sources:
-          items:
-            $ref: '#/components/schemas/CodeSource'
-          type: array
-      required:
-      - role
-      - content
-      - at
-      type: object
-    ChatMessagesResponse:
-      properties:
-        messages:
-          items:
-            $ref: '#/components/schemas/ChatMessage'
-          nullable: true
-          type: array
-      required:
-      - messages
-      type: object
-    ChatResponse:
-      properties:
-        chat:
-          $ref: '#/components/schemas/Chat'
-      required:
-      - chat
-      type: object
     ChatRole:
       enum:
       - user
       - assistant
       type: string
-    ChatsResponse:
-      properties:
-        chats:
-          items:
-            $ref: '#/components/schemas/Chat'
-          nullable: true
-          type: array
-        total:
-          type: integer
-      required:
-      - chats
-      - total
-      type: object
     CodeSource:
       properties:
         path:
@@ -2861,6 +3289,77 @@ components:
       required:
       - repo
       - path
+      type: object
+    Conversation:
+      properties:
+        about:
+          $ref: '#/components/schemas/BoraAbout'
+        answering:
+          $ref: '#/components/schemas/BoraPending'
+        created_at:
+          format: date-time
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        messages:
+          items:
+            $ref: '#/components/schemas/BoraMessage'
+          nullable: true
+          type: array
+        title:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - title
+      - about
+      - created_at
+      - updated_at
+      - answering
+      - messages
+      type: object
+    ConversationItem:
+      properties:
+        about:
+          $ref: '#/components/schemas/BoraAbout'
+        answering:
+          type: boolean
+        id:
+          $ref: '#/components/schemas/UUID'
+        snippet:
+          type: string
+        title:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - title
+      - about
+      - updated_at
+      - answering
+      type: object
+    ConversationResponse:
+      properties:
+        conversation:
+          $ref: '#/components/schemas/Conversation'
+      required:
+      - conversation
+      type: object
+    ConversationsResponse:
+      properties:
+        conversations:
+          items:
+            $ref: '#/components/schemas/ConversationItem'
+          nullable: true
+          type: array
+        next:
+          type: string
+      required:
+      - conversations
       type: object
     CreateAPITokenRequest:
       properties:
@@ -3047,6 +3546,8 @@ components:
       type: object
     FleetProject:
       properties:
+        bora:
+          type: boolean
         created_at:
           format: date-time
           type: string
@@ -3098,6 +3599,7 @@ components:
       - updated_at
       - my_role
       - tasks
+      - bora
       type: object
     FleetTask:
       properties:
@@ -3477,20 +3979,21 @@ components:
       required:
       - token
       type: object
+    RanRequest:
+      properties:
+        line:
+          example: Task kiosk-602 stopped.
+          maxLength: 200
+          minLength: 1
+          type: string
+      required:
+      - line
+      type: object
     RegistryKind:
       enum:
       - ghcr
       - dockerhub
       type: string
-    ReplyChatRequest:
-      properties:
-        message:
-          maxLength: 2000
-          minLength: 1
-          type: string
-      required:
-      - message
-      type: object
     ReportBuildRequest:
       properties:
         progress:
@@ -3523,15 +4026,38 @@ components:
       required:
       - repositories
       type: object
-    StartChatRequest:
+    SearchConversationsRequest:
       properties:
-        message:
-          example: How is the card surcharge shown on receipts?
-          maxLength: 2000
+        before:
+          type: string
+        limit:
+          default: 50
+          maximum: 200
+          minimum: 1
+          type: integer
+        query:
+          example: loi build
           minLength: 1
           type: string
       required:
-      - message
+      - query
+      type: object
+    StartConversationRequest:
+      properties:
+        about:
+          $ref: '#/components/schemas/BoraAbout'
+        question:
+          example: Why did this fail?
+          maxLength: 2000
+          minLength: 1
+          type: string
+        screen:
+          example: /projects/demo
+          maxLength: 2000
+          type: string
+      required:
+      - about
+      - question
       type: object
     SuccessResponse:
       properties:

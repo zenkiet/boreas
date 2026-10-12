@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"testing"
@@ -310,6 +311,12 @@ func TestNotificationFeedAcrossProjects(t *testing.T) {
 	hidden, err := store.List(ctx, user.ID, true, &other.ID, nil, 10)
 	if err != nil || len(hidden) != 3 || hidden[0].Seen {
 		t.Fatalf("a mark reached a project the user cannot see: %+v, %v", hidden, err)
+	}
+	if n, err := store.Get(ctx, user.ID, false, all[0]); err != nil || n.Project != mine.Slug || !n.Seen {
+		t.Fatalf("get a visible notification: %+v, %v", n, err)
+	}
+	if _, err := store.Get(ctx, user.ID, false, all[1]); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("got another project's notification: %v", err)
 	}
 }
 
@@ -837,38 +844,134 @@ func TestPushSubscriptionMovesToItsLatestOwner(t *testing.T) {
 	}
 }
 
-func TestChatsRoundTrip(t *testing.T) {
+func TestBoraConversations(t *testing.T) {
 	pool := newPool(t)
-	ctx, chats := context.Background(), NewChatStore(pool)
-	project, user := seedProject(t, pool), seedUser(t, pool, "chat", core.RoleUser)
-	asked := core.ChatMessage{Role: core.ChatUser, Content: "How?", At: time.Now().UTC().Truncate(time.Second)}
-	answered := core.ChatMessage{Role: core.ChatAssistant, Content: "Like this.", Sources: []core.CodeSource{{Repo: "github.com/acme/web", Path: "a.ts"}}}
+	ctx, store, projects := context.Background(), NewBoraStore(pool), NewProjectStore(pool)
+	shop, crm, gone := seedProject(t, pool), seedProject(t, pool), seedProject(t, pool)
+	user, other := seedUser(t, pool, "bora", core.RoleUser), seedUser(t, pool, "other", core.RoleAdmin)
+	for _, p := range []core.Project{shop, crm} {
+		if err := projects.AddMember(ctx, core.ProjectMember{ProjectID: p.ID, UserID: user.ID, Role: core.ProjectRoleViewer}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	message := func(index int, content string) core.BoraMessage {
+		m := core.BoraMessage{
+			Index: index, Role: core.ChatUser, Content: content, At: time.Now().UTC().Truncate(time.Microsecond),
+			Actions: []core.BoraAction{}, Choices: []string{}, Sources: []core.CodeSource{}, Ran: []string{},
+		}
+		if index%2 == 1 {
+			m.Role, m.Say = core.ChatAssistant, content
+		}
+		return m
+	}
+	save := func(c core.BoraConversation, turn ...core.BoraMessage) {
+		t.Helper()
+		if err := store.Save(ctx, c, turn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	visible := func(id uuid.UUID) bool {
+		_, err := store.Get(ctx, user.ID, false, id)
+		return err == nil
+	}
 
-	chat, err := chats.Create(ctx, core.Chat{ProjectID: project.ID, UserID: user.ID, Title: "How?", Messages: []core.ChatMessage{asked}})
-	if err != nil || chat.ProjectSlug != project.Slug || len(chat.Messages) != 1 {
-		t.Fatalf("create %+v, err %v", chat, err)
+	about := core.BoraAbout{Kind: "task", Project: shop.Slug, Task: "web"}
+	build := core.BoraConversation{ID: uuid.New(), UserID: user.ID, ProjectID: &shop.ID, About: about, Projects: []uuid.UUID{shop.ID}, Title: "Lỗi build"}
+	save(build, message(0, "Sao bị lỗi build?"), message(1, "Lỗi build vì image sai."))
+	build.Projects = []uuid.UUID{shop.ID, crm.ID}
+	save(build, message(2, "còn crm?"), message(3, "crm ổn."))
+	got, err := store.Get(ctx, user.ID, false, build.ID)
+	if err != nil || len(got.Messages) != 4 || got.Messages[3].Content != "crm ổn." || got.Messages[3].Say != "crm ổn." || got.About != about || got.Title != "Lỗi build" ||
+		len(got.Projects) != 2 || got.ProjectID == nil || *got.ProjectID != shop.ID || got.Messages[1].Actions == nil {
+		t.Fatalf("get %+v, %v", got, err)
 	}
-	if err := chats.Append(ctx, chat.ID, []core.ChatMessage{answered}); err != nil {
+	if _, err := store.Get(ctx, other.ID, true, build.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("someone else, an admin, read the conversation: %v", err)
+	}
+
+	for _, index := range []int{0, 4} {
+		if err := store.AddRan(ctx, build.ID, index, "x"); !errors.Is(err, core.ErrInvalidInput) {
+			t.Errorf("ran on message %d: %v", index, err)
+		}
+	}
+	for i := range 10 {
+		if err := store.AddRan(ctx, build.ID, 1, "Task web restarted."); err != nil {
+			t.Fatalf("ran line %d: %v", i, err)
+		}
+	}
+	if err := store.AddRan(ctx, build.ID, 1, "one too many"); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("an eleventh ran line: %v", err)
+	}
+
+	if err := projects.RemoveMember(ctx, crm.ID, user.ID); err != nil {
 		t.Fatal(err)
 	}
-	got, err := chats.Get(ctx, chat.ID, user.ID)
-	if err != nil || len(got.Messages) != 2 || !got.Messages[0].At.Equal(asked.At) || got.Messages[1].Sources[0].Path != "a.ts" {
-		t.Fatalf("get %+v, err %v", got, err)
+	if visible(build.ID) {
+		t.Fatal("a conversation stayed visible after its user left a project it read")
 	}
-	listed, err := chats.List(ctx, user.ID)
-	if err != nil || len(listed) != 1 || listed[0].ID != chat.ID || len(listed[0].Messages) != 0 {
-		t.Fatalf("list %+v, err %v", listed, err)
+	if _, err := store.Get(ctx, user.ID, true, build.ID); err != nil {
+		t.Fatalf("an admin lost their own conversation: %v", err)
 	}
-	if _, err := chats.Get(ctx, chat.ID, uuid.New()); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("another user read the chat: %v", err)
-	}
-	if err := chats.Delete(ctx, chat.ID, uuid.New()); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("another user deleted the chat: %v", err)
-	}
-	if err := chats.Delete(ctx, chat.ID, user.ID); err != nil {
+	if err := projects.AddMember(ctx, core.ProjectMember{ProjectID: crm.ID, UserID: user.ID, Role: core.ProjectRoleViewer}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := chats.Get(ctx, chat.ID, user.ID); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("deleted chat: %v", err)
+	if !visible(build.ID) {
+		t.Fatal("a conversation stayed hidden after its user came back")
+	}
+	fleet := core.BoraConversation{ID: uuid.New(), UserID: user.ID, About: core.BoraAbout{Kind: "fleet"}, Projects: []uuid.UUID{shop.ID, gone.ID}, Title: "Fleet"}
+	save(fleet, message(0, "Có gì cần xem?"), message(1, "Không có gì."))
+	if visible(fleet.ID) {
+		t.Fatal("a conversation that read a project out of reach is visible")
+	}
+	if err := projects.Delete(ctx, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !visible(fleet.ID) {
+		t.Fatal("a deleted project still hides the conversation")
+	}
+
+	var ids []uuid.UUID
+	for i := range 3 {
+		c := core.BoraConversation{ID: uuid.New(), UserID: user.ID, About: core.BoraAbout{Kind: "fleet"}, Projects: []uuid.UUID{}, Title: fmt.Sprint(i)}
+		save(c, message(0, "q"), message(1, "a"))
+		ids = append(ids, c.ID)
+	}
+	var paged []uuid.UUID
+	for before := (core.BoraCursor{}); ; {
+		page, err := store.List(ctx, user.ID, false, "", before, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range page {
+			paged = append(paged, c.ID)
+		}
+		if len(page) < 2 {
+			break
+		}
+		before = core.BoraCursor{At: page[1].UpdatedAt, ID: page[1].ID}
+	}
+	want := append([]uuid.UUID{build.ID, fleet.ID}, ids...)
+	if slices.Reverse(want); !slices.Equal(paged, want) {
+		t.Fatalf("paged %v, want newest first %v", paged, want)
+	}
+
+	for query, want := range map[string]string{"loi build": "Lỗi build vì image sai.", "lo bui": "Lỗi build vì image sai.", "CRM": "crm ổn.", "lỗi": "Lỗi build vì image sai.", "xyz": ""} {
+		hits, err := store.List(ctx, user.ID, false, query, core.BoraCursor{}, 10)
+		if err != nil || want == "" && len(hits) != 0 || want != "" && (len(hits) != 1 || hits[0].ID != build.ID || hits[0].Snippet != want) {
+			t.Errorf("search %q: %+v, %v", query, hits, err)
+		}
+	}
+
+	if err := store.Delete(ctx, user.ID, false, &build.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(ctx, user.ID, false, &build.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("deleted twice: %v", err)
+	}
+	if err := store.Delete(ctx, user.ID, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if left, err := store.List(ctx, user.ID, false, "", core.BoraCursor{}, 10); err != nil || len(left) != 0 {
+		t.Fatalf("after deleting all: %v, %v", left, err)
 	}
 }

@@ -52,9 +52,6 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger)
 		return fmt.Errorf("read migration files: %w", err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
-			continue
-		}
 		version := strings.TrimSuffix(entry.Name(), ".sql")
 
 		var applied bool

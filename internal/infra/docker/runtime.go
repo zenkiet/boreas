@@ -45,9 +45,6 @@ func New(networkName, restartPolicy string) (*Runtime, error) {
 func (r *Runtime) Close() error { return r.client.Close() }
 
 func (r *Runtime) EnsureNetwork(ctx context.Context) error {
-	if strings.TrimSpace(r.network) == "" {
-		return errors.Join(core.ErrInvalidInput, errors.New("docker network is required"))
-	}
 	networks, err := r.client.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.Arg("name", r.network))})
 	if err != nil {
 		return fmt.Errorf("list docker networks: %w", err)
@@ -259,11 +256,14 @@ func (r *Runtime) Inspect(ctx context.Context, id string) (core.ContainerState, 
 func (r *Runtime) Logs(ctx context.Context, id string, options core.LogOptions) (io.ReadCloser, error) {
 	tail, since := strconv.Itoa(options.Tail), ""
 	if !options.Since.IsZero() {
-		tail, since = "all", fmt.Sprintf("%d.%09d", options.Since.Unix(), options.Since.Nanosecond())
+		since = fmt.Sprintf("%d.%09d", options.Since.Unix(), options.Since.Nanosecond())
+		// Docker takes the tail before since; a resumed stream needs every line since.
+		if options.Follow {
+			tail = "all"
+		}
 	}
 	stream, err := r.client.ContainerLogs(ctx, id, container.LogsOptions{
-		ShowStdout: true, ShowStderr: true, Follow: options.Follow, Tail: tail, Since: since,
-		Timestamps: options.Timestamps,
+		ShowStdout: true, ShowStderr: true, Timestamps: true, Follow: options.Follow, Tail: tail, Since: since,
 	})
 	return stream, mapError("read logs for container "+id, err)
 }

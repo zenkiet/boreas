@@ -41,23 +41,57 @@ func (h *Handler) reply(w http.ResponseWriter, status int, v any, err error) {
 }
 
 func writeServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
-	status, message := http.StatusInternalServerError, "internal server error"
-	switch {
-	case errors.Is(err, core.ErrInvalidInput):
-		status, message = http.StatusBadRequest, "invalid request"
-	case errors.Is(err, core.ErrUnauthorized):
+	status, message := errorStatus(err)
+	switch status {
+	case http.StatusUnauthorized:
 		w.Header().Set("WWW-Authenticate", `Bearer realm="Boreas"`)
-		status, message = http.StatusUnauthorized, "unauthorized"
-	case errors.Is(err, core.ErrForbidden):
-		status, message = http.StatusForbidden, "forbidden"
-	case errors.Is(err, core.ErrNotFound):
-		status, message = http.StatusNotFound, "not found"
-	case errors.Is(err, core.ErrAlreadyExists), errors.Is(err, core.ErrConflict):
-		status, message = http.StatusConflict, "conflict"
-	case errors.Is(err, core.ErrTooMany):
-		status, message = http.StatusTooManyRequests, "too many requests"
-	default:
+	case http.StatusInternalServerError:
 		logger.Error("http transport", "error", err)
 	}
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func errorStatus(err error) (status int, message string) {
+	switch {
+	case errors.Is(err, core.ErrInvalidInput):
+		return http.StatusBadRequest, "invalid request"
+	case errors.Is(err, core.ErrUnauthorized):
+		return http.StatusUnauthorized, "unauthorized"
+	case errors.Is(err, core.ErrForbidden):
+		return http.StatusForbidden, "forbidden"
+	case errors.Is(err, core.ErrNotFound):
+		return http.StatusNotFound, "not found"
+	case errors.Is(err, core.ErrAlreadyExists), errors.Is(err, core.ErrConflict):
+		return http.StatusConflict, "conflict"
+	case errors.Is(err, core.ErrTooMany):
+		return http.StatusTooManyRequests, "too many requests"
+	}
+	return http.StatusInternalServerError, "internal server error"
+}
+
+// errorKind names a status as the app's ApiErrorKind does.
+func errorKind(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "invalid-input"
+	case http.StatusUnauthorized:
+		return "unauthorized"
+	case http.StatusForbidden:
+		return "forbidden"
+	case http.StatusNotFound:
+		return "not-found"
+	case http.StatusConflict:
+		return "conflict"
+	case http.StatusTooManyRequests:
+		return "rate-limited"
+	}
+	return "server"
+}
+
+func (h *Handler) noContent(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

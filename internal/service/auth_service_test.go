@@ -14,11 +14,7 @@ import (
 func newAuth(t *testing.T) (*AuthService, *fakeUserStore, *fakeTokenStore) {
 	t.Helper()
 	users, tokens := newFakeUserStore(), newFakeTokenStore()
-	auth, err := NewAuthService(users, tokens)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return auth, users, tokens
+	return NewAuthService(users, tokens), users, tokens
 }
 
 func newUser(t *testing.T, auth *AuthService, username string) core.User {

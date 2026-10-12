@@ -176,6 +176,7 @@ type stubProjects struct {
 	markSeen        func(context.Context, core.User, []uuid.UUID) error
 	fleet           func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
 	grantedRoles    map[uuid.UUID]core.ProjectRole
+	turn            []service.BoraEvent
 }
 
 func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (core.ProjectAccess, error) {
@@ -197,21 +198,40 @@ func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (
 	return acc, nil
 }
 
-func (s *stubProjects) StartChat(_ context.Context, acc core.ProjectAccess, question string) (core.Chat, error) {
-	return core.Chat{ProjectSlug: acc.Project.Slug, Title: question}, nil
+func (s *stubProjects) BoraEnabled() bool { return true }
+
+func (s *stubProjects) StartBora(context.Context, core.User, core.BoraAbout, string, string) (<-chan service.BoraEvent, error) {
+	events := make(chan service.BoraEvent, len(s.turn))
+	for _, e := range s.turn {
+		events <- e
+	}
+	close(events)
+	return events, nil
 }
 
-func (s *stubProjects) Reply(context.Context, core.User, uuid.UUID, string) ([]core.ChatMessage, error) {
-	return nil, nil
+func (s *stubProjects) AskBora(ctx context.Context, actor core.User, _ uuid.UUID, question, screen string) (<-chan service.BoraEvent, error) {
+	return s.StartBora(ctx, actor, core.BoraAbout{}, question, screen)
 }
 
-func (s *stubProjects) ListChats(context.Context, core.User) ([]core.Chat, error) { return nil, nil }
-
-func (s *stubProjects) GetChat(context.Context, core.User, uuid.UUID) (core.Chat, error) {
-	return core.Chat{}, core.ErrNotFound
+func (s *stubProjects) FollowBora(context.Context, core.User, uuid.UUID) <-chan service.BoraEvent {
+	return nil
 }
 
-func (s *stubProjects) DeleteChat(context.Context, core.User, uuid.UUID) error { return nil }
+func (s *stubProjects) StopBora(core.User, uuid.UUID) {}
+
+func (s *stubProjects) BoraConversations(context.Context, core.User, string, string, int) ([]core.BoraConversation, string, error) {
+	return nil, "", nil
+}
+
+func (s *stubProjects) BoraConversation(context.Context, core.User, uuid.UUID) (core.BoraConversation, error) {
+	return core.BoraConversation{}, core.ErrNotFound
+}
+
+func (s *stubProjects) AddBoraRan(context.Context, core.User, uuid.UUID, int, string) error {
+	return nil
+}
+
+func (s *stubProjects) DeleteBora(context.Context, core.User, *uuid.UUID) error { return nil }
 
 func (s *stubProjects) SearchRepositories(context.Context, string) ([]string, error) {
 	return []string{"github.com/acme/web"}, nil

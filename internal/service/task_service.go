@@ -21,11 +21,9 @@ import (
 )
 
 type Config struct {
-	DefaultPort      int
 	ReadinessTimeout time.Duration
 	PollInterval     time.Duration
-	// Notify defaults to a no-op so callers need no nil check.
-	Notify func(context.Context, core.Notification)
+	Notify           func(context.Context, core.Notification)
 }
 
 type TaskService struct {
@@ -48,24 +46,11 @@ func NewTaskService(
 	routes core.RouteRegistry,
 	ready func(context.Context, string) error,
 	cfg Config,
-) (*TaskService, error) {
-	if runtime == nil || tasks == nil || projects == nil || credentials == nil || routes == nil {
-		return nil, errors.Join(core.ErrInvalidInput,
-			errors.New("runtime, task store, project store, credential store, and route registry are required"))
-	}
-	cfg.DefaultPort = cmp.Or(cfg.DefaultPort, 80)
-	cfg.ReadinessTimeout = cmp.Or(cfg.ReadinessTimeout, 30*time.Second)
-	cfg.PollInterval = cmp.Or(cfg.PollInterval, 100*time.Millisecond)
-	if cfg.Notify == nil {
-		cfg.Notify = func(context.Context, core.Notification) {}
-	}
-	if cfg.DefaultPort < 1 || cfg.DefaultPort > 65535 || cfg.ReadinessTimeout < 0 || cfg.PollInterval <= 0 {
-		return nil, errors.Join(core.ErrInvalidInput, errors.New("invalid service configuration"))
-	}
+) *TaskService {
 	return &TaskService{
 		runtime: runtime, tasks: tasks, projects: projects, credentials: credentials,
 		routes: routes, ready: ready, cfg: cfg, locks: make(map[string]*sync.Mutex),
-	}, nil
+	}
 }
 
 type CreateTaskInput struct {
@@ -143,7 +128,7 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 	if err != nil {
 		return core.Task{}, err
 	}
-	port := cmp.Or(in.Port, s.cfg.DefaultPort)
+	port := cmp.Or(in.Port, 80)
 	spec := core.ContainerSpec{
 		Project: project.Slug, Name: in.Name, Image: strings.TrimSpace(in.Image), Port: port,
 		Labels: maps.Clone(in.Labels), Env: maps.Clone(in.Env), Volumes: maps.Clone(in.Volumes),
@@ -233,9 +218,7 @@ func (s *TaskService) Stop(ctx context.Context, slug, name string) (core.Task, e
 			return s.failTask(ctx, task, fmt.Errorf("stop container: %w", err))
 		}
 	}
-	if err := s.routes.Unregister(ctx, project.Slug, name); err != nil && !errors.Is(err, core.ErrNotFound) {
-		return core.Task{}, fmt.Errorf("unregister route: %w", err)
-	}
+	_ = s.routes.Unregister(ctx, project.Slug, name)
 	task.Status, task.ContainerIP, task.Error = core.StatusStopped, "", ""
 	if task, err = s.tasks.Update(ctx, task); err != nil {
 		return core.Task{}, fmt.Errorf("persist stopped task: %w", err)

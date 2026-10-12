@@ -38,11 +38,18 @@ type route struct {
 	status      int
 	contentType string
 	extraErrors []int
-	// quiet writes skip the change signal: a chat is private, so it must not wake everyone's fleet.
+	// quiet writes skip the change signal: a conversation is private, so it must not wake everyone's fleet.
 	quiet bool
 }
 
 const readSSE = "Read it with fetch and a stream reader: EventSource cannot send the Authorization header."
+
+const boraStream = "The answer comes as Server-Sent Events, each an `event: <name>` with a JSON data line: conversation {id} " +
+	"first on a new conversation; step {text} before each tool call; say {text}, the line to read aloud, before the answer's " +
+	"first delta, or just before done when the model wrote none; delta {text} as the answer is written; reset {} when the " +
+	"text so far, its say included, led into a tool call, so the client drops it; then done {message, title?} with the saved " +
+	"answer, title on a new conversation, error {status, kind, message}, or stopped {} after a stop. A dropped connection " +
+	"does not stop the turn, and a comment heartbeat fills idle time. " + readSSE
 
 var routeTable = [...]route{
 	{
@@ -58,7 +65,7 @@ var routeTable = [...]route{
 	{
 		method: http.MethodGet, path: "/api/v1/events/stream", access: accessSession, handler: (*Handler).streamEvents,
 		tag: "system", summary: "Stream change signals",
-		description: "Server-Sent Events carrying {} once on connect and after any successful authenticated write, " +
+		description: "Server-Sent Events carrying {} once on connect and after any successful authenticated write outside Bora's conversations, " +
 			"a deploy's interim task states and each recorded notification, " +
 			"with nothing about what changed: refetch what you show, such as GET /api/v1/projects. " +
 			"Bursts arrive as one event, and a comment heartbeat fills idle time. " + readSSE,
@@ -177,7 +184,8 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/projects", access: accessAuthed, handler: (*Handler).listProjects,
 		tag: "projects", summary: "List reachable projects with their tasks",
 		description: "Administrators see every project, others their memberships and grants. my_role is the " +
-			"caller's role, per project and per task, where a grant can raise it; last_deploy is the newest deploy.",
+			"caller's role, per project and per task, where a grant can raise it; last_deploy is the newest deploy; " +
+			"bora is whether the caller may ask Bora about the project.",
 		resp: new(projectsResponse),
 	},
 	{
@@ -198,7 +206,7 @@ var routeTable = [...]route{
 		method: http.MethodPatch, path: "/api/v1/projects/{project}", access: accessOwner, handler: (*Handler).updateProject,
 		tag: "projects", summary: "Update a project",
 		description: "registry_credential_id null detaches the credential, omitted leaves it unchanged. " +
-			"Only admins may set repositories, the Sourcebot repositories members chat about. " +
+			"Only admins may set repositories, the Sourcebot repositories Bora reads. " +
 			"An empty default_image or default_env clears that form default. " +
 			"Existing tasks and containers are never touched.",
 		req: new(updateProjectRequest), resp: new(projectResponse), extraErrors: []int{http.StatusBadRequest},
@@ -217,7 +225,8 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/members", access: accessOwner, handler: (*Handler).addMember,
 		tag: "projects", summary: "Add or promote a member",
-		req: new(addMemberRequest), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest},
+		description: "Also changes a member's role. Demoting the last owner is refused.",
+		req:         new(addMemberRequest), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
 		method: http.MethodDelete, path: "/api/v1/projects/{project}/members/{userID}", access: accessOwner, handler: (*Handler).removeMember,
@@ -263,43 +272,84 @@ var routeTable = [...]route{
 	},
 
 	{
-		method: http.MethodGet, path: "/api/v1/chats", access: accessAuthed, handler: (*Handler).listChats,
-		tag: "chats", summary: "List your chats",
-		description: "Your 100 most recent chats, newest first, without their messages.",
-		resp:        new(chatsResponse),
-	},
-	{
-		method: http.MethodPost, path: "/api/v1/projects/{project}/chats", access: accessViewer, handler: (*Handler).startChat,
-		tag: "chats", summary: "Start a chat about the project's code",
-		description: "Answers the first message from the code of the project's repositories, which can take up to a minute. " +
-			"Only project members may ask; 409 when the project has no repositories or no assistant is configured, " +
-			"429 while you already have 3 answers running or the server 20.",
-		req: new(startChatRequest), resp: new(chatResponse), status: http.StatusCreated,
-		extraErrors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusTooManyRequests}, quiet: true,
-	},
-	{
-		method: http.MethodGet, path: "/api/v1/chats/{id}", access: accessAuthed, handler: (*Handler).getChat,
-		tag: "chats", summary: "Get one of your chats",
-		req: new(chatPath), resp: new(chatResponse),
-	},
-	{
-		method: http.MethodPost, path: "/api/v1/chats/{id}/messages", access: accessAuthed, handler: (*Handler).replyChat,
-		tag: "chats", summary: "Ask a follow-up question",
-		description: "Returns the new question and its answer; the last 12 messages go along as context.",
-		req:         new(replyChatRequest), resp: new(chatMessagesResponse),
-		extraErrors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusTooManyRequests}, quiet: true,
-	},
-	{
-		method: http.MethodDelete, path: "/api/v1/chats/{id}", access: accessAuthed, handler: (*Handler).deleteChat,
-		tag: "chats", summary: "Delete one of your chats",
-		req: new(chatPath), resp: new(successResponse), quiet: true,
-	},
-	{
 		method: http.MethodGet, path: "/api/v1/code/repositories", access: accessAdmin, handler: (*Handler).searchRepositories,
 		tag: "projects", summary: "Search indexed code repositories",
 		description: "Repositories Sourcebot indexes whose name contains query, at most 20, for a project's repositories. " +
 			"409 when no Sourcebot is configured.",
 		req: new(repositoriesRequest), resp: new(repositoriesResponse), extraErrors: []int{http.StatusConflict},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/conversations", access: accessSession, handler: (*Handler).startConversation,
+		tag: "bora", summary: "Ask Bora in a new conversation",
+		description: "Answers a first question about `about`: every project, one project, a task, its latest build, an Activity " +
+			"event or a log line, from the projects the caller is a member of. " + boraStream + " Before the stream begins, " +
+			"403 answers an API token, task grants alone or no project, 404 a subject the caller cannot see, 409 a server without " +
+			"an assistant, and 429 a caller with 3 turns running or a server with 20. The conversation is saved with its first " +
+			"answer; until then only its stream and GET reach it.",
+		req: new(startConversationRequest), resp: new(string), contentType: "text/event-stream",
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests}, quiet: true,
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/conversations/{id}/messages", access: accessSession, handler: (*Handler).askConversation,
+		tag: "bora", summary: "Ask a follow-up question",
+		description: "Answers from the conversation's last 12 messages and every ran line. " + boraStream +
+			" 409 also while a turn runs in the conversation.",
+		req: new(askConversationRequest), resp: new(string), contentType: "text/event-stream",
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests}, quiet: true,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/conversations/{id}/stream", access: accessSession, handler: (*Handler).followConversation,
+		tag: "bora", summary: "Follow a running turn",
+		description: "Replays the running turn of a conversation from its start, then follows it. " + boraStream +
+			" 204 when no turn runs.",
+		req: new(idPath), resp: new(string), contentType: "text/event-stream", extraErrors: []int{http.StatusBadRequest},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/conversations/{id}/stop", access: accessSession, handler: (*Handler).stopConversation,
+		tag: "bora", summary: "Stop a running turn",
+		description: "Cancels the turn, which saves nothing. Also 204 when no turn runs.",
+		req:         new(idPath), status: http.StatusNoContent, extraErrors: []int{http.StatusBadRequest}, quiet: true,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/conversations", access: accessSession, handler: (*Handler).listConversations,
+		tag: "bora", summary: "List your conversations",
+		description: "Newest first, without messages; answering is true while a turn runs. A conversation is hidden while a " +
+			"project its answers read is out of your reach. To page, pass next as before.",
+		req: new(conversationsPage), resp: new(conversationsResponse), extraErrors: []int{http.StatusBadRequest},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/conversations/search", access: accessSession, handler: (*Handler).searchConversations,
+		tag: "bora", summary: "Search your conversations",
+		description: "The list, kept to conversations with a message holding every word of query as a prefix, whatever its " +
+			"accents, each with a snippet of the newest such message. The query travels in the body, so request logs never hold it.",
+		req: new(searchConversationsRequest), resp: new(conversationsResponse), extraErrors: []int{http.StatusBadRequest}, quiet: true,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/conversations/{id}", access: accessSession, handler: (*Handler).getConversation,
+		tag: "bora", summary: "Get one of your conversations",
+		description: "With every message; answering holds the question of a running turn.",
+		req:         new(idPath), resp: new(conversationResponse), extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/conversations/{id}/messages/{index}/ran", access: accessSession, handler: (*Handler).addRan,
+		tag: "bora", summary: "Record what ran from an answer",
+		description: "line is the app's own result line for an action the user ran from the answer at index. An answer holds " +
+			"at most 10; 400 also for an index that is not an answer.",
+		req: new(ranRequest), status: http.StatusNoContent,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound}, quiet: true,
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/bora/conversations/{id}", access: accessSession, handler: (*Handler).deleteConversation,
+		tag: "bora", summary: "Delete one of your conversations",
+		description: "Also stops its running turn.",
+		req:         new(idPath), status: http.StatusNoContent,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound}, quiet: true,
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/bora/conversations", access: accessSession, handler: (*Handler).deleteConversations,
+		tag: "bora", summary: "Delete all your conversations",
+		description: "Hidden ones included; also stops their running turns.",
+		status:      http.StatusNoContent, quiet: true,
 	},
 	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/folders", access: accessViewer, handler: (*Handler).listFolders,

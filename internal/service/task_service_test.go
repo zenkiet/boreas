@@ -35,17 +35,13 @@ func newHarness(t *testing.T) *harness {
 		routes:      newFakeRoutes(),
 	}
 	h.project = h.projects.add("team")
-	var err error
-	h.svc, err = NewTaskService(h.runtime, h.tasks, h.projects, h.credentials, h.routes, nil,
+	h.svc = NewTaskService(h.runtime, h.tasks, h.projects, h.credentials, h.routes, nil,
 		Config{
-			DefaultPort: 8080, PollInterval: time.Millisecond, ReadinessTimeout: time.Second,
+			PollInterval: time.Millisecond, ReadinessTimeout: time.Second,
 			Notify: func(_ context.Context, n core.Notification) {
 				h.notified = append(h.notified, n)
 			},
 		})
-	if err != nil {
-		t.Fatal(err)
-	}
 	return h
 }
 
@@ -61,7 +57,7 @@ func (h *harness) create(t *testing.T, in CreateTaskInput) core.Task {
 func TestCreateLifecycleAndDefaults(t *testing.T) {
 	h := newHarness(t)
 	task := h.create(t, CreateTaskInput{Name: "task-1", Image: " image "})
-	if task.Status != core.StatusRunning || task.Port != 8080 || task.ContainerIP != "10.0.0.2" ||
+	if task.Status != core.StatusRunning || task.Port != 80 || task.ContainerIP != "10.0.0.2" ||
 		task.Image != "image" || task.ProjectID != h.project.ID {
 		t.Fatalf("unexpected task: %+v", task)
 	}

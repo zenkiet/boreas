@@ -28,11 +28,8 @@ type AuthService struct {
 	tokens core.TokenStore
 }
 
-func NewAuthService(users core.UserStore, tokens core.TokenStore) (*AuthService, error) {
-	if users == nil || tokens == nil {
-		return nil, errors.Join(core.ErrInvalidInput, errors.New("user and token stores are required"))
-	}
-	return &AuthService{users: users, tokens: tokens}, nil
+func NewAuthService(users core.UserStore, tokens core.TokenStore) *AuthService {
+	return &AuthService{users: users, tokens: tokens}
 }
 
 func wrap(operation string, err error) error {

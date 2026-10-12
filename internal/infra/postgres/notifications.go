@@ -31,24 +31,33 @@ const visible = `($2 OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_
 	OR EXISTS (SELECT 1 FROM task_grants g JOIN tasks t ON t.id = g.task_id
 		WHERE g.user_id = $1 AND t.project_id = n.project_id AND t.name = n.task_name))`
 
+// selectNotifications takes $1 as the user and $2 as whether they are an admin.
+const selectNotifications = `
+	SELECT n.id, n.project_id, p.slug, n.task_name, n.type, n.status, n.title, n.body, n.created_at,
+		EXISTS (SELECT 1 FROM notification_seen s WHERE s.notification_id = n.id AND s.user_id = $1)
+	FROM notifications n JOIN projects p ON p.id = n.project_id
+	WHERE ` + visible
+
+func scanNotification(row pgx.CollectableRow) (core.Notification, error) {
+	var n core.Notification
+	err := row.Scan(&n.ID, &n.ProjectID, &n.Project, &n.TaskName, &n.Type, &n.Status, &n.Title, &n.Body, &n.CreatedAt, &n.Seen)
+	return n, err
+}
+
 // List pages newest first. A nil projectID spans every project; before is the last id already read,
 // and (created_at, id) ordering keeps rows sharing a timestamp from falling between pages.
 func (s *NotificationStore) List(
 	ctx context.Context, userID uuid.UUID, admin bool, projectID, before *uuid.UUID, limit int,
 ) ([]core.Notification, error) {
-	scan := func(row pgx.CollectableRow) (core.Notification, error) {
-		var n core.Notification
-		err := row.Scan(&n.ID, &n.ProjectID, &n.Project, &n.TaskName, &n.Type, &n.Status,
-			&n.Title, &n.Body, &n.CreatedAt, &n.Seen)
-		return n, err
-	}
-	return many(ctx, s.pool, scan, "list notifications", "scan notifications", `
-		SELECT n.id, n.project_id, p.slug, n.task_name, n.type, n.status, n.title, n.body, n.created_at,
-			EXISTS (SELECT 1 FROM notification_seen s WHERE s.notification_id = n.id AND s.user_id = $1)
-		FROM notifications n JOIN projects p ON p.id = n.project_id
-		WHERE `+visible+` AND ($3::uuid IS NULL OR n.project_id = $3)
-		  AND ($4::uuid IS NULL OR (n.created_at, n.id) < (SELECT b.created_at, b.id FROM notifications b WHERE b.id = $4))
+	return many(ctx, s.pool, scanNotification, "list notifications", "scan notifications", selectNotifications+`
+		AND ($3::uuid IS NULL OR n.project_id = $3)
+		AND ($4::uuid IS NULL OR (n.created_at, n.id) < (SELECT b.created_at, b.id FROM notifications b WHERE b.id = $4))
 		ORDER BY n.created_at DESC, n.id DESC LIMIT $5`, userID, admin, projectID, before, limit)
+}
+
+// Get treats an id the user may not read as one that does not exist.
+func (s *NotificationStore) Get(ctx context.Context, userID uuid.UUID, admin bool, id uuid.UUID) (core.Notification, error) {
+	return one(ctx, s.pool, scanNotification, "get notification", selectNotifications+` AND n.id = $3`, userID, admin, id)
 }
 
 // MarkSeen skips ids outside the user's visibility, so a guessed id reveals nothing.

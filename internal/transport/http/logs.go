@@ -23,8 +23,8 @@ type logEntry struct {
 
 const heartbeatInterval = 15 * time.Second
 
-// sse frames each event as JSON data with a heartbeat while idle; true means events closed.
-func sse[T any](w http.ResponseWriter, r *http.Request, events <-chan T, encode func(T) any) bool {
+// sse sends each event as JSON data, named when encode names it; true means events closed.
+func sse[T any](w http.ResponseWriter, r *http.Request, events <-chan T, encode func(T) (string, any)) bool {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -41,8 +41,11 @@ func sse[T any](w http.ResponseWriter, r *http.Request, events <-chan T, encode 
 			if !ok {
 				return true
 			}
-			payload, _ := json.Marshal(encode(event))
-			frame = "data: " + string(payload) + "\n\n"
+			name, data := encode(event)
+			payload, _ := json.Marshal(data)
+			if frame = "data: " + string(payload) + "\n\n"; name != "" {
+				frame = "event: " + name + "\n" + frame
+			}
 		case <-heartbeat.C:
 		case <-r.Context().Done():
 			return false
@@ -71,8 +74,7 @@ func (h *Handler) logs(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, h.logger, err)
 		return
 	}
-	reader, err := h.tasks.Logs(r.Context(), r.PathValue("project"), r.PathValue("name"),
-		core.LogOptions{Tail: tail, Timestamps: true})
+	reader, err := h.tasks.Logs(r.Context(), r.PathValue("project"), r.PathValue("name"), core.LogOptions{Tail: tail})
 	if err != nil {
 		writeServiceError(w, h.logger, err)
 		return
@@ -94,7 +96,7 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, h.logger, err)
 		return
 	}
-	opts := core.LogOptions{Tail: tail, Follow: true, Timestamps: true}
+	opts := core.LogOptions{Tail: tail, Follow: true}
 	if raw := r.URL.Query().Get("since"); raw != "" {
 		since, err := time.Parse(time.RFC3339Nano, raw)
 		if err != nil {
@@ -122,7 +124,7 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 		stdout.Flush()
 		stderr.Flush()
 	}()
-	if sse(w, r, entries, func(e logEntry) any { return e }) && copyErr != nil &&
+	if sse(w, r, entries, func(e logEntry) (string, any) { return "", e }) && copyErr != nil &&
 		!errors.Is(copyErr, io.EOF) && !errors.Is(copyErr, r.Context().Err()) {
 		h.logger.Error("decode task log stream", "error", copyErr)
 	}

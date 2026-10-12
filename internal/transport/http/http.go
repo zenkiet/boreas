@@ -57,11 +57,15 @@ type ProjectService interface {
 	MarkNotificationUnseen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error
 	Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error)
 	SearchRepositories(ctx context.Context, query string) ([]string, error)
-	StartChat(ctx context.Context, acc core.ProjectAccess, question string) (core.Chat, error)
-	Reply(ctx context.Context, actor core.User, id uuid.UUID, question string) ([]core.ChatMessage, error)
-	ListChats(ctx context.Context, actor core.User) ([]core.Chat, error)
-	GetChat(ctx context.Context, actor core.User, id uuid.UUID) (core.Chat, error)
-	DeleteChat(ctx context.Context, actor core.User, id uuid.UUID) error
+	BoraEnabled() bool
+	StartBora(ctx context.Context, actor core.User, about core.BoraAbout, question, screen string) (<-chan service.BoraEvent, error)
+	AskBora(ctx context.Context, actor core.User, id uuid.UUID, question, screen string) (<-chan service.BoraEvent, error)
+	FollowBora(ctx context.Context, actor core.User, id uuid.UUID) <-chan service.BoraEvent
+	StopBora(actor core.User, id uuid.UUID)
+	BoraConversations(ctx context.Context, actor core.User, query, before string, limit int) ([]core.BoraConversation, string, error)
+	BoraConversation(ctx context.Context, actor core.User, id uuid.UUID) (core.BoraConversation, error)
+	AddBoraRan(ctx context.Context, actor core.User, id uuid.UUID, index int, line string) error
+	DeleteBora(ctx context.Context, actor core.User, id *uuid.UUID) error
 	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
 	Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error
 	Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error

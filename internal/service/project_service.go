@@ -8,8 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"time"
-	"unicode/utf8"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
@@ -24,24 +23,26 @@ type ProjectService struct {
 	// Optional wiring: Notify reports task assignments; Users, when also set, names the grantee.
 	Notify func(context.Context, core.Notification)
 	Users  core.UserStore
-	// Code, Chats and Assist together let members ask about the code of the repositories a project lists.
-	Code   core.CodeIndex
-	Chats  core.ChatStore
-	Assist func(ctx context.Context, userID uuid.UUID, repos []string, history []core.ChatMessage, question string) (core.ChatMessage, error)
+	// Bora answers with Assist and keeps Conversations; Code, Logs and Metrics feed its tools.
+	Assist        func(ctx context.Context, userID uuid.UUID, ask core.Ask) (string, []string, error)
+	Conversations core.BoraStore
+	Code          core.CodeIndex
+	Logs          func(ctx context.Context, project, task string, opts core.LogOptions) (string, error)
+	Metrics       func(ctx context.Context, acc core.ProjectAccess, task string) (<-chan core.TaskMetric, error)
+
+	turnsMu sync.Mutex
+	turns   map[uuid.UUID]*boraTurn // running Bora turns by conversation
 }
 
 func NewProjectService(
 	projects core.ProjectStore, credentials core.CredentialStore,
 	notifications core.NotificationStore, grants core.GrantStore, tasks core.TaskStore,
-) (*ProjectService, error) {
-	if projects == nil || credentials == nil || notifications == nil || grants == nil || tasks == nil {
-		return nil, errors.Join(core.ErrInvalidInput,
-			errors.New("project, credential, notification, grant, and task stores are required"))
-	}
+) *ProjectService {
 	return &ProjectService{
 		projects: projects, credentials: credentials,
 		notifications: notifications, grants: grants, tasks: tasks,
-	}, nil
+		turns: map[uuid.UUID]*boraTurn{},
+	}
 }
 
 func (s *ProjectService) Notifications(
@@ -256,87 +257,6 @@ func (s *ProjectService) SearchRepositories(ctx context.Context, query string) (
 	return found[:min(len(found), 20)], nil
 }
 
-const chatHistory = 12
-
-func (s *ProjectService) StartChat(ctx context.Context, acc core.ProjectAccess, question string) (core.Chat, error) {
-	turn, err := s.ask(ctx, acc, nil, question)
-	if err != nil {
-		return core.Chat{}, err
-	}
-	title := []rune(strings.Join(strings.Fields(question), " "))
-	chat, err := s.Chats.Create(ctx, core.Chat{
-		ProjectID: acc.Project.ID, UserID: acc.UserID, Title: string(title[:min(len(title), 80)]), Messages: turn,
-	})
-	return chat, wrap("create chat", err)
-}
-
-func (s *ProjectService) Reply(ctx context.Context, actor core.User, id uuid.UUID, question string) ([]core.ChatMessage, error) {
-	chat, acc, err := s.ownChat(ctx, actor, id)
-	if err != nil {
-		return nil, err
-	}
-	turn, err := s.ask(ctx, acc, chat.Messages[max(0, len(chat.Messages)-chatHistory):], question)
-	if err != nil {
-		return nil, err
-	}
-	return turn, wrap("append chat messages", s.Chats.Append(ctx, id, turn))
-}
-
-func (s *ProjectService) ask(ctx context.Context, acc core.ProjectAccess, history []core.ChatMessage, question string) ([]core.ChatMessage, error) {
-	// Grantees stay out: one granted task does not open the project's whole codebase.
-	if !acc.AllTasks {
-		return nil, core.ErrForbidden
-	}
-	if s.Assist == nil || len(acc.Project.Repositories) == 0 {
-		return nil, core.ErrConflict
-	}
-	if question = strings.TrimSpace(question); question == "" || utf8.RuneCountInString(question) > 2000 {
-		return nil, errors.Join(core.ErrInvalidInput, errors.New("message must be 1 to 2000 characters"))
-	}
-	asked := core.ChatMessage{Role: core.ChatUser, Content: question, At: time.Now().UTC()}
-	answer, err := s.Assist(ctx, acc.UserID, acc.Project.Repositories, history, question)
-	if err != nil {
-		return nil, err
-	}
-	return []core.ChatMessage{asked, answer}, nil
-}
-
-func (s *ProjectService) ListChats(ctx context.Context, actor core.User) ([]core.Chat, error) {
-	chats, err := s.Chats.List(ctx, actor.ID)
-	if err != nil {
-		return nil, fmt.Errorf("list chats: %w", err)
-	}
-	accesses, err := s.List(ctx, actor)
-	if err != nil {
-		return nil, err
-	}
-	return slices.DeleteFunc(chats, func(chat core.Chat) bool {
-		return !slices.ContainsFunc(accesses, func(acc core.ProjectAccess) bool { return acc.AllTasks && acc.Project.ID == chat.ProjectID })
-	}), nil
-}
-
-func (s *ProjectService) GetChat(ctx context.Context, actor core.User, id uuid.UUID) (core.Chat, error) {
-	chat, _, err := s.ownChat(ctx, actor, id)
-	return chat, err
-}
-
-// ownChat answers a chat of a project the caller has since left as not found.
-func (s *ProjectService) ownChat(ctx context.Context, actor core.User, id uuid.UUID) (core.Chat, core.ProjectAccess, error) {
-	chat, err := s.Chats.Get(ctx, id, actor.ID)
-	if err != nil {
-		return core.Chat{}, core.ProjectAccess{}, wrap("get chat", err)
-	}
-	acc, err := s.Access(ctx, actor, chat.ProjectSlug, "")
-	if err == nil && !acc.AllTasks {
-		err = core.ErrNotFound
-	}
-	return chat, acc, err
-}
-
-func (s *ProjectService) DeleteChat(ctx context.Context, actor core.User, id uuid.UUID) error {
-	return wrap("delete chat", s.Chats.Delete(ctx, id, actor.ID))
-}
-
 func (s *ProjectService) Delete(ctx context.Context, slug string) error {
 	project, err := s.Get(ctx, slug)
 	if err != nil {
@@ -354,6 +274,7 @@ func (s *ProjectService) ListMembers(ctx context.Context, slug string) ([]core.P
 	return members, wrap("list members", err)
 }
 
+// AddMember also changes a member's role, but never the last owner's.
 func (s *ProjectService) AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error {
 	if role.Rank() == 0 {
 		return errors.Join(core.ErrInvalidInput,
@@ -363,26 +284,38 @@ func (s *ProjectService) AddMember(ctx context.Context, slug string, userID uuid
 	if err != nil {
 		return err
 	}
+	if role != core.ProjectRoleOwner {
+		if err := s.keepOwner(ctx, project, userID); err != nil {
+			return err
+		}
+	}
 	return wrap("add member", s.projects.AddMember(ctx, core.ProjectMember{
 		ProjectID: project.ID, UserID: userID, Role: role,
 	}))
 }
 
-// RemoveMember refuses to leave a project without an owner.
 func (s *ProjectService) RemoveMember(ctx context.Context, slug string, userID uuid.UUID) error {
 	project, err := s.Get(ctx, slug)
 	if err != nil {
 		return err
 	}
+	if err := s.keepOwner(ctx, project, userID); err != nil {
+		return err
+	}
+	return wrap("remove member", s.projects.RemoveMember(ctx, project.ID, userID))
+}
+
+// keepOwner refuses to let the last owner go, which would leave the project to administrators alone.
+func (s *ProjectService) keepOwner(ctx context.Context, project core.Project, userID uuid.UUID) error {
 	members, err := s.projects.ListMembers(ctx, project.ID)
 	if err != nil {
 		return fmt.Errorf("list members: %w", err)
 	}
 	owners := slices.DeleteFunc(members, func(m core.ProjectMember) bool { return m.Role != core.ProjectRoleOwner })
 	if len(owners) == 1 && owners[0].UserID == userID {
-		return fmt.Errorf("cannot remove the last owner of project %q: %w", slug, core.ErrConflict)
+		return fmt.Errorf("project %q would lose its last owner: %w", project.Slug, core.ErrConflict)
 	}
-	return wrap("remove member", s.projects.RemoveMember(ctx, project.ID, userID))
+	return nil
 }
 
 // Access resolves the caller's effective role, taking the higher of their project

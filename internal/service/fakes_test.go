@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -256,12 +258,27 @@ func newFakeNotificationStore(tasks *fakeTaskStore) *fakeNotificationStore {
 }
 
 func (f *fakeNotificationStore) Create(_ context.Context, n core.Notification) (core.Notification, error) {
+	n.ID, n.CreatedAt = uuid.New(), f.tasks.tick()
 	f.notifications = append(f.notifications, n)
 	return n, nil
 }
 
-func (*fakeNotificationStore) List(context.Context, uuid.UUID, bool, *uuid.UUID, *uuid.UUID, int) ([]core.Notification, error) {
-	return nil, nil
+// List ignores visibility but keeps the SQL's newest-first order and limit.
+func (f *fakeNotificationStore) List(_ context.Context, _ uuid.UUID, _ bool, projectID, _ *uuid.UUID, limit int) ([]core.Notification, error) {
+	var out []core.Notification
+	for _, n := range slices.Backward(f.notifications) {
+		if len(out) < limit && (projectID == nil || n.ProjectID == *projectID) {
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeNotificationStore) Get(_ context.Context, _ uuid.UUID, _ bool, id uuid.UUID) (core.Notification, error) {
+	if i := slices.IndexFunc(f.notifications, func(n core.Notification) bool { return n.ID == id }); i >= 0 {
+		return f.notifications[i], nil
+	}
+	return core.Notification{}, core.ErrNotFound
 }
 
 func (*fakeNotificationStore) MarkSeen(context.Context, uuid.UUID, bool, []uuid.UUID) error {
@@ -311,8 +328,14 @@ func (f *fakeGrantStore) ForUser(_ context.Context, userID uuid.UUID) (map[uuid.
 	return roles, nil
 }
 
-func (*fakeGrantStore) ListForTask(context.Context, uuid.UUID) ([]core.TaskGrant, error) {
-	return nil, nil
+func (f *fakeGrantStore) ListForTask(_ context.Context, taskID uuid.UUID) ([]core.TaskGrant, error) {
+	var grants []core.TaskGrant
+	for key, role := range f.tasks.roles {
+		if key.taskID == taskID {
+			grants = append(grants, core.TaskGrant{TaskID: taskID, UserID: key.userID, Role: role})
+		}
+	}
+	return grants, nil
 }
 
 func (f *fakeGrantStore) Grant(_ context.Context, grant core.TaskGrant) error {
@@ -538,5 +561,74 @@ func (f *fakeRoutes) Register(_ context.Context, project, task, ip string, _ int
 
 func (f *fakeRoutes) Unregister(_ context.Context, project, task string) error {
 	delete(f.registered, project+"/"+task)
+	return nil
+}
+
+// fakeBoraStore ignores visibility, which the Postgres store tests cover.
+type fakeBoraStore struct {
+	mu    sync.Mutex
+	convs map[uuid.UUID]core.BoraConversation
+}
+
+func newFakeBoraStore() *fakeBoraStore {
+	return &fakeBoraStore{convs: map[uuid.UUID]core.BoraConversation{}}
+}
+
+func (f *fakeBoraStore) Save(_ context.Context, c core.BoraConversation, turn []core.BoraMessage) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c.Messages = append(slices.Clone(f.convs[c.ID].Messages), turn...)
+	f.convs[c.ID] = c
+	return nil
+}
+
+func (f *fakeBoraStore) Get(_ context.Context, userID uuid.UUID, _ bool, id uuid.UUID) (core.BoraConversation, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.convs[id]
+	if !ok || c.UserID != userID {
+		return core.BoraConversation{}, core.ErrNotFound
+	}
+	c.Messages = slices.Clone(c.Messages)
+	return c, nil
+}
+
+func (f *fakeBoraStore) List(_ context.Context, userID uuid.UUID, _ bool, _ string, _ core.BoraCursor, limit int) ([]core.BoraConversation, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []core.BoraConversation
+	for _, c := range f.convs {
+		if c.UserID == userID && len(out) < limit {
+			c.Messages = nil
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeBoraStore) AddRan(_ context.Context, id uuid.UUID, index int, line string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	messages := f.convs[id].Messages
+	if index < 0 || index >= len(messages) || messages[index].Role != core.ChatAssistant || len(messages[index].Ran) >= 10 {
+		return core.ErrInvalidInput
+	}
+	messages[index].Ran = append(messages[index].Ran, line)
+	return nil
+}
+
+func (f *fakeBoraStore) Delete(_ context.Context, userID uuid.UUID, _ bool, id *uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	found := false
+	for cid, c := range f.convs {
+		if c.UserID == userID && (id == nil || cid == *id) {
+			delete(f.convs, cid)
+			found = true
+		}
+	}
+	if id != nil && !found {
+		return core.ErrNotFound
+	}
 	return nil
 }

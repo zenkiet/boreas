@@ -136,7 +136,7 @@ func (NotificationType) Enum() []any {
 	}
 }
 
-// Status is the delivery severity: deploys succeed or fail, everything else informs.
+// Status is the delivery severity: deploys succeed or fail, builds can fail, everything else informs.
 func (t NotificationType) Status() NotificationStatus {
 	switch t {
 	case NotificationDeployed:
@@ -404,7 +404,11 @@ func (s ContainerSpec) Validate() error {
 			return errors.Join(ErrInvalidInput, errors.New("container label is reserved by Boreas: "+key))
 		}
 	}
-	for target, folder := range s.Volumes {
+	return ValidateVolumes(s.Volumes)
+}
+
+func ValidateVolumes(volumes map[string]string) error {
+	for target, folder := range volumes {
 		if !path.IsAbs(target) || path.Clean(target) != target || target == "/" ||
 			folder == "" || folder == "." || folder == ".." || strings.Contains(folder, "/") {
 			return errors.Join(ErrInvalidInput, errors.New("volume must map a clean absolute path other than / to a folder name: "+target))
@@ -421,10 +425,9 @@ type ContainerState struct {
 }
 
 type LogOptions struct {
-	Tail       int
-	Follow     bool
-	Timestamps bool
-	Since      time.Time // when set, every line from then on, not only the tail
+	Tail   int
+	Follow bool
+	Since  time.Time // lines from then on; Tail still caps them unless Follow
 }
 
 type SystemStats struct {
@@ -438,13 +441,13 @@ type SystemStats struct {
 // TaskMetric is one live sample. CPUPercent is a rate, so the first sample of a stream
 // reports 0; MemoryBytes excludes page cache to match `docker stats`.
 type TaskMetric struct {
-	TaskName       string
-	CPUPercent     float64
-	MemoryBytes    int64
-	MemoryLimit    int64
-	NetworkRXBytes int64
-	NetworkTXBytes int64
-	ObservedAt     time.Time
+	TaskName       string    `json:"task"`
+	CPUPercent     float64   `json:"cpu_percent"`
+	MemoryBytes    int64     `json:"memory_bytes"`
+	MemoryLimit    int64     `json:"memory_limit"`
+	NetworkRXBytes int64     `json:"network_rx_bytes"`
+	NetworkTXBytes int64     `json:"network_tx_bytes"`
+	ObservedAt     time.Time `json:"observed_at"`
 }
 
 // CodeIndex reads indexed source code; every call is confined to the repos it is given.
@@ -480,31 +483,159 @@ type CodeSource struct {
 }
 
 type ChatMessage struct {
+	Role    ChatRole
+	Content string
+}
+
+// Tool is one thing the assistant may call; Run gets the model's JSON arguments and returns plain text for it.
+type Tool struct {
+	Name, Description string
+	Params            map[string]any // JSON Schema of the arguments object
+	Run               func(ctx context.Context, args string) string
+}
+
+// Ask is one question; Data is text others wrote, kept out of the system message, and Delta streams the answer.
+type Ask struct {
+	System, Brief  string
+	Clarify        bool
+	Tools          []Tool
+	Budget         int
+	History        []ChatMessage
+	Question, Data string
+	// ClarifyData replaces Data for screening, which has no tools to read with.
+	ClarifyData string
+	Delta       func(string)
+	// Reset says the text streamed since the last reset led into a tool call.
+	Reset func()
+}
+
+// secrets catches values hardcoded in ordinary source and logs, which the Sourcebot blocklist of file names misses.
+var secrets = []struct {
+	re   *regexp.Regexp
+	with string
+}{
+	{regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`), "[redacted]"},
+	// A key whose BEGIN line a log tail cut off; log lines may start with a timestamp.
+	{regexp.MustCompile(`(?m)(?:^(?:\S+ )?[A-Za-z0-9+/=]+\r?\n)+(?:\S+ )?-----END [A-Z ]*PRIVATE KEY-----`), "[redacted]"},
+	{regexp.MustCompile(`(?i)([\w.-]*(?:password|passwd|pwd|secret|token|key|credential)[\w.-]*["']?\s*(?::=|=>|[:=])\s*)(?:"[^"\n]*"|'[^'\n]*')`), `${1}"[redacted]"`},
+	{regexp.MustCompile(`(?i)\b([\w.-]*(?:password|passwd|pwd|secret|token|key)[\w.-]*(?:[ \t]*=[ \t]*|:[ \t]*))[^\s"'=][^\s,;]*`), "${1}[redacted]"},
+	{regexp.MustCompile(`(?i)(--?[\w.-]*(?:password|passwd|pwd|secret|token|key)[\w.-]*(?:[ \t]+|["']\s*,\s*))(?:"[^"\n]*"|'[^'\n]*'|[^\s"'-]\S*)`), "${1}[redacted]"},
+	{regexp.MustCompile(`(?i)(authorization["']?\s*[:=]\s*["']?(?:(?:basic|bearer|digest|token)\s+)?)[^\s"',;]+`), "${1}[redacted]"},
+	{regexp.MustCompile(`(?i)\b(bearer\s+)[\w.~+/=-]{16,}`), "${1}[redacted]"},
+	{regexp.MustCompile(`(?i)([;"']\s*(?:password|pwd)\s*=\s*)[^;"'\n]+`), "${1}[redacted]"},
+	{regexp.MustCompile(`(://[^:/\s"'@]*:)[^@/\s"']+@`), "${1}[redacted]@"},
+	{regexp.MustCompile(`\b(?:AKIA[0-9A-Z]{16}|[sr]k_(?:live|test)_[0-9A-Za-z]{16,}|sk-[\w-]{20,}|gh[pousr]_[A-Za-z0-9]{36,}|xox[abprs]-[\w-]{10,}|AIza[\w-]{35}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,})`), "[redacted]"},
+}
+
+// Redact hides what looks like a secret.
+func Redact(text string) string {
+	for _, s := range secrets {
+		text = s.re.ReplaceAllString(text, s.with)
+	}
+	return text
+}
+
+type BoraOp string
+
+// BoraOps are the changes Bora may propose, each with the role the route that runs it requires.
+var BoraOps = map[BoraOp]ProjectRole{
+	"task.start": ProjectRoleOperator, "task.stop": ProjectRoleOperator, "task.restart": ProjectRoleOperator,
+	"task.create": ProjectRoleMember, "task.delete": ProjectRoleMember, "task.update": ProjectRoleMember, "task.env": ProjectRoleMember,
+	"member.add": ProjectRoleOwner, "member.role": ProjectRoleOwner, "member.remove": ProjectRoleOwner,
+	"grant.add": ProjectRoleOwner, "grant.remove": ProjectRoleOwner, "project.update": ProjectRoleOwner, "project.delete": ProjectRoleOwner,
+}
+
+func (BoraOp) Enum() []any {
+	var ops []any
+	for _, op := range slices.Sorted(maps.Keys(BoraOps)) {
+		ops = append(ops, op)
+	}
+	return ops
+}
+
+// BoraAction is a change Bora proposes; only the user's tap runs it, through the route that checks their role.
+type BoraAction struct {
+	Op                   BoraOp            `json:"op"`
+	Project              string            `json:"project"`
+	Task                 string            `json:"task,omitempty"`
+	Reason               string            `json:"reason"`
+	UserID               uuid.UUID         `json:"user_id,omitzero"`
+	Username             string            `json:"username,omitempty"`
+	Role                 ProjectRole       `json:"role,omitempty"`
+	Name                 string            `json:"name,omitempty"`
+	Description          string            `json:"description,omitempty"`
+	Note                 string            `json:"note,omitempty"`
+	DevStatus            DevStatus         `json:"dev_status,omitempty"`
+	Image                string            `json:"image,omitempty"`
+	Port                 int               `json:"port,omitempty"`
+	AutoRestart          *bool             `json:"auto_restart,omitempty"`
+	Volumes              map[string]string `json:"volumes,omitempty"`
+	Set                  map[string]string `json:"set,omitempty"`
+	Unset                []string          `json:"unset,omitempty"`
+	DefaultImage         string            `json:"default_image,omitempty"`
+	DefaultPort          int               `json:"default_port,omitempty"`
+	DefaultEnvSet        map[string]string `json:"default_env_set,omitempty"`
+	DefaultEnvUnset      []string          `json:"default_env_unset,omitempty"`
+	RegistryCredentialID *uuid.UUID        `json:"registry_credential_id,omitempty"`
+}
+
+// BoraAbout is what a conversation is about; it never changes.
+type BoraAbout struct {
+	Kind    string    `json:"kind" enum:"fleet,project,task,alert,build,log"`
+	Project string    `json:"project,omitempty" example:"demo"`
+	Task    string    `json:"task,omitempty" example:"qa-1"`
+	ID      uuid.UUID `json:"id,omitzero"`
+	At      string    `json:"at,omitempty"`
+	Line    string    `json:"line,omitempty" maxLength:"1000"`
+}
+
+type BoraMessage struct {
+	Index   int          `json:"index"`
 	Role    ChatRole     `json:"role"`
 	Content string       `json:"content"`
-	Sources []CodeSource `json:"sources,omitempty"`
+	Say     string       `json:"say"`
+	Actions []BoraAction `json:"actions"`
+	Choices []string     `json:"choices"`
+	Sources []CodeSource `json:"sources"`
+	Ran     []string     `json:"ran"`
 	At      time.Time    `json:"at"`
 }
 
-type Chat struct {
-	ID          uuid.UUID
-	ProjectID   uuid.UUID
-	ProjectSlug string
-	UserID      uuid.UUID
-	Title       string
-	Messages    []ChatMessage
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+type BoraPending struct {
+	Question string    `json:"question"`
+	Since    time.Time `json:"since"`
 }
 
-type ChatStore interface {
-	Create(context.Context, Chat) (Chat, error)
-	// Get and Delete see only the user's own chats.
-	Get(ctx context.Context, id, userID uuid.UUID) (Chat, error)
-	// List omits messages, newest first.
-	List(ctx context.Context, userID uuid.UUID) ([]Chat, error)
-	Append(ctx context.Context, id uuid.UUID, messages []ChatMessage) error
-	Delete(ctx context.Context, id, userID uuid.UUID) error
+// BoraConversation is one user's, hidden while a project its answers read is out of their reach.
+type BoraConversation struct {
+	ID, UserID           uuid.UUID
+	ProjectID            *uuid.UUID
+	About                BoraAbout
+	Projects             []uuid.UUID
+	Title                string
+	Snippet              string        // set by a search
+	Messages             []BoraMessage // set by Get
+	Answering            *BoraPending
+	CreatedAt, UpdatedAt time.Time
+}
+
+// BoraCursor pages conversations newest first; the zero value starts at the newest.
+type BoraCursor struct {
+	At time.Time
+	ID uuid.UUID
+}
+
+// BoraStore sees only the user's own visible conversations, unless noted.
+type BoraStore interface {
+	// Save inserts a conversation with its first turn, or appends a later one.
+	Save(ctx context.Context, c BoraConversation, turn []BoraMessage) error
+	Get(ctx context.Context, userID uuid.UUID, admin bool, id uuid.UUID) (BoraConversation, error)
+	// List with a query keeps conversations with a message holding each of its words as a prefix.
+	List(ctx context.Context, userID uuid.UUID, admin bool, query string, before BoraCursor, limit int) ([]BoraConversation, error)
+	// AddRan expects a checked conversation, and refuses an index that is not an answer with room left.
+	AddRan(ctx context.Context, id uuid.UUID, index int, line string) error
+	// Delete with a nil id removes every conversation of the user, hidden ones included.
+	Delete(ctx context.Context, userID uuid.UUID, admin bool, id *uuid.UUID) error
 }
 
 type ContainerRuntime interface {
@@ -569,6 +700,7 @@ type ProjectStore interface {
 type NotificationStore interface {
 	Create(context.Context, Notification) (Notification, error)
 	List(ctx context.Context, userID uuid.UUID, admin bool, projectID, before *uuid.UUID, limit int) ([]Notification, error)
+	Get(ctx context.Context, userID uuid.UUID, admin bool, id uuid.UUID) (Notification, error)
 	MarkSeen(ctx context.Context, userID uuid.UUID, admin bool, ids []uuid.UUID) error
 	MarkUnseen(ctx context.Context, id, userID uuid.UUID) error
 	LastDeploys(context.Context) (map[uuid.UUID]Notification, error)

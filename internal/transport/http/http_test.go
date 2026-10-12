@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -760,7 +761,9 @@ func TestOnlySuccessfulAuthenticatedWritesPublish(t *testing.T) {
 	}{
 		{"write", authed(http.MethodPost, "/api/v1/projects/demo/members", strings.NewReader(member)), true},
 		{"read", authed(http.MethodGet, "/api/v1/projects", nil), false},
-		{"private chat", authed(http.MethodPost, "/api/v1/projects/demo/chats", strings.NewReader(`{"message":"How?"}`)), false},
+		{"bora", authed(http.MethodPost, "/api/v1/bora/conversations", strings.NewReader(`{"about":{"kind":"fleet"},"question":"Hi"}`)), false},
+		{"bora ran", authed(http.MethodPost, "/api/v1/bora/conversations/"+uuid.NewString()+"/messages/1/ran", strings.NewReader(`{"line":"Done."}`)), false},
+		{"bora delete", authed(http.MethodDelete, "/api/v1/bora/conversations", nil), false},
 		{"rejected write", authed(http.MethodPost, "/api/v1/projects/demo/members", strings.NewReader(`{`)), false},
 		{"public write", httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"alice","password":"pw"}`)), false},
 	} {
@@ -794,5 +797,86 @@ func TestOnlyAdminsPickProjectRepositories(t *testing.T) {
 		if rr := do(h, authed(http.MethodGet, "/api/v1/code/repositories?query=acme", nil)); rr.Code != tc.want {
 			t.Errorf("%s searches repositories: %d, want %d", tc.user.Username, rr.Code, tc.want)
 		}
+	}
+}
+
+// TestBoraOpsMatchRoutes keeps the roles Bora checks in step with the routes that run its proposals.
+func TestBoraOpsMatchRoutes(t *testing.T) {
+	project := "/api/v1/projects/{project}"
+	state, task, members, grants := "PUT "+project+"/tasks/{name}/state", project+"/tasks/{name}", project+"/members", project+"/tasks/{name}/grants"
+	routes := map[core.BoraOp]string{
+		"task.start": state, "task.stop": state, "task.restart": state,
+		"task.create": "POST " + project + "/tasks", "task.delete": "DELETE " + task,
+		"task.update": "PATCH " + task, "task.env": "PATCH " + task,
+		"member.add": "POST " + members, "member.role": "POST " + members, "member.remove": "DELETE " + members + "/{userID}",
+		"grant.add": "POST " + grants, "grant.remove": "DELETE " + grants + "/{userID}",
+		"project.update": "PATCH " + project, "project.delete": "DELETE " + project,
+	}
+	for op, role := range core.BoraOps {
+		i := slices.IndexFunc(routeTable[:], func(r route) bool { return r.method+" "+r.path == routes[op] })
+		if i < 0 || projectRoles[routeTable[i].access] != role {
+			t.Errorf("%s needs %s, which its route %q does not", op, role, routes[op])
+		}
+	}
+}
+
+func TestBoraConversationRoutes(t *testing.T) {
+	id := uuid.New()
+	answer := core.BoraMessage{Index: 1, Role: core.ChatAssistant, Content: "Down.", Say: "Down.", Actions: []core.BoraAction{}, Choices: []string{}, Sources: []core.CodeSource{}, Ran: []string{}}
+	projects := &stubProjects{turn: []service.BoraEvent{
+		{Name: "conversation", ID: id},
+		{Name: "reset"},
+		{Name: "step", Text: "Reading web's logs…"},
+		{Name: "say", Text: "Down."},
+		{Name: "delta", Text: "Down."},
+		{Name: "done", Message: &answer, Title: "Web"},
+		{Name: "error", Err: core.ErrTooMany},
+	}}
+	h := testHandler(stubTasks{}, &stubAuth{user: testMember}, projects)
+	rr := do(h, authed(http.MethodPost, "/api/v1/bora/conversations", strings.NewReader(`{"about":{"kind":"task","project":"demo","task":"web"},"question":"Why?"}`)))
+	for _, frame := range []string{
+		"event: conversation\ndata: {\"id\":\"" + id.String() + "\"}\n\n",
+		"event: reset\ndata: {}\n\n",
+		"event: step\ndata: {\"text\":\"Reading web's logs…\"}\n\n",
+		"event: say\ndata: {\"text\":\"Down.\"}\n\n",
+		"event: delta\ndata: {\"text\":\"Down.\"}\n\n",
+		`event: done` + "\n" + `data: {"message":{"index":1,"role":"assistant","content":"Down.","say":"Down.","actions":[],"choices":[],"sources":[],"ran":[],"at":"0001-01-01T00:00:00Z"},"title":"Web"}`,
+		`event: error` + "\n" + `data: {"kind":"rate-limited","message":"too many requests","status":429}`,
+	} {
+		if !strings.Contains(rr.Body.String(), frame) {
+			t.Errorf("stream lacks %q:\n%s", frame, rr.Body.String())
+		}
+	}
+	if rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != "text/event-stream" {
+		t.Errorf("stream answered %d %q", rr.Code, rr.Header().Get("Content-Type"))
+	}
+	conversation := "/api/v1/bora/conversations/" + id.String()
+	for _, tc := range []struct {
+		r    *http.Request
+		want int
+	}{
+		{authed(http.MethodGet, conversation+"/stream", nil), http.StatusNoContent},
+		{authed(http.MethodPost, conversation+"/stop", nil), http.StatusNoContent},
+		{authed(http.MethodPost, conversation+"/messages/1/ran", strings.NewReader(`{"line":"Task web restarted."}`)), http.StatusNoContent},
+		{authed(http.MethodPost, conversation+"/messages/one/ran", strings.NewReader(`{"line":"x"}`)), http.StatusBadRequest},
+		{authed(http.MethodDelete, conversation, nil), http.StatusNoContent},
+		{authed(http.MethodDelete, "/api/v1/bora/conversations", nil), http.StatusNoContent},
+		{authed(http.MethodGet, "/api/v1/bora/conversations/nope", nil), http.StatusBadRequest},
+		{authed(http.MethodGet, conversation, nil), http.StatusNotFound},
+		{authed(http.MethodGet, "/api/v1/bora/conversations?limit=many", nil), http.StatusBadRequest},
+		{authed(http.MethodPost, "/api/v1/bora/conversations/search", strings.NewReader(`{"query":"loi"}`)), http.StatusOK},
+		{authed(http.MethodGet, "/api/v1/chats", nil), http.StatusNotFound},
+		{authed(http.MethodPost, "/api/v1/projects/demo/chats", strings.NewReader(`{"message":"How?"}`)), http.StatusNotFound},
+	} {
+		if rr := do(h, tc.r); rr.Code != tc.want {
+			t.Errorf("%s %s: %d %s, want %d", tc.r.Method, tc.r.URL, rr.Code, rr.Body.String(), tc.want)
+		}
+	}
+	if rr := do(h, authed(http.MethodGet, "/api/v1/bora/conversations", nil)); rr.Body.String() != `{"conversations":[]}`+"\n" {
+		t.Errorf("an empty list: %s", rr.Body.String())
+	}
+	token := testHandler(stubTasks{}, &stubAuth{user: testMember, kind: core.TokenKindAPI}, projects)
+	if rr := do(token, authed(http.MethodGet, "/api/v1/bora/conversations", nil)); rr.Code != http.StatusForbidden {
+		t.Errorf("an API token listed conversations: %d", rr.Code)
 	}
 }

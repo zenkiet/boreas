@@ -223,46 +223,6 @@ type repositoriesResponse struct {
 	Repositories []string `json:"repositories" example:"[\"github.com/acme/web\"]"`
 }
 
-type chatDTO struct {
-	ID        uuid.UUID          `json:"id"`
-	Project   string             `json:"project" example:"demo"`
-	Title     string             `json:"title" example:"How is the card surcharge shown on receipts?"`
-	Messages  []core.ChatMessage `json:"messages,omitempty"`
-	CreatedAt time.Time          `json:"created_at"`
-	UpdatedAt time.Time          `json:"updated_at"`
-}
-
-func chatFromCore(c core.Chat) chatDTO {
-	return chatDTO{ID: c.ID, Project: c.ProjectSlug, Title: c.Title, Messages: c.Messages, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
-}
-
-type chatResponse struct {
-	Chat chatDTO `json:"chat"`
-}
-
-type chatsResponse struct {
-	Chats []chatDTO `json:"chats"`
-	Total int       `json:"total"`
-}
-
-type chatMessagesResponse struct {
-	Messages []core.ChatMessage `json:"messages"`
-}
-
-type chatPath struct {
-	ID uuid.UUID `json:"-" path:"id"`
-}
-
-type startChatRequest struct {
-	Project string `json:"-" path:"project" example:"demo"`
-	Message string `json:"message" minLength:"1" maxLength:"2000" example:"How is the card surcharge shown on receipts?"`
-}
-
-type replyChatRequest struct {
-	ID      uuid.UUID `json:"-" path:"id"`
-	Message string    `json:"message" minLength:"1" maxLength:"2000"`
-}
-
 type taskResponse struct {
 	Task taskDTO `json:"task"`
 }
@@ -391,6 +351,73 @@ type lastDeployDTO struct {
 type fleetProjectDTO struct {
 	projectDTO
 	Tasks []fleetTaskDTO `json:"tasks"`
+	Bora  bool           `json:"bora"`
+}
+
+type startConversationRequest struct {
+	About    core.BoraAbout `json:"about"`
+	Question string         `json:"question" minLength:"1" maxLength:"2000" example:"Why did this fail?"`
+	Screen   string         `json:"screen,omitempty" maxLength:"2000" example:"/projects/demo"`
+}
+
+type askConversationRequest struct {
+	ID       uuid.UUID `json:"-" path:"id"`
+	Question string    `json:"question" minLength:"1" maxLength:"2000" example:"And on refunds?"`
+	Screen   string    `json:"screen,omitempty" maxLength:"2000"`
+}
+
+type ranRequest struct {
+	ID    uuid.UUID `json:"-" path:"id"`
+	Index int       `json:"-" path:"index" minimum:"0"`
+	Line  string    `json:"line" minLength:"1" maxLength:"200" example:"Task kiosk-602 stopped."`
+}
+
+type conversationsPage struct {
+	Before string `query:"before"`
+	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
+type searchConversationsRequest struct {
+	Query  string `json:"query" minLength:"1" example:"loi build"`
+	Before string `json:"before,omitempty"`
+	Limit  int    `json:"limit,omitempty" minimum:"1" maximum:"200" default:"50"`
+}
+
+type conversationItemDTO struct {
+	ID        uuid.UUID      `json:"id"`
+	Title     string         `json:"title"`
+	About     core.BoraAbout `json:"about"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Answering bool           `json:"answering"`
+	Snippet   string         `json:"snippet,omitempty"`
+}
+
+func conversationItemFromCore(c core.BoraConversation) conversationItemDTO {
+	return conversationItemDTO{ID: c.ID, Title: c.Title, About: c.About, UpdatedAt: c.UpdatedAt, Answering: c.Answering != nil, Snippet: c.Snippet}
+}
+
+type conversationsResponse struct {
+	Conversations []conversationItemDTO `json:"conversations"`
+	Next          string                `json:"next,omitempty"`
+}
+
+type conversationDTO struct {
+	ID        uuid.UUID          `json:"id"`
+	Title     string             `json:"title"`
+	About     core.BoraAbout     `json:"about"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	Answering *core.BoraPending  `json:"answering"`
+	Messages  []core.BoraMessage `json:"messages"`
+}
+
+type conversationResponse struct {
+	Conversation conversationDTO `json:"conversation"`
+}
+
+type boraDone struct {
+	Message core.BoraMessage `json:"message"`
+	Title   string           `json:"title,omitempty"`
 }
 
 type projectsResponse struct {
