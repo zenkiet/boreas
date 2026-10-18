@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.18.0 - 2026-10-18
+#### 🚀 Features
+- (**voice**) ✨ add the on-device voice plugin - (b5c6d98) - *zenkiet*
+
+- - -
+
 ## v1.17.0 - 2026-10-12
 #### 🚀 Features
 - (**bora**) ✨ implement bora assistant AI - (3977cef) - *zenkiet*
