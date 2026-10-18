@@ -356,8 +356,9 @@ The answer streams as Server-Sent Events:
 
 - `conversation` names a new conversation;
 - a `step` comes before each tool call ("Reading qa-1's logs…");
-- `say` carries the line the phone reads aloud, 1 or 2 plain sentences, before
-  the answer's text, or just before `done` when the model wrote none;
+- `say` carries the line the phone reads aloud, 1 or 2 sentences written as
+  they are spoken (numbers, times and names in words), before the answer's
+  text, or just before `done` when the model wrote none;
 - each `delta` carries text as it is written, and `reset` drops what came so
   far, its `say` included, when it turned out to lead into a tool call;
 - `done` carries the saved answer, `error` the failure, and `stopped` ends an

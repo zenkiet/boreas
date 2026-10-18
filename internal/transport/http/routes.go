@@ -45,7 +45,7 @@ type route struct {
 const readSSE = "Read it with fetch and a stream reader: EventSource cannot send the Authorization header."
 
 const boraStream = "The answer comes as Server-Sent Events, each an `event: <name>` with a JSON data line: conversation {id} " +
-	"first on a new conversation; step {text} before each tool call; say {text}, the line to read aloud, before the answer's " +
+	"first on a new conversation; step {text} before each tool call; say {text}, the line to read aloud, written as it is spoken, before the answer's " +
 	"first delta, or just before done when the model wrote none; delta {text} as the answer is written; reset {} when the " +
 	"text so far, its say included, led into a tool call, so the client drops it; then done {message, title?} with the saved " +
 	"answer, title on a new conversation, error {status, kind, message}, or stopped {} after a stop. A dropped connection " +

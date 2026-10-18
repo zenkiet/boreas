@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,14 +25,14 @@ const (
 	codeBudget      = 96 << 10
 	answerRunes     = 4000
 	sayRunes        = 300
-	// The answer streams on when a say is still open this many characters in.
-	sayHold = 400
+	// The answer streams on when a say is still open this many characters in; numbers in words make it long.
+	sayHold = 1000
 	sayOpen = "<say>"
 )
 
 const boraPrompt = `You are Bora, the assistant of a Boreas server, whose tasks are staging environments, one container each, grouped in projects. Readers are often not technical (product, QA, support) and read you on a phone.
 - Answer in the language the user writes in, in plain words. Lead with the conclusion: the cause or the answer in the first sentence. About the running system, keep to about 3 sentences. About how the product behaves (a rule, a calculation, a validation), give the rule in 1 or 2 sentences and one worked example, in at most 120 words; when the code does not show it, say so and name what you checked. Use no headings, and a list only when you list things; give more detail only when asked. When the question could mean more than one thing, say in a few words which meaning you took.
-- Open your final answer with <say>…</say>, the line the phone reads aloud: 1 or 2 plain sentences, at most 300 characters, in the user's language, with no markdown, links, paths, hashes or env values and at most two task names. Write the answer after it.
+- Open your final answer with <say>…</say>, the line the phone reads aloud as written: 1 or 2 sentences, at most 300 characters, in the user's language only, with no sentence in another language; numbers, times, durations, percents and sizes in words (ba mươi lăm phần trăm, fifteen thirty, hai phút mười bốn giây); names as plain words (api gateway, database url); acronyms spelled out unless said as a word (C P U, RAM); English terms as they are spelled (deploy, staging); no markdown, links, paths, hashes, env values, emoji, names with digits such as k8s, or pointers to the screen; at most two task names. Write the answer after it.
 - When the question names a project or a task, answer about that one only.
 - Only the projects the user is a member of exist for you. Look with the tools before you answer, and never guess. Call tools without writing anything before them.
 - Your earlier answers came from tool calls, propose_action among them, that are not shown to you again: they all happened. Trust those answers, look again only for what the new question needs, and never comment on, doubt, correct or take them back unless the user asks.
@@ -53,7 +54,34 @@ var (
 	markdown = regexp.MustCompile("(?m)!?\\[([^\\]]*)\\]\\([^)]*\\)|^\\s*(?:[-+>]|\\d+\\.)\\s+|[*`#]+")
 	// sentenceEnd ends a sentence, not a version or a decimal.
 	sentenceEnd = regexp.MustCompile(`[.!?](?:\s|$)`)
+	// The Vietnamese voice reads digits and joined names wrong, so aloud writes them as words.
+	joined    = regexp.MustCompile(`(\pL)[-_]+`)
+	version   = regexp.MustCompile(`([bB]ản )?\b[vV](\d+(?:\.\d+)*)\b`)
+	date      = regexp.MustCompile(`\b(\d{4})-(\d{1,2})-(\d{1,2})\b`)
+	clock     = regexp.MustCompile(`\b(\d{1,2})[:h](\d{2})\b`)
+	span      = regexp.MustCompile(`\b(?:\d+(?:ms|[hmps]))+\b`)
+	spanPart  = regexp.MustCompile(`(\d+)(ms|[hmps])`)
+	letterNum = regexp.MustCompile(`(\pL)(\d)`)
+	numLetter = regexp.MustCompile(`(\d)(\pL)`)
+	figure    = regexp.MustCompile(`(\d+(?:\.\d+)*(?:,\d+)?)( ?%)?`)
+	thousands = regexp.MustCompile(`^\d{1,3}(?:\.\d{3})+$`)
+	digits    = strings.Fields("không một hai ba bốn năm sáu bảy tám chín")
+	scales    = [...]string{"", "nghìn", "triệu", "tỷ"}
+	units     = map[string]string{"h": "giờ", "m": "phút", "p": "phút", "s": "giây", "ms": "mi li giây"}
 )
+
+// vietnamese are the letters by which the app picks the Vietnamese voice for a line.
+const vietnamese = "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
+
+// answerIn names the reply's language, since the model has answered an English question in Spanish.
+// ponytail: Vietnamese typed without marks is answered in English; tell by words if users type that way.
+func answerIn(question string) string {
+	language := "English"
+	if strings.ContainsAny(strings.ToLower(question), vietnamese) {
+		language = "Vietnamese"
+	}
+	return "\n- Write the answer, its say and the title in " + language + ", whatever language the data is in."
+}
 
 // BoraEvent is one event of a turn's stream: conversation, step, say, delta, reset, then done, error or stopped.
 type BoraEvent struct {
@@ -239,7 +267,7 @@ func (s *ProjectService) answer(ctx context.Context, t *boraTurn, b *bora, quest
 	b.steps = func(text string) { t.publish(BoraEvent{Name: "step", Text: text}) }
 	w := &sayer{publish: t.publish}
 	ask := core.Ask{
-		System: boraPrompt, Brief: b.brief(screen, ran), Tools: b.tools(t.first), History: history,
+		System: boraPrompt + answerIn(question), Brief: b.brief(screen, ran), Tools: b.tools(t.first), History: history,
 		// An answer that asked back is answered by the user's choice, which is not to be asked back again.
 		Clarify:  n == 0 || len(conv.Messages[n-1].Choices) == 0,
 		Question: question, Data: b.data(), Delta: w.write, Reset: w.reset,
@@ -258,6 +286,8 @@ func (s *ProjectService) answer(ctx context.Context, t *boraTurn, b *bora, quest
 	var say string
 	if m := sayTag.FindStringSubmatch(content); m != nil {
 		say, content = m[1], cmp.Or(content[len(m[0]):], m[1])
+	} else {
+		content = strings.TrimPrefix(content, sayOpen)
 	}
 	asked := boraMessage(n, core.ChatUser, question, t.pending.Since)
 	answered := boraMessage(n+1, core.ChatAssistant, truncate(core.Redact(content), answerRunes), time.Now().UTC())
@@ -314,14 +344,18 @@ func (w *sayer) write(text string) {
 	head := strings.TrimLeft(w.head, " \t\r\n")
 	switch m := sayTag.FindStringSubmatch(w.head); {
 	case m != nil:
-		w.publish(BoraEvent{Name: "say", Text: spoken(m[1])})
-		w.said, w.head = true, w.head[len(m[0]):]
+		// An empty say is left to answer(), which reads one from the answer just before done.
+		if say := spoken(m[1]); say != "" {
+			w.publish(BoraEvent{Name: "say", Text: say})
+			w.said = true
+		}
+		head = w.head[len(m[0]):]
 	case strings.HasPrefix(sayOpen, head), strings.HasPrefix(head, sayOpen) && utf8.RuneCountInString(head) < sayHold:
 		return // it may still open with a say
 	}
 	w.open = true
-	if w.head != "" {
-		w.publish(BoraEvent{Name: "delta", Text: w.head})
+	if head = strings.TrimPrefix(head, sayOpen); head != "" {
+		w.publish(BoraEvent{Name: "delta", Text: head})
 	}
 }
 
@@ -341,13 +375,148 @@ func spoken(text string) string {
 		end = m[0] + 1
 	}
 	if end > 0 {
-		return text[:end]
+		return aloud(text[:end])
 	}
 	cut := truncate(text, sayRunes)
 	if i := strings.LastIndexByte(cut, ' '); i > 0 && len(cut) < len(text) {
 		cut = cut[:i]
 	}
-	return cut
+	return aloud(cut)
+}
+
+// aloud writes a Vietnamese line's digits and joined names as words; the English voice reads them itself.
+func aloud(line string) string {
+	if !strings.ContainsAny(strings.ToLower(line), vietnamese) {
+		return line
+	}
+	line = joined.ReplaceAllString(line, "$1 ")
+	line = version.ReplaceAllStringFunc(line, func(v string) string {
+		m := version.FindStringSubmatch(v)
+		return cmp.Or(m[1], "phiên bản ") + dotted(m[2])
+	})
+	line = date.ReplaceAllStringFunc(line, dateWords)
+	line = clock.ReplaceAllStringFunc(line, clockWords)
+	line = span.ReplaceAllStringFunc(line, spanWords)
+	line = numLetter.ReplaceAllString(letterNum.ReplaceAllString(line, "$1 $2"), "$1 $2")
+	return figure.ReplaceAllStringFunc(line, func(f string) string {
+		m := figure.FindStringSubmatch(f)
+		if m[2] != "" {
+			return number(m[1]) + " phần trăm"
+		}
+		return number(m[1])
+	})
+}
+
+// dateWords reads 2026-10-18 with its year, since a date from another year read without one would be wrong.
+func dateWords(d string) string {
+	m := date.FindStringSubmatch(d)
+	month, _ := strconv.Atoi(m[2])
+	day, _ := strconv.Atoi(m[3])
+	if month < 1 || month > 12 || day < 1 || day > 31 {
+		return d
+	}
+	name := spell(strings.TrimLeft(m[2], "0"))
+	if month == 4 {
+		name = "tư"
+	}
+	return "ngày " + spell(strings.TrimLeft(m[3], "0")) + " tháng " + name + " năm " + spell(m[1])
+}
+
+// spanWords reads a duration written the short way, 2m14s or 15h30p.
+func spanWords(s string) string {
+	var words []string
+	for _, m := range spanPart.FindAllStringSubmatch(s, -1) {
+		words = append(words, spell(cmp.Or(strings.TrimLeft(m[1], "0"), "0")), units[m[2]])
+	}
+	return strings.Join(words, " ")
+}
+
+// clockWords names minutes under ten, as in tám giờ năm phút, so they are not heard as part of the hour.
+func clockWords(c string) string {
+	m := clock.FindStringSubmatch(c)
+	h, _ := strconv.ParseUint(m[1], 10, 64)
+	mins, _ := strconv.ParseUint(m[2], 10, 64)
+	switch {
+	case h > 23 || mins > 59:
+		return c
+	case mins == 0:
+		return viNumber(h) + " giờ"
+	case mins < 10:
+		return viNumber(h) + " giờ " + viNumber(mins) + " phút"
+	}
+	return viNumber(h) + " giờ " + viNumber(mins)
+}
+
+// number reads 1.250,5 as one number, and any other dotted run, a version or 2.5, part by part.
+func number(n string) string {
+	whole, frac, comma := strings.Cut(n, ",")
+	if thousands.MatchString(whole) {
+		whole = strings.ReplaceAll(whole, ".", "")
+	}
+	if comma {
+		return dotted(whole) + " phẩy " + spell(frac)
+	}
+	return dotted(whole)
+}
+
+func dotted(n string) string {
+	parts := strings.Split(n, ".")
+	for i, part := range parts {
+		parts[i] = spell(part)
+	}
+	return strings.Join(parts, " chấm ")
+}
+
+// spell reads a leading zero, or an id too long to be a quantity, digit by digit.
+func spell(n string) string {
+	if v, err := strconv.ParseUint(n, 10, 64); err == nil && len(n) <= 12 && (n[0] != '0' || len(n) == 1) {
+		return viNumber(v)
+	}
+	out := make([]string, len(n))
+	for i := range len(n) {
+		out[i] = digits[n[i]-'0']
+	}
+	return strings.Join(out, " ")
+}
+
+func viNumber(n uint64) string {
+	if n == 0 {
+		return digits[0]
+	}
+	var groups []string
+	for i := 0; n > 0; i++ {
+		g := int(n % 1000)
+		if n /= 1000; g > 0 {
+			groups = append([]string{strings.TrimSpace(hundreds(g, n > 0) + " " + scales[i])}, groups...)
+		}
+	}
+	return strings.Join(groups, " ")
+}
+
+// hundreds reads 0 to 999; after a larger group it keeps "không trăm" and "linh", as in một nghìn không trăm linh năm.
+func hundreds(n int, full bool) string {
+	h, t, u := n/100, n/10%10, n%10
+	var w []string
+	if h > 0 || full {
+		w = append(w, digits[h], "trăm")
+	}
+	switch {
+	case t > 1:
+		w = append(w, digits[t], "mươi")
+	case t == 1:
+		w = append(w, "mười")
+	case u > 0 && len(w) > 0:
+		w = append(w, "linh")
+	}
+	switch {
+	case u == 1 && t > 1:
+		w = append(w, "mốt")
+	case u == 5 && t > 0:
+		w = append(w, "lăm")
+	case u > 0:
+		w = append(w, digits[u])
+	}
+	return strings.Join(w, " ")
 }
 
 func (s *ProjectService) turn(actor core.User, id uuid.UUID) *boraTurn {

@@ -623,13 +623,36 @@ func TestBoraScope(t *testing.T) {
 func TestBoraSpoken(t *testing.T) {
 	sentence := strings.Repeat("a", 99) + "."
 	for in, want := range map[string]string{
-		"**Web** is [down](https://x.io). Run `npm ci`!\n- then retry.": "Web is down. Run npm ci!",
-		strings.Repeat(sentence+" ", 4):                                 sentence + " " + sentence,
-		"v1.2 failed: DB_PASSWORD=hunter2 refused":                      "v1.2 failed: DB_PASSWORD=[redacted] refused",
-		strings.Repeat("word ", 80):                                     strings.TrimSpace(strings.Repeat("word ", 60)),
+		"**Web** is [down](https://x.io). Run `npm ci`!\n- then retry.":   "Web is down. Run npm ci!",
+		strings.Repeat(sentence+" ", 4):                                   sentence + " " + sentence,
+		"v1.2 failed: DB_PASSWORD=hunter2 refused":                        "v1.2 failed: DB_PASSWORD=[redacted] refused",
+		strings.Repeat("word ", 80):                                       strings.TrimSpace(strings.Repeat("word ", 60)),
+		"Lúc 15:30 có 3 task lỗi, CPU 35%.":                               "Lúc mười lăm giờ ba mươi có ba task lỗi, CPU ba mươi lăm phần trăm.",
+		"Đã chạy lúc 08:05 và 15h00.":                                     "Đã chạy lúc tám giờ năm phút và mười lăm giờ.",
+		"Còn 1.250, 1.050, 1.005, 105, 21, 15, 11 và 2.000.000.":          "Còn một nghìn hai trăm năm mươi, một nghìn không trăm năm mươi, một nghìn không trăm linh năm, một trăm linh năm, hai mươi mốt, mười lăm, mười một và hai triệu.",
+		"Tăng 2,5 rồi 2.5, bản v1.2.3 dùng 2GB.":                          "Tăng hai phẩy năm rồi hai chấm năm, bản một chấm hai chấm ba dùng hai GB.",
+		"Task api-gateway và billing_worker đã chạy.":                     "Task api gateway và billing worker đã chạy.",
+		"The api-gateway restarted 3 times at 15:30.":                     "The api-gateway restarted 3 times at 15:30.",
+		"Api gateway bị lỗi. Restarted 3 times.":                          "Api gateway bị lỗi. Restarted ba times.",
+		"Build mất 2m14s, chạy lúc 15h, xong 15h30p, chờ 1h05m và 500ms.": "Build mất hai phút mười bốn giây, chạy lúc mười lăm giờ, xong mười lăm giờ ba mươi phút, chờ một giờ năm phút và năm trăm mi li giây.",
+		"Màn hình 1920x1080, phiên bản v3.0 và v2.":                       "Màn hình một nghìn chín trăm hai mươi x một nghìn không trăm tám mươi, phiên bản ba chấm không và phiên bản hai.",
+		"Lỗi từ 2026-10-18 và 2026-04-01 trên k8s.":                       "Lỗi từ ngày mười tám tháng mười năm hai nghìn không trăm hai mươi sáu và ngày một tháng tư năm hai nghìn không trăm hai mươi sáu trên k tám s.",
 	} {
 		if got := spoken(in); got != want {
 			t.Errorf("spoken(%.40q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestBoraSayer(t *testing.T) {
+	for _, chunks := range [][]string{{"<say></say>", "Hello."}, {"<say>", strings.Repeat("a", sayHold)}} {
+		var events []BoraEvent
+		w := &sayer{publish: func(e BoraEvent) { events = append(events, e) }}
+		for _, chunk := range chunks {
+			w.write(chunk)
+		}
+		if len(events) == 0 || slices.ContainsFunc(events, func(e BoraEvent) bool { return e.Name == "say" || strings.Contains(e.Text, sayOpen) }) {
+			t.Errorf("%q streamed %+v, want only the answer, untagged", chunks[0], events)
 		}
 	}
 }

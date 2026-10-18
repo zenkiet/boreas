@@ -315,18 +315,18 @@ paths:
         a task, its latest build, an Activity event or a log line, from the projects
         the caller is a member of. The answer comes as Server-Sent Events, each an
         `event: <name>` with a JSON data line: conversation {id} first on a new conversation;
-        step {text} before each tool call; say {text}, the line to read aloud, before
-        the answer''s first delta, or just before done when the model wrote none;
-        delta {text} as the answer is written; reset {} when the text so far, its
-        say included, led into a tool call, so the client drops it; then done {message,
-        title?} with the saved answer, title on a new conversation, error {status,
-        kind, message}, or stopped {} after a stop. A dropped connection does not
-        stop the turn, and a comment heartbeat fills idle time. Read it with fetch
-        and a stream reader: EventSource cannot send the Authorization header. Before
-        the stream begins, 403 answers an API token, task grants alone or no project,
-        404 a subject the caller cannot see, 409 a server without an assistant, and
-        429 a caller with 3 turns running or a server with 20. The conversation is
-        saved with its first answer; until then only its stream and GET reach it.'
+        step {text} before each tool call; say {text}, the line to read aloud, written
+        as it is spoken, before the answer''s first delta, or just before done when
+        the model wrote none; delta {text} as the answer is written; reset {} when
+        the text so far, its say included, led into a tool call, so the client drops
+        it; then done {message, title?} with the saved answer, title on a new conversation,
+        error {status, kind, message}, or stopped {} after a stop. A dropped connection
+        does not stop the turn, and a comment heartbeat fills idle time. Read it with
+        fetch and a stream reader: EventSource cannot send the Authorization header.
+        Before the stream begins, 403 answers an API token, task grants alone or no
+        project, 404 a subject the caller cannot see, 409 a server without an assistant,
+        and 429 a caller with 3 turns running or a server with 20. The conversation
+        is saved with its first answer; until then only its stream and GET reach it.'
       operationId: post-bora-conversations
       requestBody:
         content:
@@ -491,15 +491,15 @@ paths:
       description: 'Answers from the conversation''s last 12 messages and every ran
         line. The answer comes as Server-Sent Events, each an `event: <name>` with
         a JSON data line: conversation {id} first on a new conversation; step {text}
-        before each tool call; say {text}, the line to read aloud, before the answer''s
-        first delta, or just before done when the model wrote none; delta {text} as
-        the answer is written; reset {} when the text so far, its say included, led
-        into a tool call, so the client drops it; then done {message, title?} with
-        the saved answer, title on a new conversation, error {status, kind, message},
-        or stopped {} after a stop. A dropped connection does not stop the turn, and
-        a comment heartbeat fills idle time. Read it with fetch and a stream reader:
-        EventSource cannot send the Authorization header. 409 also while a turn runs
-        in the conversation.'
+        before each tool call; say {text}, the line to read aloud, written as it is
+        spoken, before the answer''s first delta, or just before done when the model
+        wrote none; delta {text} as the answer is written; reset {} when the text
+        so far, its say included, led into a tool call, so the client drops it; then
+        done {message, title?} with the saved answer, title on a new conversation,
+        error {status, kind, message}, or stopped {} after a stop. A dropped connection
+        does not stop the turn, and a comment heartbeat fills idle time. Read it with
+        fetch and a stream reader: EventSource cannot send the Authorization header.
+        409 also while a turn runs in the conversation.'
       operationId: post-bora-conversations-id-messages
       parameters:
       - in: path
@@ -674,14 +674,15 @@ paths:
       description: 'Replays the running turn of a conversation from its start, then
         follows it. The answer comes as Server-Sent Events, each an `event: <name>`
         with a JSON data line: conversation {id} first on a new conversation; step
-        {text} before each tool call; say {text}, the line to read aloud, before the
-        answer''s first delta, or just before done when the model wrote none; delta
-        {text} as the answer is written; reset {} when the text so far, its say included,
-        led into a tool call, so the client drops it; then done {message, title?}
-        with the saved answer, title on a new conversation, error {status, kind, message},
-        or stopped {} after a stop. A dropped connection does not stop the turn, and
-        a comment heartbeat fills idle time. Read it with fetch and a stream reader:
-        EventSource cannot send the Authorization header. 204 when no turn runs.'
+        {text} before each tool call; say {text}, the line to read aloud, written
+        as it is spoken, before the answer''s first delta, or just before done when
+        the model wrote none; delta {text} as the answer is written; reset {} when
+        the text so far, its say included, led into a tool call, so the client drops
+        it; then done {message, title?} with the saved answer, title on a new conversation,
+        error {status, kind, message}, or stopped {} after a stop. A dropped connection
+        does not stop the turn, and a comment heartbeat fills idle time. Read it with
+        fetch and a stream reader: EventSource cannot send the Authorization header.
+        204 when no turn runs.'
       operationId: get-bora-conversations-id-stream
       parameters:
       - in: path
