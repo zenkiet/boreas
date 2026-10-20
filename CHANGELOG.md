@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.21.0 - 2026-10-20
+#### 🚀 Features
+- (**volumes**) ✨ mount task volumes writable - (3c4aeaa) - *zenkiet*
+
+- - -
+
 ## v1.20.2 - 2026-10-20
 #### 🐛 Bug Fixes
 - (**proxy**) 🐛 stop use fucking injectBase - (45d3576) - *zenkiet*
