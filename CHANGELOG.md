@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.20.2 - 2026-10-20
+#### 🐛 Bug Fixes
+- (**proxy**) 🐛 stop use fucking injectBase - (45d3576) - *zenkiet*
+
+- - -
+
 ## v1.20.1 - 2026-10-20
 #### 🐛 Bug Fixes
 - (**proxy**) 🐛 keep task HTML plain for service workers - (dc56a15) - *zenkiet*
