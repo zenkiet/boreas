@@ -214,8 +214,8 @@ func (h *hop) rewrite(pr *httputil.ProxyRequest) {
 	pr.Out.Header.Set("X-Boreas-Task", h.task)
 	if h.path != "" {
 		pr.Out.Header.Set(loopHeader, h.path)
-	} else if pr.In.Header.Get("Sec-Fetch-Dest") == "document" {
-		// Only a page needs plain HTML for its <base>; everything else may stay compressed.
+	} else {
+		// Any HTML needs its <base>, a service worker's own fetch of the app shell included, so it must arrive plain.
 		pr.Out.Header.Set("Accept-Encoding", "identity")
 	}
 }

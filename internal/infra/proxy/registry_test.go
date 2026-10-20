@@ -40,8 +40,10 @@ func TestRegistryProxyPathHeadersAndHTML(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	// A service worker fetching the app shell is not a document request, yet it must get the <base> too.
 	request := httptest.NewRequest(http.MethodGet, "http://boreas/team/Task.1/some/path?x=1", nil)
-	request.Header.Set("Sec-Fetch-Dest", "document")
+	request.Header.Set("Sec-Fetch-Dest", "empty")
+	request.Header.Set("Accept-Encoding", "gzip, br")
 	registry.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d", recorder.Code)
