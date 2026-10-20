@@ -93,7 +93,7 @@ func TestCreateRefusesToTakeAContainerItDoesNotOwn(t *testing.T) {
 
 func TestMounts(t *testing.T) {
 	got := mounts(core.ContainerSpec{Project: "shop", Volumes: map[string]string{"/app/certs": "certs"}})
-	if len(got) != 1 || got[0].Source != appdataVolume || got[0].Target != "/app/certs" || !got[0].ReadOnly ||
+	if len(got) != 1 || got[0].Source != appdataVolume || got[0].Target != "/app/certs" || got[0].ReadOnly ||
 		got[0].VolumeOptions.Subpath != "shop/certs" {
 		t.Fatalf("mounts = %+v", got)
 	}

@@ -138,7 +138,7 @@ func mounts(spec core.ContainerSpec) []mount.Mount {
 	var result []mount.Mount
 	for target, folder := range spec.Volumes {
 		result = append(result, mount.Mount{
-			Type: mount.TypeVolume, Source: appdataVolume, Target: target, ReadOnly: true,
+			Type: mount.TypeVolume, Source: appdataVolume, Target: target,
 			VolumeOptions: &mount.VolumeOptions{Subpath: spec.Project + "/" + folder},
 		})
 	}

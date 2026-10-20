@@ -1208,8 +1208,8 @@ paths:
       - projects
   /api/v1/projects/{project}/folders:
     get:
-      description: The project's folders in the boreas-appdata volume, which task
-        volumes mount read-only.
+      description: The project's folders in the boreas-appdata volume that task volumes
+        can mount.
       operationId: get-projects-project-folders
       parameters:
       - in: path
@@ -1708,8 +1708,8 @@ paths:
       - tasks
     post:
       description: Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.
-        volumes maps a container path to one of the project's folders, mounted read-only;
-        the folder must exist.
+        volumes maps a container path to one of the project's folders, writable and
+        shared by the project's tasks; the folder must exist.
       operationId: post-projects-project-tasks
       parameters:
       - in: path

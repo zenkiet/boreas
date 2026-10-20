@@ -293,10 +293,10 @@ omit a field to leave it unchanged. New projects start at `""`, `80`, and `{}`.
 
 ## Volumes
 
-`volumes` mounts folders prepared by an administrator into a task, read-only:
-certificates, configuration, seed scripts. It maps a path in the container to
-one of the project's folders, and saving fails with `400` when the folder does
-not exist.
+`volumes` mounts folders prepared by an administrator into a task, writable:
+certificates, configuration, seed scripts, data the task keeps. It maps a path
+in the container to one of the project's folders, and saving fails with `400`
+when the folder does not exist.
 
 ```bash
 curl -H "$AUTH" http://localhost:8080/api/v1/projects/demo/folders
@@ -321,8 +321,10 @@ volumes:
     driver_opts: { type: none, o: bind, device: /opt/appdata/boreas }
 ```
 
-Nothing a task writes survives its container: deploys, restarts and
-configuration changes start from the image again.
+Only what a task writes into its volumes survives its container: deploys,
+restarts and configuration changes start everything else from the image again.
+Every task of the project sees the same folder, and the container's user must be
+able to write to it (distroless `nonroot` is UID 65532).
 
 ## Bora
 

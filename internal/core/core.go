@@ -380,7 +380,7 @@ type ContainerSpec struct {
 	Port    int
 	Labels  map[string]string
 	Env     map[string]string
-	// Container path to a folder of the project in the shared volume, mounted read-only.
+	// Container path to a folder of the project in the shared volume.
 	Volumes map[string]string
 }
 

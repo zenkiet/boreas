@@ -354,7 +354,7 @@ var routeTable = [...]route{
 	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/folders", access: accessViewer, handler: (*Handler).listFolders,
 		tag: "projects", summary: "List the project's shared folders",
-		description: "The project's folders in the boreas-appdata volume, which task volumes mount read-only.",
+		description: "The project's folders in the boreas-appdata volume that task volumes can mount.",
 		req:         new(projectPath), resp: new(foldersResponse),
 	},
 	{
@@ -366,7 +366,7 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks", access: accessMember, handler: (*Handler).createTask,
 		tag: "tasks", summary: "Create a task",
 		description: "Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$. " +
-			"volumes maps a container path to one of the project's folders, mounted read-only; the folder must exist.",
+			"volumes maps a container path to one of the project's folders, writable and shared by the project's tasks; the folder must exist.",
 		req: new(createTaskRequest), resp: new(taskResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
