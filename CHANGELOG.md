@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.19.0 - 2026-10-20
+#### 🚀 Features
+- (**push**) ✨ send push straight to FCM HTTP v1 - (48958fe) - *zenkiet*
+
+- - -
+
 ## v1.18.0 - 2026-10-18
 #### 🚀 Features
 - (**voice**) ✨ add the on-device voice plugin - (b5c6d98) - *zenkiet*
