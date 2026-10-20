@@ -25,8 +25,6 @@ type FCMConfig struct {
 	Keyfile string
 }
 
-func (c FCMConfig) Enabled() bool { return c.Project != "" && c.Keyfile != "" }
-
 type AIConfig struct {
 	BaseURL string
 	APIKey  string
@@ -140,18 +138,7 @@ func (c Config) validate() error {
 	if (c.AI.BaseURL == "") != (c.AI.Model == "") {
 		result = errors.Join(result, errors.New("BOREAS_AI_BASE_URL and BOREAS_AI_MODEL must be set together"))
 	}
-	if c.FCM.Enabled() && !statelessNotifyURL(c.NotifyURL) {
-		result = errors.Join(result, errors.New(
-			"BOREAS_FCM_PROJECT and BOREAS_FCM_KEYFILE require BOREAS_NOTIFY_URL to end in /notify, "+
-				"without an Apprise configuration key: the keyed endpoint ignores per-request targets, "+
-				"so every subscribed browser would be dropped without an error"))
-	}
 	return result
-}
-
-func statelessNotifyURL(notifyURL string) bool {
-	parsed, err := url.Parse(notifyURL)
-	return err == nil && strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/notify")
 }
 
 func (c Config) ListenAddr() string { return "0.0.0.0:" + strconv.Itoa(c.Port) }

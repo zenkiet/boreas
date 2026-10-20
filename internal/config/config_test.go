@@ -51,40 +51,6 @@ func TestDSNEscapesPasswordAndPrefersURL(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsFCMWithKeyedNotifyURL(t *testing.T) {
-	// A keyed URL stays valid on its own: only enabling FCM makes it a misconfiguration.
-	t.Setenv("BOREAS_NOTIFY_URL", "http://boreas-noti:8000/notify/boreas")
-	if _, err := Load(); err != nil {
-		t.Fatalf("a keyed URL without FCM must load: %v", err)
-	}
-	t.Setenv("BOREAS_FCM_PROJECT", "boreas")
-	t.Setenv("BOREAS_FCM_KEYFILE", "/config/key.json")
-
-	for _, notifyURL := range []string{
-		"http://boreas-noti:8000/notify/boreas",
-		"",
-	} {
-		t.Setenv("BOREAS_NOTIFY_URL", notifyURL)
-		_, err := Load()
-		if err == nil {
-			t.Fatalf("BOREAS_NOTIFY_URL=%q must be rejected while FCM is enabled", notifyURL)
-		}
-		if !strings.Contains(err.Error(), "BOREAS_NOTIFY_URL") {
-			t.Fatalf("error must name the offending variable: %v", err)
-		}
-	}
-
-	for _, notifyURL := range []string{
-		"http://boreas-noti:8000/notify",
-		"http://boreas-noti:8000/notify/",
-	} {
-		t.Setenv("BOREAS_NOTIFY_URL", notifyURL)
-		if _, err := Load(); err != nil {
-			t.Fatalf("BOREAS_NOTIFY_URL=%q is the stateless endpoint, got %v", notifyURL, err)
-		}
-	}
-}
-
 func TestLoadRejectsPartialFCMConfig(t *testing.T) {
 	for name, value := range map[string]string{
 		"BOREAS_FCM_PROJECT": "boreas",

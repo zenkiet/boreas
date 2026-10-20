@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/zenkiet/boreas/internal/core"
@@ -16,32 +15,17 @@ import (
 type Sender struct {
 	url    string
 	client *http.Client
-	// Targets, when set, replaces Apprise's configured destinations with the devices allowed to see n.
-	Targets func(context.Context, core.Notification) []string
 }
 
 func New(url string, timeout time.Duration) *Sender {
 	return &Sender{url: url, client: &http.Client{Timeout: timeout}}
 }
 
-func FCMURL(project, keyfile, token string) string {
-	return fmt.Sprintf("fcm://%s/%s/?keyfile=%s&priority=high",
-		url.PathEscape(project), url.PathEscape(token), url.QueryEscape(keyfile))
-}
-
 func (s *Sender) Send(ctx context.Context, n core.Notification) error {
 	if s.url == "" {
 		return nil
 	}
-	body := map[string]any{"title": n.Title, "body": n.Body, "type": string(n.Status)}
-	if s.Targets != nil {
-		urls := s.Targets(ctx, n)
-		if len(urls) == 0 {
-			return nil
-		}
-		body["urls"] = urls
-	}
-	payload, err := json.Marshal(body)
+	payload, err := json.Marshal(map[string]string{"title": n.Title, "body": n.Body, "type": string(n.Status)})
 	if err != nil {
 		return fmt.Errorf("encode notification: %w", err)
 	}

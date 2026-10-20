@@ -34,8 +34,8 @@ func TestPushSubscriptionsActAsTheCaller(t *testing.T) {
 	}
 }
 
-// A comma would split one target into two inside the Apprise URL, so it must be
-// rejected before it reaches the store.
+// No FCM token holds a separator or whitespace, so one that does must be rejected
+// before it reaches the store.
 func TestSubscribePushRejectsMalformedTokenWithoutStoring(t *testing.T) {
 	called := false
 	push := &stubPush{create: func(context.Context, uuid.UUID, string) error {

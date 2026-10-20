@@ -19,6 +19,7 @@ import (
 	"github.com/zenkiet/boreas/internal/core"
 	"github.com/zenkiet/boreas/internal/infra/apprise"
 	dockerinfra "github.com/zenkiet/boreas/internal/infra/docker"
+	"github.com/zenkiet/boreas/internal/infra/fcm"
 	"github.com/zenkiet/boreas/internal/infra/llm"
 	pginfra "github.com/zenkiet/boreas/internal/infra/postgres"
 	proxyinfra "github.com/zenkiet/boreas/internal/infra/proxy"
@@ -100,20 +101,9 @@ func run(logger *slog.Logger) error {
 	routes.Fallback = web.Handler()
 	defer routes.CloseIdleConnections()
 
-	sender := apprise.New("", notifyTimeout)
-	if cfg.FCM.Enabled() {
-		sender = apprise.New(cfg.NotifyURL, notifyTimeout)
-		sender.Targets = func(ctx context.Context, n core.Notification) []string {
-			tokens, err := push.Tokens(ctx, n.ProjectID, n.TaskName)
-			if err != nil {
-				logger.Error("list push subscriptions", "error", err)
-				return nil
-			}
-			for i, token := range tokens {
-				tokens[i] = apprise.FCMURL(cfg.FCM.Project, cfg.FCM.Keyfile, token)
-			}
-			return tokens
-		}
+	sender, err := fcm.New(cfg.FCM.Project, cfg.FCM.Keyfile, push.Tokens, push.DeleteTokens, logger)
+	if err != nil {
+		return err
 	}
 	teamSender := apprise.New(cfg.TeamNotifyURL(), notifyTimeout)
 	notify := notifier(notifications, events, sender, teamSender, logger)
@@ -209,7 +199,7 @@ func taskLogs(tasks *service.TaskService) func(context.Context, string, string, 
 	}
 }
 
-func notifier(store *pginfra.NotificationStore, events *httptransport.Hub, sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
+func notifier(store *pginfra.NotificationStore, events *httptransport.Hub, sender *fcm.Sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
 	return func(ctx context.Context, n core.Notification) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), notifyTimeout)

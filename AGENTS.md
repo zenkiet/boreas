@@ -86,7 +86,7 @@ Clean-architecture boundaries, enforced by the `internal/` layout:
 
 - `internal/core`: domain types and interfaces; no infrastructure imports
 - `internal/service`: use cases; depends on core interfaces only
-- `internal/infra`: Docker, Postgres (`pgx`), reverse proxy, Apprise senders
+- `internal/infra`: Docker, Postgres (`pgx`), reverse proxy, Apprise and FCM senders
 - `internal/transport/http`: routing, handlers, DTOs, SSE, middleware
 - `internal/pkg/database`: pool construction and embedded SQL migrations
 - `cmd/boreas`: composition root; `cmd/openapi`: spec generator

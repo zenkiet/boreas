@@ -27,6 +27,12 @@ func (s *PushStore) Delete(ctx context.Context, userID uuid.UUID, token string) 
 		`DELETE FROM push_subscriptions WHERE token = $1 AND user_id = $2`, token, userID)
 }
 
+// DeleteTokens prunes devices FCM has forgotten; unlike Delete it is server-side cleanup, so owners don't matter.
+func (s *PushStore) DeleteTokens(ctx context.Context, tokens []string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM push_subscriptions WHERE token = ANY($1)`, tokens)
+	return mapError("delete push subscriptions", err)
+}
+
 // Tokens mirrors NotificationStore.List: administrators and project members see every
 // task, grantees see only what they hold. Disabled accounts see nothing, so revoking a
 // user stops their devices along with their login.

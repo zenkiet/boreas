@@ -710,28 +710,20 @@ curl -X DELETE -H "$AUTH" \
   "http://localhost:8080/api/v1/push/subscriptions/<FCM registration token>"
 ```
 
-The client obtains the token from the Firebase Web SDK. A browser is identified
-by its token, so re-registering one moves the subscription to whoever is logged
-in now — a shared machine never keeps notifying the previous user — and a user
-can delete only tokens they currently own.
+The client obtains the token from the Firebase SDK (web, iOS or Android). A
+device is identified by its token, so re-registering one moves the subscription
+to whoever is logged in now — a shared machine never keeps notifying the
+previous user — and a user can delete only tokens they currently own.
 
-Two deployment details matter. `BOREAS_FCM_KEYFILE` is the service-account JSON
-path **inside the `boreas-noti` container** (mount it under `./apprise`), because
-Apprise, not Boreas, talks to Google. And `BOREAS_NOTIFY_URL` must then point at
-`http://boreas-noti:8000/notify` without a configuration key: only Apprise's
-stateless endpoint accepts per-request destinations, so `/notify/boreas` would
-ignore the subscribed devices and deliver to `boreas.yml` alone. Boreas refuses
-to start on that combination rather than drop every subscriber silently.
-Legacy FCM was shut down in June 2024, so a service-account keyfile is the only
-supported credential.
-
-Browser push and team destinations run side by side, on separate endpoints
-derived from the same variable: FCM devices ride the stateless
-`BOREAS_NOTIFY_URL` request by request, while `<BOREAS_NOTIFY_URL>/boreas`
-delivers the same notification to everything in `apprise/boreas.yml`. One
-Apprise request cannot do both — the keyed endpoint ignores per-request
-destinations — which is why the two requests stay separate. Without FCM
-credentials the stateless endpoint is never called.
+Boreas sends each push straight to FCM HTTP v1 with the service account in
+`BOREAS_FCM_KEYFILE`, a path inside the `boreas` container; Compose mounts
+`${FCM_KEYFILE_PATH:-./apprise/fcm-keyfile.json}` there read-only. The keyfile
+is read once at startup, so a missing or invalid one stops Boreas. A push lives
+24 hours, a failure arrives at high priority and anything else at normal, and
+the body is cut to 1000 characters; the feed keeps it whole. A token FCM no
+longer knows (`UNREGISTERED`, `SENDER_ID_MISMATCH`, or an invalid
+`message.token`) is deleted on the spot. Quota, outage and payload errors are
+logged and the token is kept.
 
 Delivery follows the same rules as `GET /api/v1/projects/{slug}/notifications`:
 administrators and project members receive every task in a project, a task
@@ -786,9 +778,9 @@ the database connection and the initial administrator.
 | `BOREAS_ADMIN_USERNAME` | unset             | Seed administrator username; required only on an empty database              |
 | `BOREAS_ADMIN_EMAIL`    | unset             | Seed administrator email; required only on an empty database                 |
 | `BOREAS_ADMIN_PASSWORD` | unset             | Seed administrator password; required only on an empty database              |
-| `BOREAS_NOTIFY_URL`     | unset             | Apprise stateless endpoint (`…/notify`); Boreas derives `…/notify/boreas` itself |
+| `BOREAS_NOTIFY_URL`     | unset             | Apprise endpoint (`…/notify`); team notifications go to `…/notify/boreas`     |
 | `BOREAS_FCM_PROJECT`    | unset             | Firebase project ID; with the keyfile, enables browser push subscriptions    |
-| `BOREAS_FCM_KEYFILE`    | unset             | Service-account JSON path *inside the Apprise container*                     |
+| `BOREAS_FCM_KEYFILE`    | unset             | Service-account JSON path; read once at startup                              |
 | `BOREAS_AI_BASE_URL`    | unset             | OpenAI-compatible endpoint Bora answers with, streaming and calling tools   |
 | `BOREAS_AI_MODEL`       | unset             | Model name at that endpoint                                                  |
 | `BOREAS_AI_API_KEY`     | unset             | Bearer key for that endpoint; local servers such as Ollama need none         |
