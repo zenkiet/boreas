@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -170,6 +171,44 @@ Send a Bearer token in the header.`
 	} {
 		if !strings.Contains(got, rule) {
 			t.Errorf("%q lost:\n%s", rule, got)
+		}
+	}
+}
+
+func TestCleanRoutes(t *testing.T) {
+	got, err := CleanRoutes([]Route{
+		{Path: "/pay/", URL: "https://pay.lan/x/../base/", AnyCert: true},
+		{Path: "/api", URL: "http://10.20.0.15:8080/"},
+	})
+	want := []Route{
+		{Path: "/api", URL: "http://10.20.0.15:8080"},
+		{Path: "/pay", URL: "https://pay.lan/base", AnyCert: true},
+	}
+	if err != nil || !slices.Equal(got, want) {
+		t.Fatalf("CleanRoutes = %v, %v", got, err)
+	}
+
+	badPath := ": path must start with / and use letters, digits, - and _"
+	long := "/" + strings.Repeat("x", 64)
+	for _, c := range []struct {
+		routes  []Route
+		message string
+	}{
+		{[]Route{{Path: "/", URL: "http://a"}}, "/: / is the task itself"},
+		{[]Route{{Path: "api", URL: "http://a"}}, "api" + badPath},
+		{[]Route{{Path: "/a b", URL: "http://a"}}, "/a b" + badPath},
+		{[]Route{{Path: long, URL: "http://a"}}, long + badPath},
+		{[]Route{{Path: "/ok", URL: "http://a"}, {Path: "/ok/", URL: "http://b"}}, "/ok/: path is taken"},
+		{[]Route{{Path: "/x", URL: "ftp://a"}}, "/x: " + badRouteURL},
+		{[]Route{{Path: "/x", URL: "http://u:p@a"}}, "/x: " + badRouteURL},
+		{[]Route{{Path: "/x", URL: "http://a?q=1"}}, "/x: " + badRouteURL},
+		{[]Route{{Path: "/x", URL: "http://a#f"}}, "/x: " + badRouteURL},
+		{[]Route{{Path: "/x", URL: "/relative"}}, "/x: " + badRouteURL},
+		{make([]Route, 21), "at most 20 routes"},
+	} {
+		_, err := CleanRoutes(c.routes)
+		if !errors.Is(err, ErrInvalidInput) || !strings.HasSuffix(err.Error(), "\n"+c.message) {
+			t.Fatalf("CleanRoutes(%v) = %v, want %q", c.routes, err, c.message)
 		}
 	}
 }

@@ -2,15 +2,22 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
+
+	"github.com/zenkiet/boreas/internal/core"
 )
 
 func TestRegistryProxyPathHeadersAndHTML(t *testing.T) {
@@ -34,6 +41,7 @@ func TestRegistryProxyPathHeadersAndHTML(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "http://boreas/team/Task.1/some/path?x=1", nil)
+	request.Header.Set("Sec-Fetch-Dest", "document")
 	registry.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d", recorder.Code)
@@ -178,4 +186,138 @@ func serverAddress(t *testing.T, raw string) (string, int) {
 	var port int
 	fmt.Sscanf(u.Port(), "%d", &port)
 	return u.Hostname(), port
+}
+
+func serve(registry *Registry, request *http.Request) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	registry.ServeHTTP(recorder, request)
+	return recorder
+}
+
+func TestRegistryRoutes(t *testing.T) {
+	var seen http.Header
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Clone()
+		if strings.HasSuffix(r.URL.Path, "/login") {
+			w.Header().Set("Location", "/base/home")
+			w.Header().Add("Set-Cookie", "sid=1; Path=/; Domain=pay.lan; HttpOnly")
+		}
+		io.WriteString(w, r.URL.RequestURI())
+	}))
+	defer backend.Close()
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "app "+r.URL.RequestURI())
+	}))
+	defer app.Close()
+
+	registry := New(0, 0)
+	defer registry.CloseIdleConnections()
+	registry.SetRoutes("p", "t", []core.Route{
+		{Path: "/api", URL: backend.URL},
+		{Path: "/api/v2", URL: backend.URL + "/two"},
+		{Path: "/keep", URL: backend.URL + "/api"},
+		{Path: "/pay", URL: backend.URL + "/base"},
+	})
+	if got := serve(registry, httptest.NewRequest(http.MethodGet, "/p/t/api/orders", nil)).Body.String(); got != "/orders" {
+		t.Fatalf("a route must answer while its task is stopped, got %q", got)
+	}
+	host, port := serverAddress(t, app.URL)
+	registry.Register(context.Background(), "p", "t", host, port)
+
+	for path, want := range map[string]string{
+		"/p/t/orders":           "app /orders",
+		"/p/t/api/orders?id=7":  "/orders?id=7",
+		"/p/t/keep/orders":      "/api/orders",
+		"/p/t/pay/v2/charge":    "/base/v2/charge",
+		"/p/t/api":              "/",
+		"/p/t/apis":             "app /apis",
+		"/p/t/api/v2/x":         "/two/x",
+		"/p/t/api/a%2Fb?x=%2F1": "/a%2Fb?x=%2F1",
+	} {
+		if got := serve(registry, httptest.NewRequest(http.MethodGet, path, nil)).Body.String(); got != want {
+			t.Errorf("%s reached %q, want %q", path, got, want)
+		}
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/p/t/pay/login", nil)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Forwarded-For", "203.0.113.7")
+	request.Header.Set("Accept-Encoding", "br")
+	response := serve(registry, request)
+	if got := strings.Join([]string{
+		seen.Get("X-Forwarded-For"), seen.Get("X-Forwarded-Proto"), seen.Get("X-Forwarded-Prefix"), seen.Get("X-Boreas-Route"), seen.Get("Accept-Encoding"),
+		response.Header().Get("Location"), response.Header().Get("Set-Cookie"),
+	}, " | "); got != "203.0.113.7, 192.0.2.1 | https | /p/t/pay/ | /pay | br | /p/t/pay/home | sid=1; Path=/p/t/; HttpOnly" {
+		t.Fatalf("headers = %q", got)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/p/t/api/x", nil)
+	request.Header.Set("X-Boreas-Route", "/api")
+	if code := serve(registry, request).Code; code != http.StatusLoopDetected {
+		t.Fatalf("a route reaching Boreas again must stop, got %d", code)
+	}
+}
+
+func TestRegistryUnreachableRoute(t *testing.T) {
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+	app := httptest.NewServer(http.NotFoundHandler())
+	defer app.Close()
+	registry := New(0, 0)
+	host, port := serverAddress(t, app.URL)
+	registry.Register(context.Background(), "p", "t", host, port)
+	registry.SetRoutes("p", "t", []core.Route{{Path: "/down", URL: closed.URL}})
+
+	response := serve(registry, httptest.NewRequest(http.MethodGet, "/p/t/down/x", nil))
+	if body := response.Body.String(); response.Code != http.StatusBadGateway || body != `{"error":"route_unreachable","route":"/down"}`+"\n" {
+		t.Fatalf("API caller got %d %s", response.Code, body)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/p/t/down/x", nil)
+	request.Header.Set("Sec-Fetch-Mode", "navigate")
+	body := serve(registry, request).Body.String()
+	for _, want := range []string{
+		"t can’t reach /down right now", "The connection was refused.", "The app itself is running",
+		`href="boreas://projects/p/tasks/t"`,
+	} {
+		if !strings.Contains(body, want) || strings.Contains(body, closed.URL) {
+			t.Fatalf("page lacks %q or shows the address:\n%s", want, body)
+		}
+	}
+}
+
+func TestRegistryCheck(t *testing.T) {
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+	selfSigned := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer selfSigned.Close()
+	registry := New(0, 0)
+	for _, c := range []struct {
+		route core.Route
+		want  core.RouteCheck
+	}{
+		{core.Route{URL: closed.URL}, core.RouteCheck{Error: "refused"}},
+		{core.Route{URL: selfSigned.URL}, core.RouteCheck{Error: "certificate"}},
+		{core.Route{URL: selfSigned.URL, AnyCert: true}, core.RouteCheck{Status: http.StatusTeapot}},
+	} {
+		got := registry.Check(context.Background(), c.route)
+		if got.Status != c.want.Status || got.Error != c.want.Error {
+			t.Fatalf("Check(%+v) = %+v", c.route, got)
+		}
+	}
+}
+
+func TestKind(t *testing.T) {
+	for err, want := range map[error]string{
+		&net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}: "refused",
+		fmt.Errorf("dial: %w", context.DeadlineExceeded):                                   "timeout",
+		&net.DNSError{IsNotFound: true}:                                                    "not_found",
+		&tls.CertificateVerificationError{}:                                                "certificate",
+		errors.New("reset"):                                                                "unreachable",
+	} {
+		if got := kind(err); got != want {
+			t.Errorf("kind(%v) = %q, want %q", err, got, want)
+		}
+	}
 }

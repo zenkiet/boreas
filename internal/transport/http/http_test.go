@@ -271,7 +271,7 @@ func TestServiceErrorMapping(t *testing.T) {
 		status int
 		body   string
 	}{
-		{"invalid", errors.Join(core.ErrInvalidInput, errors.New("detail")), 400, "invalid request"},
+		{"invalid", errors.Join(core.ErrInvalidInput, errors.New("detail")), 400, "detail"},
 		{"missing", core.ErrNotFound, 404, "not found"},
 		{"exists", core.ErrAlreadyExists, 409, "conflict"},
 		{"conflict", core.ErrConflict, 409, "conflict"},

@@ -120,6 +120,7 @@ type taskDTO struct {
 	Labels          map[string]string `json:"labels,omitempty"`
 	Env             map[string]string `json:"env"`
 	Volumes         map[string]string `json:"volumes,omitempty"`
+	Routes          []core.Route      `json:"routes"`
 	Error           string            `json:"error,omitempty"`
 	PendingRecreate bool              `json:"pending_recreate,omitempty"`
 	Build           core.Build        `json:"build,omitzero"`
@@ -130,12 +131,15 @@ func taskFromCore(t core.Task, role core.ProjectRole) taskDTO {
 	if t.Env == nil {
 		t.Env = map[string]string{}
 	}
+	if t.Routes == nil {
+		t.Routes = []core.Route{}
+	}
 	return taskDTO{
 		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description, Note: t.Note,
 		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
-		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role,
+		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Routes: t.Routes, Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role,
 		Build: t.Build,
 	}
 }
@@ -172,7 +176,21 @@ type updateTaskRequest struct {
 	Labels      *map[string]string `json:"labels,omitempty"`
 	Env         *map[string]string `json:"env,omitempty"`
 	Volumes     *map[string]string `json:"volumes,omitempty"`
+	Routes      *[]core.Route      `json:"routes,omitempty"`
 	AutoRestart *bool              `json:"auto_restart,omitempty"`
+}
+
+type checkRouteRequest struct {
+	Project string `json:"-" path:"project" example:"demo"`
+	Name    string `json:"-" path:"name" example:"web"`
+	URL     string `json:"url" example:"http://10.20.0.15:8080"`
+	AnyCert bool   `json:"any_cert,omitempty"`
+}
+
+type routeCheckResponse struct {
+	Status int    `json:"status,omitempty" example:"200"`
+	Error  string `json:"error,omitempty" enum:"refused,timeout,not_found,certificate,unreachable"`
+	MS     int64  `json:"ms" example:"41"`
 }
 
 type reportBuildRequest struct {

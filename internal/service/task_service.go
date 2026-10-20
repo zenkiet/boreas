@@ -266,6 +266,7 @@ func (s *TaskService) Delete(ctx context.Context, slug, name string) error {
 		return err
 	}
 	_ = s.routes.Unregister(ctx, project.Slug, name)
+	s.routes.SetRoutes(project.Slug, name, nil)
 	if task.ContainerID != "" {
 		state, inspectErr := s.runtime.Inspect(ctx, task.ContainerID)
 		if inspectErr == nil && state.Exists && state.Status == core.StatusRunning {
@@ -289,6 +290,7 @@ type UpdateTaskInput struct {
 	Labels      *map[string]string
 	Env         *map[string]string
 	Volumes     *map[string]string
+	Routes      *[]core.Route
 }
 
 // Update avoids container churn for metadata-only edits and can defer container changes until the next start.
@@ -300,6 +302,10 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 		return core.Task{}, err
 	}
 	updated, err := s.update(ctx, task, project, in, recreate)
+	// A failed container change still returns the row it saved, routes included.
+	if updated.ID != uuid.Nil && !slices.Equal(updated.Routes, task.Routes) {
+		s.routes.SetRoutes(project.Slug, name, updated.Routes)
+	}
 	if err == nil && updated.DevStatus != task.DevStatus {
 		s.cfg.Notify(ctx, notification(project, name, core.NotificationStatusChanged, "🔄 Status Changed",
 			devLabel(task.DevStatus)+" ➔ "+devLabel(updated.DevStatus)))
@@ -387,14 +393,22 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 			return core.Task{}, err
 		}
 	}
+	routes := task.Routes
+	if in.Routes != nil {
+		if routes, err = core.CleanRoutes(*in.Routes); err != nil {
+			return core.Task{}, err
+		}
+	}
+	routesChanged := !slices.Equal(routes, task.Routes)
 	descriptionChanged := in.Description != nil && *in.Description != task.Description
 	noteChanged := in.Note != nil && *in.Note != task.Note
 	devStatusChanged := in.DevStatus != nil && *in.DevStatus != task.DevStatus
 	containerChanged := (recreate && task.PendingRecreate) || spec.Image != task.Image || spec.Port != task.Port ||
 		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env) || !maps.Equal(spec.Volumes, task.Volumes)
-	if !descriptionChanged && !noteChanged && !devStatusChanged && !containerChanged {
+	if !descriptionChanged && !noteChanged && !devStatusChanged && !routesChanged && !containerChanged {
 		return task.Clone(), nil
 	}
+	task.Routes = routes
 	if descriptionChanged {
 		task.Description = *in.Description
 	}
@@ -453,6 +467,19 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 		return s.failTask(ctx, task, fmt.Errorf("start recreated container: %w", err))
 	}
 	return s.finishStart(ctx, task, project.Slug)
+}
+
+// CheckRoute sends one request the way a route would, so an address can be tried before it is saved.
+func (s *TaskService) CheckRoute(ctx context.Context, slug, name string, route core.Route) (core.RouteCheck, error) {
+	if _, _, err := s.get(ctx, slug, name); err != nil {
+		return core.RouteCheck{}, err
+	}
+	target, err := core.CleanRouteURL(route.URL)
+	if err != nil {
+		return core.RouteCheck{}, err
+	}
+	route.URL = target
+	return s.routes.Check(ctx, route), nil
 }
 
 // ReportBuild skips the task lock, which a deploy holds through its pull and readiness wait.
@@ -601,6 +628,7 @@ func (s *TaskService) Reconcile(ctx context.Context) error {
 			joined = errors.Join(joined, fmt.Errorf("task %q references unknown project", task.Name))
 			continue
 		}
+		s.routes.SetRoutes(slug, task.Name, task.Routes)
 		state, inspectErr := s.runtime.Inspect(ctx, task.ContainerID)
 		if inspectErr != nil || !state.Exists {
 			task.Status, task.ContainerIP = core.StatusUnknown, ""

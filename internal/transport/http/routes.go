@@ -382,7 +382,8 @@ var routeTable = [...]route{
 			"container: auto_restart applies it at once and defaults to true, otherwise the next " +
 			"start or restart does. description and dev_status leave a running container untouched. " +
 			"dev_status tracks the code, not the container: in_progress on create, blocked is not " +
-			"fit for QA, ready is.",
+			"fit for QA, ready is. routes replaces the whole list and applies at once, container or not: " +
+			"<App URL><path>/… is forwarded to url/…, so the browser never calls the address itself.",
 		req: new(updateTaskRequest), resp: new(taskResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
@@ -401,6 +402,15 @@ var routeTable = [...]route{
 			"Deploying the image a task already runs changes nothing, so callbacks are safe to retry.",
 		req: new(deployTaskRequest), resp: new(taskResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks/{name}/routes/check", access: accessMember, handler: (*Handler).checkRoute,
+		tag: "tasks", summary: "Try an address for a route",
+		description: "Sends one GET from the server the way a route would, within 3 s and without following redirects. " +
+			"Any HTTP status counts as reached; otherwise error says why.",
+		req: new(checkRouteRequest), resp: new(routeCheckResponse),
+		extraErrors: []int{http.StatusBadRequest},
+		quiet:       true,
 	},
 	{
 		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/state", access: accessOperator, handler: (*Handler).updateState,

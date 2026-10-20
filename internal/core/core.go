@@ -289,6 +289,7 @@ type Task struct {
 	Labels          map[string]string
 	Env             map[string]string
 	Volumes         map[string]string
+	Routes          []Route
 	Build           Build
 	PendingRecreate bool
 	Error           string
@@ -313,6 +314,7 @@ func (t Task) Clone() Task {
 	t.Labels = maps.Clone(t.Labels)
 	t.Env = maps.Clone(t.Env)
 	t.Volumes = maps.Clone(t.Volumes)
+	t.Routes = slices.Clone(t.Routes)
 	return t
 }
 
@@ -415,6 +417,64 @@ func ValidateVolumes(volumes map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// Route forwards a path under a task's App URL to an address the browser cannot reach itself.
+type Route struct {
+	Path    string `json:"path" example:"/api"`
+	URL     string `json:"url" example:"http://10.20.0.15:8080"`
+	AnyCert bool   `json:"any_cert,omitzero"`
+}
+
+// RouteCheck holds Status when the address answered and Error when it did not.
+type RouteCheck struct {
+	Status int
+	Error  string
+	Took   time.Duration
+}
+
+const badRouteURL = "address must be http(s)://host[:port][/path]"
+
+var routePathPattern = regexp.MustCompile(`^(/[A-Za-z0-9_-]+)+$`)
+
+// CleanRoutes sorts routes by path; each error starts with the path as sent so the app can mark its row.
+func CleanRoutes(routes []Route) ([]Route, error) {
+	if len(routes) > 20 {
+		return nil, errors.Join(ErrInvalidInput, errors.New("at most 20 routes"))
+	}
+	clean := make([]Route, 0, len(routes))
+	for _, r := range routes {
+		p := strings.TrimSuffix(r.Path, "/")
+		u, err := CleanRouteURL(r.URL)
+		reason := ""
+		switch {
+		case r.Path == "/":
+			reason = "/ is the task itself"
+		case len(p) > 64 || !routePathPattern.MatchString(p):
+			reason = "path must start with / and use letters, digits, - and _"
+		case slices.ContainsFunc(clean, func(c Route) bool { return c.Path == p }):
+			reason = "path is taken"
+		case err != nil:
+			reason = badRouteURL
+		}
+		if reason != "" {
+			return nil, errors.Join(ErrInvalidInput, errors.New(r.Path+": "+reason))
+		}
+		clean = append(clean, Route{Path: p, URL: u, AnyCert: r.AnyCert})
+	}
+	slices.SortFunc(clean, func(a, b Route) int { return strings.Compare(a.Path, b.Path) })
+	return clean, nil
+}
+
+// CleanRouteURL drops dot segments and a trailing slash from the base path.
+func CleanRouteURL(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || len(raw) > 2048 || u.Scheme != "http" && u.Scheme != "https" || u.Host == "" ||
+		u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return "", errors.Join(ErrInvalidInput, errors.New(badRouteURL))
+	}
+	u.Path, u.RawPath = strings.TrimSuffix(path.Clean("/"+u.Path), "/"), ""
+	return u.String(), nil
 }
 
 type ContainerState struct {
@@ -722,7 +782,10 @@ type CredentialStore interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
+// RouteRegistry serves a task's container while it runs and its routes whether or not it does.
 type RouteRegistry interface {
 	Register(ctx context.Context, project, task, host string, port int) error
 	Unregister(ctx context.Context, project, task string) error
+	SetRoutes(project, task string, routes []Route)
+	Check(context.Context, Route) RouteCheck
 }

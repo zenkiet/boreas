@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{.Task}} · Boreas</title>
+<style>
+body{margin:0;min-height:100svh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:light-dark(#fff,#111);color:light-dark(#111,#eee)}
+main{max-width:32rem;padding:24px 16px}
+small{letter-spacing:.08em;opacity:.6}
+h1{font-size:1.4rem;line-height:1.3;margin:.25rem 0 .75rem}
+p{margin:0 0 .75rem}
+a{color:light-dark(#0b57d0,#8ab4f8)}
+</style>
+</head>
+<body>
+<main>
+<small>BOREAS · 502</small>
+{{if .Route}}<h1>{{.Task}} can’t reach {{.Route}} right now</h1>{{else}}<h1>{{.Task}} isn’t answering right now</h1>{{end}}
+<p>{{.Reason}}</p>
+{{if .Running}}<p>The app itself is running; try again in a minute.</p>{{end}}
+<p><a href="boreas://projects/{{.Project}}/tasks/{{.Task}}">Open {{.Task}} in Boreas</a></p>
+</main>
+</body>
+</html>

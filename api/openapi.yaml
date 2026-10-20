@@ -1880,7 +1880,9 @@ paths:
         volumes need a new container: auto_restart applies it at once and defaults
         to true, otherwise the next start or restart does. description and dev_status
         leave a running container untouched. dev_status tracks the code, not the container:
-        in_progress on create, blocked is not fit for QA, ready is.'
+        in_progress on create, blocked is not fit for QA, ready is. routes replaces
+        the whole list and applies at once, container or not: <App URL><path>/… is
+        forwarded to url/…, so the browser never calls the address itself.'
       operationId: patch-projects-project-tasks-name
       parameters:
       - in: path
@@ -2470,6 +2472,72 @@ paths:
       security:
       - bearerAuth: []
       summary: Stream resource metrics for one task
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/routes/check:
+    post:
+      description: Sends one GET from the server the way a route would, within 3 s
+        and without following redirects. Any HTTP status counts as reached; otherwise
+        error says why.
+      operationId: post-projects-project-tasks-name-routes-check
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckRouteRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteCheckResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Try an address for a route
       tags:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/state:
@@ -3279,6 +3347,16 @@ components:
       - user
       - assistant
       type: string
+    CheckRouteRequest:
+      properties:
+        any_cert:
+          type: boolean
+        url:
+          example: http://10.20.0.15:8080
+          type: string
+      required:
+      - url
+      type: object
     CodeSource:
       properties:
         path:
@@ -4027,6 +4105,40 @@ components:
       required:
       - repositories
       type: object
+    Route:
+      properties:
+        any_cert:
+          type: boolean
+        path:
+          example: /api
+          type: string
+        url:
+          example: http://10.20.0.15:8080
+          type: string
+      required:
+      - path
+      - url
+      type: object
+    RouteCheckResponse:
+      properties:
+        error:
+          enum:
+          - refused
+          - timeout
+          - not_found
+          - certificate
+          - unreachable
+          type: string
+        ms:
+          example: 41
+          format: int64
+          type: integer
+        status:
+          example: 200
+          type: integer
+      required:
+      - ms
+      type: object
     SearchConversationsRequest:
       properties:
         before:
@@ -4136,6 +4248,11 @@ components:
           type: integer
         project_id:
           $ref: '#/components/schemas/UUID'
+        routes:
+          items:
+            $ref: '#/components/schemas/Route'
+          nullable: true
+          type: array
         status:
           $ref: '#/components/schemas/TaskStatus'
         updated_at:
@@ -4156,6 +4273,7 @@ components:
       - created_at
       - updated_at
       - env
+      - routes
       - my_role
       type: object
     TaskDeletedResponse:
@@ -4280,6 +4398,11 @@ components:
           example: 80
           nullable: true
           type: integer
+        routes:
+          items:
+            $ref: '#/components/schemas/Route'
+          nullable: true
+          type: array
         volumes:
           additionalProperties:
             type: string

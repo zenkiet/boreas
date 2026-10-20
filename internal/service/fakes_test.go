@@ -550,9 +550,22 @@ func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (<-chan cor
 	return out, nil
 }
 
-type fakeRoutes struct{ registered map[string]string }
+type fakeRoutes struct {
+	registered map[string]string
+	routes     map[string][]core.Route
+}
 
-func newFakeRoutes() *fakeRoutes { return &fakeRoutes{registered: map[string]string{}} }
+func newFakeRoutes() *fakeRoutes {
+	return &fakeRoutes{registered: map[string]string{}, routes: map[string][]core.Route{}}
+}
+
+func (f *fakeRoutes) SetRoutes(project, task string, routes []core.Route) {
+	f.routes[project+"/"+task] = routes
+}
+
+func (f *fakeRoutes) Check(context.Context, core.Route) core.RouteCheck {
+	return core.RouteCheck{Status: 200}
+}
 
 func (f *fakeRoutes) Register(_ context.Context, project, task, ip string, _ int) error {
 	f.registered[project+"/"+task] = ip

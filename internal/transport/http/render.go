@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/zenkiet/boreas/internal/core"
 )
@@ -54,7 +55,7 @@ func writeServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
 func errorStatus(err error) (status int, message string) {
 	switch {
 	case errors.Is(err, core.ErrInvalidInput):
-		return http.StatusBadRequest, "invalid request"
+		return http.StatusBadRequest, strings.TrimPrefix(err.Error(), core.ErrInvalidInput.Error()+"\n")
 	case errors.Is(err, core.ErrUnauthorized):
 		return http.StatusUnauthorized, "unauthorized"
 	case errors.Is(err, core.ErrForbidden):

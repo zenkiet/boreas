@@ -397,6 +397,39 @@ func TestUpdateDescriptionLeavesContainerAlone(t *testing.T) {
 	}
 }
 
+func TestRoutesFollowTheTaskNotItsContainer(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.create(t, CreateTaskInput{Name: "web", Image: "img"})
+	stops, recreates := len(h.runtime.stopped), len(h.runtime.recreated)
+
+	routes := []core.Route{{Path: "/api/", URL: "http://10.0.0.9:8080/"}}
+	updated, err := h.svc.Update(ctx, "team", "web", UpdateTaskInput{Routes: &routes}, true)
+	want := []core.Route{{Path: "/api", URL: "http://10.0.0.9:8080"}}
+	if err != nil || !slices.Equal(updated.Routes, want) || !slices.Equal(h.routes.routes["team/web"], want) {
+		t.Fatalf("routes = %v, registry %v, %v", updated.Routes, h.routes.routes, err)
+	}
+	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
+		t.Fatal("a route change touched the container")
+	}
+	bad := []core.Route{{Path: "/", URL: "http://a"}}
+	if _, err := h.svc.Update(ctx, "team", "web", UpdateTaskInput{Routes: &bad}, true); !errors.Is(err, core.ErrInvalidInput) ||
+		!slices.Equal(h.routes.routes["team/web"], want) {
+		t.Fatalf("a rejected list replaced the routes: %v", err)
+	}
+
+	if _, err := h.svc.Stop(ctx, "team", "web"); err != nil {
+		t.Fatal(err)
+	}
+	h.routes.routes = map[string][]core.Route{}
+	if err := h.svc.Reconcile(ctx); err != nil || !slices.Equal(h.routes.routes["team/web"], want) {
+		t.Fatalf("a restart must restore a stopped task's routes: %v, %v", h.routes.routes, err)
+	}
+	if err := h.svc.Delete(ctx, "team", "web"); err != nil || len(h.routes.routes["team/web"]) != 0 {
+		t.Fatalf("deleting the task left its routes: %v, %v", h.routes.routes, err)
+	}
+}
+
 func TestDevStatusRejectsUnknownValue(t *testing.T) {
 	h := newHarness(t)
 	h.create(t, CreateTaskInput{Name: "web", Image: "img"})

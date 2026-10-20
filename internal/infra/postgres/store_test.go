@@ -102,7 +102,7 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	}
 	if created.ID == uuid.Nil || created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() ||
 		created.Labels["tier"] != "front" || created.Env["KEY"] != "value" || created.Volumes["/app/certs"] != "certs" ||
-		created.Description != "front door" || created.Note != "## Setup\n`make db`" {
+		created.Description != "front door" || created.Note != "## Setup\n`make db`" || created.Routes == nil {
 		t.Fatalf("create round trip lost data: %+v", created)
 	}
 
@@ -120,12 +120,13 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	// The trigger owns updated_at, so it must advance without the app setting it.
 	time.Sleep(5 * time.Millisecond)
 	fetched.Status, fetched.ContainerIP = core.StatusRunning, "10.0.0.5"
+	fetched.Routes = []core.Route{{Path: "/api", URL: "https://10.0.0.9", AnyCert: true}}
 	updated, err := store.Update(ctx, fetched)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !updated.UpdatedAt.After(created.UpdatedAt) || !updated.CreatedAt.Equal(created.CreatedAt) ||
-		updated.Description != "front door" || updated.Note != created.Note {
+		updated.Description != "front door" || updated.Note != created.Note || !slices.Equal(updated.Routes, fetched.Routes) {
 		t.Fatalf("update must advance only updated_at and keep the rest: %v -> %+v", created.UpdatedAt, updated)
 	}
 

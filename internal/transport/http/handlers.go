@@ -546,9 +546,19 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.tasks.Update(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		service.UpdateTaskInput{
 			Description: req.Description, Note: req.Note, DevStatus: req.DevStatus, Image: req.Image, Port: req.Port,
-			Labels: req.Labels, Env: req.Env, Volumes: req.Volumes,
+			Labels: req.Labels, Env: req.Env, Volumes: req.Volumes, Routes: req.Routes,
 		}, req.AutoRestart == nil || *req.AutoRestart)
 	h.reply(w, http.StatusOK, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
+}
+
+func (h *Handler) checkRoute(w http.ResponseWriter, r *http.Request) {
+	var req checkRouteRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	check, err := h.tasks.CheckRoute(r.Context(), r.PathValue("project"), r.PathValue("name"),
+		core.Route{URL: req.URL, AnyCert: req.AnyCert})
+	h.reply(w, http.StatusOK, routeCheckResponse{Status: check.Status, Error: check.Error, MS: check.Took.Milliseconds()}, err)
 }
 
 func (h *Handler) deployTask(w http.ResponseWriter, r *http.Request) {
