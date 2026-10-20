@@ -215,7 +215,7 @@ func (h *hop) rewrite(pr *httputil.ProxyRequest) {
 	if h.path != "" {
 		pr.Out.Header.Set(loopHeader, h.path)
 	} else {
-		// Any HTML needs its <base>, a service worker's own fetch of the app shell included, so it must arrive plain.
+		// Any HTML's <base> needs rewriting, a service worker's own fetch of the app shell included, so it must arrive plain.
 		pr.Out.Header.Set("Accept-Encoding", "identity")
 	}
 }
@@ -233,7 +233,8 @@ func (h *hop) modifyResponse(response *http.Response) error {
 	if err := response.Body.Close(); err != nil {
 		return fmt.Errorf("close HTML response: %w", err)
 	}
-	body = injectBase(body, h.public+"/")
+	// Only a <base> the app declared moves under the task: adding one would re-aim a page's own relative URLs.
+	body = baseTagPattern.ReplaceAllLiteral(body, []byte(`<base href="`+h.public+`/">`))
 	response.Body = io.NopCloser(bytes.NewReader(body))
 	response.ContentLength = int64(len(body))
 	response.Header.Set("Content-Length", fmt.Sprint(len(body)))
@@ -323,24 +324,7 @@ func kind(err error) string {
 	return "unreachable"
 }
 
-var (
-	baseTagPattern = regexp.MustCompile(`(?is)<base\b[^>]*>`)
-	headPattern    = regexp.MustCompile(`(?is)<head\b[^>]*>`)
-	htmlPattern    = regexp.MustCompile(`(?is)<html\b[^>]*>`)
-)
-
-func injectBase(document []byte, basePath string) []byte {
-	document = baseTagPattern.ReplaceAll(document, nil)
-	tag := []byte(`<base href="` + basePath + `">`)
-	if head := headPattern.FindIndex(document); head != nil {
-		return slices.Insert(document, head[1], tag...)
-	}
-	tag = slices.Concat([]byte(`<head>`), tag, []byte(`</head>`))
-	if html := htmlPattern.FindIndex(document); html != nil {
-		return slices.Insert(document, html[1], tag...)
-	}
-	return append(tag, document...)
-}
+var baseTagPattern = regexp.MustCompile(`(?is)<base\b[^>]*>`)
 
 func isHTML(contentType string) bool {
 	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])

@@ -138,6 +138,23 @@ func TestRegistryLeavesNonHTMLAndEncodedHTMLAlone(t *testing.T) {
 	}
 }
 
+func TestRegistryLeavesHTMLWithoutBaseAlone(t *testing.T) {
+	const page = `<head><script src="../_app/start.js"></script></head>`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, page)
+	}))
+	defer upstream.Close()
+	host, port := serverAddress(t, upstream.URL)
+	registry := New(0, 0)
+	registry.Register(context.Background(), "team", "id", host, port)
+	r := httptest.NewRecorder()
+	registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/team/id/ui/setup/", nil))
+	if r.Body.String() != page {
+		t.Fatalf("body = %q", r.Body.String())
+	}
+}
+
 func TestRegistryConcurrentAccess(t *testing.T) {
 	registry := New(0, 0)
 	var wg sync.WaitGroup
