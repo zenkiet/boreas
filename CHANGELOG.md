@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.20.1 - 2026-10-20
+#### 🐛 Bug Fixes
+- (**proxy**) 🐛 keep task HTML plain for service workers - (dc56a15) - *zenkiet*
+
+- - -
+
 ## v1.20.0 - 2026-10-20
 #### 🚀 Features
 - (**proxy**) ✨ add routes on a task's App URL - (c5896df) - *zenkiet*
