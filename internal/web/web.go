@@ -30,6 +30,10 @@ func Handler() http.Handler {
 			static.ServeHTTP(w, r)
 			return
 		}
+		if _, err := fs.Stat(root, name+".html"); err == nil {
+			http.ServeFileFS(w, r, root, name+".html")
+			return
+		}
 		if shell == nil {
 			http.NotFound(w, r)
 			return

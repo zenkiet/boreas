@@ -186,7 +186,7 @@ func ValidateProjectSlug(slug string) error {
 		return errors.Join(ErrInvalidInput, errors.New("project slug must match ^[a-z0-9][a-z0-9-]{0,62}$"))
 	}
 	switch slug {
-	case "api", "health", "metrics", "static", "admin":
+	case "api", "health", "metrics", "static", "admin", "legal":
 		return errors.Join(ErrInvalidInput, errors.New("project slug is reserved: "+slug))
 	}
 	return nil

@@ -53,7 +53,7 @@ func TestValidateProjectSlug(t *testing.T) {
 			t.Fatalf("ValidateProjectSlug(%q) = %v, want ErrInvalidInput", slug, err)
 		}
 	}
-	for _, slug := range []string{"api", "health", "metrics", "static", "admin"} {
+	for _, slug := range []string{"api", "health", "metrics", "static", "admin", "legal"} {
 		if err := ValidateProjectSlug(slug); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("reserved slug %q was accepted", slug)
 		}

@@ -34,7 +34,7 @@ import (
 // These operational constants are intentionally not deployment configuration.
 const (
 	dockerNetwork    = "boreas-net"
-	restartPolicy    = "on-failure"
+	restartPolicy    = "unless-stopped" // a reboot brings running tasks back; one stopped in Boreas stays stopped
 	readinessTimeout = 20 * time.Second
 	readinessPoll    = 200 * time.Millisecond
 	dialTimeout      = 5 * time.Second
@@ -108,7 +108,7 @@ func run(logger *slog.Logger) error {
 	teamSender := apprise.New(cfg.TeamNotifyURL(), notifyTimeout)
 	notify := notifier(notifications, events, sender, teamSender, logger)
 
-	projects := service.NewProjectService(projectStore, credentials, notifications, grants, taskStore)
+	projects := service.NewProjectService(projectStore, credentials, notifications, grants, taskStore, runtime.MakeFolder)
 	projects.Notify = notify
 	projects.Users = users
 	projects.Conversations = pginfra.NewBoraStore(pool)

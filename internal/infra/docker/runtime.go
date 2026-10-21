@@ -115,6 +115,7 @@ func (r *Runtime) Create(ctx context.Context, spec core.ContainerSpec) (string, 
 		}, &network.NetworkingConfig{}, nil, name)
 	}
 
+	openUp(appdataMount, spec.Project, spec.Volumes)
 	response, err := create()
 	if errdefs.IsConflict(err) {
 		if removeErr := r.removeSupersededContainer(ctx, name, spec); removeErr != nil {
@@ -128,7 +129,7 @@ func (r *Runtime) Create(ctx context.Context, spec core.ContainerSpec) (string, 
 	return response.ID, nil
 }
 
-// The admin-provided volume holds one folder per project; Boreas lists them through its own mount.
+// The admin-provided volume holds one folder per project; Boreas lists and opens them through its own mount.
 const (
 	appdataVolume = "boreas-appdata"
 	appdataMount  = "/opt/appdata"
@@ -145,8 +146,24 @@ func mounts(spec core.ContainerSpec) []mount.Mount {
 	return result
 }
 
+// openUp lets an app write its folders whatever user it runs as: a mount keeps the owner the admin gave it, usually root.
+func openUp(appdata, project string, volumes map[string]string) {
+	root, err := os.OpenRoot(appdata)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	for _, folder := range volumes {
+		_ = root.Chmod(project+"/"+folder, 0o777)
+	}
+}
+
 func (r *Runtime) Folders(_ context.Context, project string) ([]string, error) {
 	return folders(filepath.Join(appdataMount, project))
+}
+
+func (r *Runtime) MakeFolder(_ context.Context, project string) error {
+	return os.MkdirAll(filepath.Join(appdataMount, project), 0o755)
 }
 
 func folders(dir string) ([]string, error) {

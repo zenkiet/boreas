@@ -191,7 +191,7 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/projects", access: accessAdmin, handler: (*Handler).createProject,
 		tag: "projects", summary: "Create a project",
-		description: "The creator becomes owner. The slugs api, health, metrics, static and admin " +
+		description: "The creator becomes owner. The slugs api, health, metrics, static, admin and legal " +
 			"are reserved. default_image, default_port and default_env only prefill the task " +
 			"creation form; task creation never applies them on its own.",
 		req: new(createProjectRequest), resp: new(projectResponse), status: http.StatusCreated,

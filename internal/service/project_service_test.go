@@ -16,7 +16,28 @@ func newProjects(t *testing.T) (*ProjectService, *fakeTaskStore) {
 	projects, tasks := newFakeProjectStore(), newFakeTaskStore()
 	projects.tasks = tasks
 	return NewProjectService(
-		projects, newFakeCredentialStore(), newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks), tasks
+		projects, newFakeCredentialStore(), newFakeNotificationStore(tasks), newFakeGrantStore(tasks), tasks,
+		func(context.Context, string) error { return nil }), tasks
+}
+
+func TestCreateProjectNeedsItsFolder(t *testing.T) {
+	svc, _ := newProjects(t)
+	var made []string
+	svc.folder = func(_ context.Context, project string) error {
+		made = append(made, project)
+		return nil
+	}
+	if _, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: "shop"}); err != nil ||
+		!slices.Equal(made, []string{"shop"}) {
+		t.Fatalf("made = %v, err = %v", made, err)
+	}
+	svc.folder = func(context.Context, string) error { return errors.New("read-only file system") }
+	if _, err := svc.Create(context.Background(), member(), CreateProjectInput{Slug: "cafe"}); err == nil {
+		t.Fatal("a project was created without its folder")
+	}
+	if _, err := svc.Get(context.Background(), "cafe"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("Get(cafe) = %v, want not found", err)
+	}
 }
 
 func admin() core.User { return core.User{ID: uuid.New(), Username: "admin", Role: core.RoleAdmin} }

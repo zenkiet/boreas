@@ -22,3 +22,11 @@ func TestHandlerServesFilesAndFallsBackToShell(t *testing.T) {
 		}
 	}
 }
+
+func TestHandlerServesThePrerenderedPolicy(t *testing.T) {
+	rr := httptest.NewRecorder()
+	Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/legal/privacy", nil))
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "Bora&#39;s voice") {
+		t.Fatalf("status=%d, want the prerendered policy, not the shell (run 'make frontend')", rr.Code)
+	}
+}

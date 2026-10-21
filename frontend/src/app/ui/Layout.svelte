@@ -60,6 +60,7 @@
 				target="_blank">ZenSoftware</a
 			> All rights reserved.</span
 		>
+		<a href={resolve('/legal/privacy')} class="text-secondary hover:text-primary">Privacy</a>
 	</footer>
 </div>
 

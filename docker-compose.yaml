@@ -31,7 +31,7 @@ services:
       - boreas-net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - appdata:/opt/appdata:ro
+      - appdata:/opt/appdata
       - ${FCM_KEYFILE_PATH:-./apprise/fcm-keyfile.json}:/run/secrets/fcm.json:ro
     environment:
       TZ: ${TZ:-Etc/UTC}

@@ -99,6 +99,22 @@ func TestMounts(t *testing.T) {
 	}
 }
 
+func TestOpenUp(t *testing.T) {
+	appdata := t.TempDir()
+	dir := filepath.Join(appdata, "shop", "data")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	openUp(appdata, "shop", map[string]string{"/app/data": "data"})
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o777 {
+		t.Fatalf("mode = %v", info.Mode().Perm())
+	}
+}
+
 func TestFolders(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"certs", "init", "_shared"} {

@@ -215,7 +215,9 @@ Only the fields present in a `PATCH` body are changed. Editing just the
 description or dev status leaves a running container alone; changing `image`,
 `port`, `labels`, or `env` needs a new container, which `auto_restart` applies
 immediately (the default) or defers to the next start or restart. A task is
-renamed by recreating it, because its name is part of its public URL.
+renamed by recreating it, because its name is part of its public URL. After a
+reboot, Docker starts every task that was running again; a task stopped from
+Boreas stays stopped.
 
 ```bash
 curl -X PATCH -H "$AUTH" -H "$JSON" \
@@ -308,7 +310,7 @@ curl -X PATCH -H "$AUTH" -H "$JSON" \
 ```
 
 The folders live in the `boreas-appdata` volume, one directory per project
-(`demo/certs`). A task reaches only its own project's folders; to share one
+(`demo/certs`), which Boreas creates with the project. A task reaches only its own project's folders; to share one
 between projects, symlink inside the volume (`demo/certs -> ../_shared/certs`).
 Boreas lists them through its own mount at `/opt/appdata`, so on a server back
 the volume with a host directory reserved for Boreas (Docker Engine 26 or later):
@@ -323,8 +325,10 @@ volumes:
 
 Only what a task writes into its volumes survives its container: deploys,
 restarts and configuration changes start everything else from the image again.
-Every task of the project sees the same folder, and the container's user must be
-able to write to it (distroless `nonroot` is UID 65532).
+Every task of the project sees the same folder. Before creating a container,
+Boreas opens each mounted folder to every user (mode 0777), so an app that does
+not run as root can write too; this needs Boreas's own `/opt/appdata` mount
+writable. Files and subfolders inside keep their own permissions.
 
 ## Bora
 

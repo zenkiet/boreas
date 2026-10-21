@@ -20,6 +20,7 @@ type ProjectService struct {
 	notifications core.NotificationStore
 	grants        core.GrantStore
 	tasks         core.TaskStore
+	folder        func(ctx context.Context, project string) error
 	// Optional wiring: Notify reports task assignments; Users, when also set, names the grantee.
 	Notify func(context.Context, core.Notification)
 	Users  core.UserStore
@@ -37,10 +38,11 @@ type ProjectService struct {
 func NewProjectService(
 	projects core.ProjectStore, credentials core.CredentialStore,
 	notifications core.NotificationStore, grants core.GrantStore, tasks core.TaskStore,
+	folder func(ctx context.Context, project string) error,
 ) *ProjectService {
 	return &ProjectService{
 		projects: projects, credentials: credentials,
-		notifications: notifications, grants: grants, tasks: tasks,
+		notifications: notifications, grants: grants, tasks: tasks, folder: folder,
 		turns: map[uuid.UUID]*boraTurn{},
 	}
 }
@@ -155,6 +157,9 @@ func (s *ProjectService) Create(ctx context.Context, actor core.User, in CreateP
 	}
 	if err := s.checkCredential(ctx, in.RegistryCredentialID); err != nil {
 		return core.Project{}, err
+	}
+	if err := s.folder(ctx, in.Slug); err != nil {
+		return core.Project{}, fmt.Errorf("create project folder: %w", err)
 	}
 	project, err := s.projects.Create(ctx, core.Project{
 		Slug: in.Slug, Name: name, RegistryCredentialID: in.RegistryCredentialID,

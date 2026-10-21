@@ -997,9 +997,10 @@ paths:
       tags:
       - projects
     post:
-      description: The creator becomes owner. The slugs api, health, metrics, static
-        and admin are reserved. default_image, default_port and default_env only prefill
-        the task creation form; task creation never applies them on its own.
+      description: The creator becomes owner. The slugs api, health, metrics, static,
+        admin and legal are reserved. default_image, default_port and default_env
+        only prefill the task creation form; task creation never applies them on its
+        own.
       operationId: post-projects
       requestBody:
         content:
