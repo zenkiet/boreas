@@ -66,7 +66,7 @@ var (
 	figure    = regexp.MustCompile(`(\d+(?:\.\d+)*(?:,\d+)?)( ?%)?`)
 	thousands = regexp.MustCompile(`^\d{1,3}(?:\.\d{3})+$`)
 	digits    = strings.Fields("không một hai ba bốn năm sáu bảy tám chín")
-	scales    = [...]string{"", "nghìn", "triệu", "tỷ"}
+	scales    = [...]string{"", "nghìn", "triệu", "tỷ", "nghìn tỷ", "triệu tỷ", "tỷ tỷ"}
 	units     = map[string]string{"h": "giờ", "m": "phút", "p": "phút", "s": "giây", "ms": "mi li giây"}
 )
 

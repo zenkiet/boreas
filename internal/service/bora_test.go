@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -641,6 +642,15 @@ func TestBoraSpoken(t *testing.T) {
 		if got := spoken(in); got != want {
 			t.Errorf("spoken(%.40q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestBoraReadsEveryUint64(t *testing.T) {
+	if got := viNumber(1_000_000_000_005); got != "một nghìn tỷ không trăm linh năm" {
+		t.Errorf("viNumber(10^12+5) = %q", got)
+	}
+	if got := viNumber(math.MaxUint64); !strings.HasPrefix(got, "mười tám tỷ tỷ ") {
+		t.Errorf("viNumber(MaxUint64) = %q", got)
 	}
 }
 
