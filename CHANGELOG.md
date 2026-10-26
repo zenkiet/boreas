@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.22.1 - 2026-10-26
+#### 🐛 Bug Fixes
+- (**bora**) 🐛 read every number aloud without a panic - (3b31f4a) - *zenkiet*
+- (**bora**) 🐛 keep the newest log lines - (fc8e1dd) - *zenkiet*
+#### ⚡ Performance Improvements
+- (**notifications**) ⚡ index each task's last deploy - (8ff4de4) - *zenkiet*
+- (**projects**) ⚡ read the fleet's tasks in one query - (0c5855c) - *zenkiet*
+#### 🔧 Chores & Maintenance
+- (**db**) 🔖 drop the unused task_metrics table - (8810cf7) - *zenkiet*
+
+- - -
+
 ## v1.22.0 - 2026-10-21
 #### 🚀 Features
 - (**web**) ✨ publish the privacy policy - (8393a81) - *zenkiet*
