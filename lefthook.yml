@@ -7,13 +7,13 @@ pre-commit:
   commands:
     format:
       glob: "*.go"
-      run: golangci-lint fmt --diff {staged_files}
+      run: make -s fmt ARGS="--diff {staged_files}"
 
 pre-push:
   parallel: true
   commands:
     lint:
-      run: golangci-lint run ./...
+      run: make -s lint
     test:
       run: go test ./...
     openapi:

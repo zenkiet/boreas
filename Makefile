@@ -1,6 +1,7 @@
 .PHONY: all build frontend run dev docker clean fmt hooks test test-race test-integration test-docker lint db openapi openapi-check
 
 VERSION ?= $(shell git describe --tags --always --dirty)
+LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
 all: build
 
@@ -29,7 +30,7 @@ clean:
 	rm -f boreas
 
 fmt:
-	golangci-lint fmt
+	$(LINT) fmt $(ARGS)
 
 hooks:
 	lefthook install
@@ -56,4 +57,4 @@ test-race:
 	CGO_ENABLED=1 go test -race ./...
 
 lint:
-	golangci-lint run ./...
+	$(LINT) run ./...

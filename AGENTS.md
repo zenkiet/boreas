@@ -11,7 +11,6 @@ must be regenerated (see below).
 
 - Go 1.27 (`go.mod` is authoritative)
 - Docker Engine with the Compose plugin (local database, runtime tests)
-- `golangci-lint` v2 (formatting and linting)
 - `lefthook` (Git hooks; installed via `make hooks`)
 
 No cgo: the binary builds with `CGO_ENABLED=0`. Only `make test-race` needs
@@ -55,6 +54,10 @@ make test-race        # race detector (needs CGO)
 make test-integration # Postgres store tests; needs a running database
 make test-docker      # Docker runtime tests; needs a running Docker daemon
 ```
+
+`make fmt` and `make lint` build the golangci-lint version pinned in the
+Makefile with the local Go, so there is nothing to install; a prebuilt
+linter breaks whenever Go changes its export data format.
 
 Integration tests are opt-in by environment variable and skip themselves
 otherwise: `BOREAS_TEST_DATABASE_URL` gates the Postgres store tests and
