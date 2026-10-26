@@ -587,7 +587,6 @@ var secrets = []struct {
 	{regexp.MustCompile(`\b(?:AKIA[0-9A-Z]{16}|[sr]k_(?:live|test)_[0-9A-Za-z]{16,}|sk-[\w-]{20,}|gh[pousr]_[A-Za-z0-9]{36,}|xox[abprs]-[\w-]{10,}|AIza[\w-]{35}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,})`), "[redacted]"},
 }
 
-// Redact hides what looks like a secret.
 func Redact(text string) string {
 	for _, s := range secrets {
 		text = s.re.ReplaceAllString(text, s.with)

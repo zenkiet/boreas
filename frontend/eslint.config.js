@@ -32,10 +32,5 @@ export default defineConfig(
 				parser: ts.parser
 			}
 		}
-	},
-	{
-		// Override or add rule settings here, such as:
-		// 'svelte/button-has-type': 'error'
-		rules: {}
 	}
 );

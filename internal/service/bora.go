@@ -155,7 +155,6 @@ func (t *boraTurn) follow(ctx context.Context) <-chan BoraEvent {
 
 func (s *ProjectService) BoraEnabled() bool { return s.Assist != nil }
 
-// StartBora answers a first question in a new conversation about `about`.
 func (s *ProjectService) StartBora(ctx context.Context, actor core.User, about core.BoraAbout, question, screen string) (<-chan BoraEvent, error) {
 	// Checked once, as sent: redacting the line may lengthen it past its limit.
 	if !validAbout(about) {
@@ -167,7 +166,6 @@ func (s *ProjectService) StartBora(ctx context.Context, actor core.User, about c
 	}, question, screen)
 }
 
-// AskBora answers a follow-up in conversation id.
 func (s *ProjectService) AskBora(ctx context.Context, actor core.User, id uuid.UUID, question, screen string) (<-chan BoraEvent, error) {
 	// A conversation still on its first turn is not stored yet.
 	if s.turn(actor, id) != nil {

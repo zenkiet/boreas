@@ -61,6 +61,23 @@ func (r *Runtime) EnsureNetwork(ctx context.Context) error {
 	return nil
 }
 
+// EnsureRestartPolicy moves containers made under an older policy onto the current one; Docker fixes it at creation.
+func (r *Runtime) EnsureRestartPolicy(ctx context.Context) error {
+	list, err := r.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(
+		filters.Arg("label", "managed-by=boreas"), filters.Arg("network", r.network))})
+	if err != nil {
+		return mapError("list task containers", err)
+	}
+	var joined error
+	for _, c := range list {
+		_, err := r.client.ContainerUpdate(ctx, c.ID, container.UpdateConfig{
+			RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyMode(r.restartPolicy)},
+		})
+		joined = errors.Join(joined, mapError("update restart policy "+c.ID, err))
+	}
+	return joined
+}
+
 func (r *Runtime) Pull(ctx context.Context, imageName string, credential *core.RegistryCredential) error {
 	if strings.TrimSpace(imageName) == "" {
 		return errors.Join(core.ErrInvalidInput, errors.New("image is required"))

@@ -1,4 +1,4 @@
-.PHONY: all build frontend run dev docker clean fmt hooks test test-race test-integration test-docker lint db openapi openapi-check
+.PHONY: all build frontend run dev clean fmt hooks test test-race test-integration test-docker lint db openapi openapi-check
 
 VERSION ?= $(shell git describe --tags --always --dirty)
 LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
@@ -22,9 +22,6 @@ dev:
 
 db:
 	docker compose up -d boreas-db
-
-docker:
-	docker build -t boreas:latest .
 
 clean:
 	rm -f boreas

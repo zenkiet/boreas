@@ -829,7 +829,6 @@ make test-docker      # Docker runtime tests; needs a running Docker daemon
 make test-race        # Race detector; CGO is required by the detector itself
 make openapi          # Regenerate api/openapi.yaml
 make openapi-check    # Verify api/openapi.yaml is current
-make docker           # Build boreas:latest
 ```
 
 ## License

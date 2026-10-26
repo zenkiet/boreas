@@ -462,7 +462,6 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 		}
 		return task.Clone(), nil
 	}
-	task.Status = core.StatusStarting
 	if err := s.runtime.Start(ctx, newID); err != nil {
 		return s.failTask(ctx, task, fmt.Errorf("start recreated container: %w", err))
 	}

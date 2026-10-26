@@ -8,15 +8,10 @@ linters:
   default: none
   enable:
     - bodyclose
-    # - errcheck
     - govet
     - ineffassign
     - unused
-    # - staticcheck
-    # - gosec
     - gocritic
-    # - revive
-    # - goconst
 
 formatters:
   enable:

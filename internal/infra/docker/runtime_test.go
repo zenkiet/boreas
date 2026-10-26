@@ -65,6 +65,29 @@ func TestRecreateReclaimsAnOrphanBehindAStaleID(t *testing.T) {
 	}
 }
 
+// A reboot brings a task back only under the current policy, so older containers must move onto it.
+func TestEnsureRestartPolicyMovesOlderContainers(t *testing.T) {
+	r := newRuntime(t)
+	ctx := context.Background()
+	id, err := r.Create(ctx, testSpec("policy"))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Remove(context.Background(), id) })
+
+	r.restartPolicy = "unless-stopped"
+	if err := r.EnsureRestartPolicy(ctx); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	info, err := r.client.ContainerInspect(ctx, id)
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if got := info.HostConfig.RestartPolicy.Name; got != "unless-stopped" {
+		t.Fatalf("policy %q, want unless-stopped", got)
+	}
+}
+
 // Ownership labels must prevent destructive name reclamation.
 func TestCreateRefusesToTakeAContainerItDoesNotOwn(t *testing.T) {
 	r := newRuntime(t)

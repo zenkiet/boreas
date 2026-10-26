@@ -18,9 +18,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: ${RESTART_POLICY:-unless-stopped}
 
   boreas:
-    # image: ghcr.io/boreas-ai/boreas:latest
     build:
       context: .
       dockerfile: Dockerfile.local

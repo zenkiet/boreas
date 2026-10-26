@@ -80,7 +80,6 @@ func (s *ProjectService) List(ctx context.Context, actor core.User) ([]core.Proj
 }
 
 // Fleet groups by project ID every task the actor reaches, with their effective role on each.
-// ponytail: one task query per project; fold into one SQL query if projects reach the hundreds.
 func (s *ProjectService) Fleet(ctx context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
 	accesses, err := s.List(ctx, actor)
 	if err != nil {

@@ -77,7 +77,6 @@ func (s *NotificationStore) MarkUnseen(ctx context.Context, id, userID uuid.UUID
 
 // LastDeploys maps task IDs to their newest deploy, skipping any older than the task so that a
 // name reused after a delete starts clean.
-// ponytail: one feed walk per task; index (project_id, task_name, created_at) if it shows in a profile.
 func (s *NotificationStore) LastDeploys(ctx context.Context) (map[uuid.UUID]core.Notification, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT t.id, d.status, d.created_at FROM tasks t

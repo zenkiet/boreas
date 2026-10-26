@@ -94,6 +94,9 @@ func run(logger *slog.Logger) error {
 	if err := runtime.EnsureNetwork(startupCtx); err != nil {
 		return err
 	}
+	if err := runtime.EnsureRestartPolicy(startupCtx); err != nil {
+		logger.Warn("restart policy update completed with warnings", "error", err)
+	}
 
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	routes.Fallback = web.Handler()
