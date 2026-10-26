@@ -18,6 +18,7 @@ type Config struct {
 	FCM       FCMConfig
 	AI        AIConfig
 	Sourcebot SourcebotConfig
+	S3        S3Config
 }
 
 type FCMConfig struct {
@@ -39,6 +40,12 @@ type SourcebotConfig struct {
 }
 
 func (c SourcebotConfig) Enabled() bool { return c.URL != "" && c.APIKey != "" }
+
+type S3Config struct {
+	Endpoint, Bucket, Region, AccessKeyID, SecretAccessKey string
+}
+
+func (c S3Config) Enabled() bool { return c.Endpoint != "" }
 
 type PostgresConfig struct {
 	Host     string
@@ -99,6 +106,11 @@ func Load() (*Config, error) {
 	setString("BOREAS_AI_MODEL", &cfg.AI.Model)
 	setString("BOREAS_SOURCEBOT_URL", &cfg.Sourcebot.URL)
 	setString("BOREAS_SOURCEBOT_API_KEY", &cfg.Sourcebot.APIKey)
+	setString("BOREAS_S3_ENDPOINT", &cfg.S3.Endpoint)
+	setString("BOREAS_S3_BUCKET", &cfg.S3.Bucket)
+	setString("BOREAS_S3_REGION", &cfg.S3.Region)
+	setString("BOREAS_S3_ACCESS_KEY_ID", &cfg.S3.AccessKeyID)
+	setString("BOREAS_S3_SECRET_ACCESS_KEY", &cfg.S3.SecretAccessKey)
 
 	if value, ok := os.LookupEnv("BOREAS_PORT"); ok {
 		port, err := strconv.Atoi(value)
@@ -137,6 +149,9 @@ func (c Config) validate() error {
 	}
 	if (c.AI.BaseURL == "") != (c.AI.Model == "") {
 		result = errors.Join(result, errors.New("BOREAS_AI_BASE_URL and BOREAS_AI_MODEL must be set together"))
+	}
+	if s3 := c.S3; s3.Endpoint != "" && (s3.Bucket == "" || s3.AccessKeyID == "" || s3.SecretAccessKey == "") {
+		result = errors.Join(result, errors.New("BOREAS_S3_ENDPOINT needs BOREAS_S3_BUCKET, BOREAS_S3_ACCESS_KEY_ID and BOREAS_S3_SECRET_ACCESS_KEY"))
 	}
 	return result
 }

@@ -34,6 +34,7 @@ type route struct {
 	summary     string
 	description string
 	req         any
+	reqType     string
 	resp        any
 	status      int
 	contentType string
@@ -277,6 +278,21 @@ var routeTable = [...]route{
 		description: "Repositories Sourcebot indexes whose name contains query, at most 20, for a project's repositories. " +
 			"409 when no Sourcebot is configured.",
 		req: new(repositoriesRequest), resp: new(repositoriesResponse), extraErrors: []int{http.StatusConflict},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/images", access: accessSession, handler: (*Handler).uploadBoraImage,
+		tag: "bora", summary: "Upload an image to ask about",
+		description: "The body is the image itself, JPEG, PNG, WebP or GIF, at most 5 MiB; send its id in a question's images. " +
+			"Only its uploader reads it, and the bucket keeps it at most as long as its lifecycle rule. 409 when the server has " +
+			"no assistant or no S3 bucket.",
+		req: new(string), reqType: "image/*", resp: new(boraImageResponse), status: http.StatusCreated,
+		extraErrors: []int{http.StatusBadRequest, http.StatusConflict}, quiet: true,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/images/{id}", access: accessSession, handler: (*Handler).getBoraImage,
+		tag: "bora", summary: "Get one of your images",
+		description: "404 also once the bucket's lifecycle rule removed it.",
+		req:         new(idPath), resp: new(string), contentType: "image/*", extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/bora/conversations", access: accessSession, handler: (*Handler).startConversation,

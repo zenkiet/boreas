@@ -85,7 +85,7 @@ func addOperation(reflector *openapi3.Reflector, r route) error {
 		oc.AddSecurity(bearerScheme)
 	}
 	if r.req != nil {
-		oc.AddReqStructure(r.req)
+		oc.AddReqStructure(r.req, openapi.WithContentType(r.reqType))
 	}
 
 	oc.AddRespStructure(r.resp, openapi.WithHTTPStatus(r.status), openapi.WithContentType(r.contentType))

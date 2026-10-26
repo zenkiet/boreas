@@ -858,7 +858,7 @@ func TestBoraConversations(t *testing.T) {
 	message := func(index int, content string) core.BoraMessage {
 		m := core.BoraMessage{
 			Index: index, Role: core.ChatUser, Content: content, At: time.Now().UTC().Truncate(time.Microsecond),
-			Actions: []core.BoraAction{}, Choices: []string{}, Sources: []core.CodeSource{}, Ran: []string{},
+			Actions: []core.BoraAction{}, Choices: []string{}, Sources: []core.CodeSource{}, Ran: []string{}, Images: []uuid.UUID{},
 		}
 		if index%2 == 1 {
 			m.Role, m.Say = core.ChatAssistant, content
@@ -880,10 +880,13 @@ func TestBoraConversations(t *testing.T) {
 	build := core.BoraConversation{ID: uuid.New(), UserID: user.ID, ProjectID: &shop.ID, About: about, Projects: []uuid.UUID{shop.ID}, Title: "Lỗi build"}
 	save(build, message(0, "Sao bị lỗi build?"), message(1, "Lỗi build vì image sai."))
 	build.Projects = []uuid.UUID{shop.ID, crm.ID}
-	save(build, message(2, "còn crm?"), message(3, "crm ổn."))
+	shot, asked := uuid.New(), message(2, "còn crm?")
+	asked.Images = []uuid.UUID{shot}
+	save(build, asked, message(3, "crm ổn."))
 	got, err := store.Get(ctx, user.ID, false, build.ID)
 	if err != nil || len(got.Messages) != 4 || got.Messages[3].Content != "crm ổn." || got.Messages[3].Say != "crm ổn." || got.About != about || got.Title != "Lỗi build" ||
-		len(got.Projects) != 2 || got.ProjectID == nil || *got.ProjectID != shop.ID || got.Messages[1].Actions == nil {
+		len(got.Projects) != 2 || got.ProjectID == nil || *got.ProjectID != shop.ID || got.Messages[1].Actions == nil ||
+		!slices.Equal(got.Messages[2].Images, asked.Images) || got.Messages[1].Images == nil {
 		t.Fatalf("get %+v, %v", got, err)
 	}
 	if _, err := store.Get(ctx, other.ID, true, build.ID); !errors.Is(err, core.ErrNotFound) {
@@ -963,14 +966,14 @@ func TestBoraConversations(t *testing.T) {
 		}
 	}
 
-	if err := store.Delete(ctx, user.ID, false, &build.ID); err != nil {
-		t.Fatal(err)
+	if images, err := store.Delete(ctx, user.ID, false, &build.ID); err != nil || !slices.Equal(images, asked.Images) {
+		t.Fatalf("delete returned images %v, %v; want %v", images, err, asked.Images)
 	}
-	if err := store.Delete(ctx, user.ID, false, &build.ID); !errors.Is(err, core.ErrNotFound) {
+	if _, err := store.Delete(ctx, user.ID, false, &build.ID); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("deleted twice: %v", err)
 	}
-	if err := store.Delete(ctx, user.ID, false, nil); err != nil {
-		t.Fatal(err)
+	if images, err := store.Delete(ctx, user.ID, false, nil); err != nil || len(images) != 0 {
+		t.Fatalf("delete all: %v, %v", images, err)
 	}
 	if left, err := store.List(ctx, user.ID, false, "", core.BoraCursor{}, 10); err != nil || len(left) != 0 {
 		t.Fatalf("after deleting all: %v, %v", left, err)

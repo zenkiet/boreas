@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 20 October 2026
+**Last updated:** 26 October 2026
 
 This policy explains what the **Boreas** app does with data. It is published by
 **Kiet Le**, an individual developer, who is the data controller for
@@ -8,10 +8,10 @@ the limited processing described here.
 
 ## The short version
 
-We run no servers and we receive no data from you. Boreas talks only to the
-server address you type in, and everything it stores stays on your device. Two
-exceptions are described below: push notifications go through Google, and Bora's
-voice downloads its files from Hugging Face.
+We run no servers. Boreas talks only to the server address you type in, and
+everything it stores stays on your device. Three exceptions are described
+below: push notifications go through Google, crash reports reach us through
+Google, and Bora's voice downloads its files from Hugging Face.
 
 ## 1. What stays on your device
 
@@ -25,6 +25,7 @@ The App stores the following on the device, and nowhere else:
 | `boreas-log-level`       | How much the App logs to the console       | only if set by hand, for troubleshooting   |
 | `boreas-welcomed`        | Whether you finished the intro             | so it is not shown twice                   |
 | `boreas-pins`            | Projects you pinned to the sidebar         | to keep them there                         |
+| `boreas-fleet`           | Your projects and tasks as last seen       | to show Home at once when the App opens    |
 | `boreas-recent-tasks`    | The last five tasks you opened from Search | to offer them again                        |
 | `boreas-monitor`         | Last CPU, memory and network samples       | to draw the chart before new data arrives  |
 | `boreas-live-folded`     | Whether you folded or opened Home's chart  | to keep it that way next time              |
@@ -47,6 +48,11 @@ chose. That traffic contains your username and password at sign-in, your
 session token afterwards, and whatever you do in the App — creating tasks,
 editing environment variables, reading logs.
 
+A photo or screenshot you attach to a question for Bora goes the same way, and
+only when you attach one. The App first shrinks it on the device, which drops
+its location and other metadata. Your server keeps it in the storage its
+operator chose and passes it to the AI model the operator set up for Bora.
+
 That server is yours. We have no access to it, and this policy does not cover
 what it logs or stores. If you did not set it up yourself, ask whoever did.
 
@@ -63,7 +69,22 @@ sent to your Boreas server so it can deliver alerts to your device.
 - You can turn notifications off at any time in **Settings**, or in your
   device's system settings. Turning them off stops the registration.
 
-## 4. Bora's voice (Hugging Face)
+## 4. Crash reports (Google)
+
+When the App crashes or runs into an error, it sends a report to **Firebase
+Crashlytics**, a Google service, so we can fix the problem:
+
+- A report holds the stack trace, the device model, the system and App
+  versions, and a random ID for this installation. It carries no account,
+  username or session token.
+- An error report also holds a short message, such as "Log download failed".
+  The App removes your server's address from it first; it can still name the
+  project or task involved.
+- Google keeps crash reports for 90 days and processes them for us. See
+  Google's privacy policy at <https://policies.google.com/privacy>.
+- Reports are never used for advertising or tracking.
+
+## 5. Bora's voice (Hugging Face)
 
 On a phone or a tablet, Bora can listen and answer out loud. The voice runs on
 your device:
@@ -80,36 +101,38 @@ your device:
   website would. See its privacy policy at <https://huggingface.co/privacy>.
 - You can delete the files at any time in **Settings › Bora**.
 
-## 5. What we do not do
+## 6. What we do not do
 
-- We do not collect analytics, telemetry, crash reports, or usage statistics.
+- We do not collect analytics, telemetry, or usage statistics. Crash reports
+  (section 4) are the one exception.
 - We do not use advertising or tracking of any kind.
-- We do not sell or share personal data, because we do not receive any.
+- We do not sell or share personal data.
 - We do not have accounts. Accounts exist only on your server.
 
-## 6. Children
+## 7. Children
 
 Boreas is a tool for operating server infrastructure. It is not directed at
-children and we do not knowingly collect data from anyone.
+children and we do not knowingly collect data from children.
 
-## 7. Your rights
+## 8. Your rights
 
 Because the data described in section 1 never leaves your device, you control
 it directly: signing out removes your session token, and uninstalling the App
-removes all of it.
+removes all of it. Crash reports carry no account or name, so we cannot tell
+which are yours; Google deletes them after 90 days.
 
-## 8. Data on your own server
+## 9. Data on your own server
 
 If you operate a Boreas server for other people, **you** are the controller of
 the data on it, including the push tokens their devices send you. Your own
 privacy obligations apply to that data.
 
-## 9. Changes
+## 10. Changes
 
 We may update this policy. The current version always ships inside the App and
 is published at <https://boreas.zenkiet.dev/legal/privacy>. The date at the top
 tells you when it last changed.
 
-## 10. Contact
+## 11. Contact
 
 **Zen Le** — **zenkiet0906@gmail.com**

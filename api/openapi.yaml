@@ -773,6 +773,112 @@ paths:
       summary: Search your conversations
       tags:
       - bora
+  /api/v1/bora/images:
+    post:
+      description: The body is the image itself, JPEG, PNG, WebP or GIF, at most 5
+        MiB; send its id in a question's images. Only its uploader reads it, and the
+        bucket keeps it at most as long as its lifecycle rule. 409 when the server
+        has no assistant or no S3 bucket.
+      operationId: post-bora-images
+      requestBody:
+        content:
+          image/*:
+            schema:
+              type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoraImageResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Upload an image to ask about
+      tags:
+      - bora
+  /api/v1/bora/images/{id}:
+    get:
+      description: 404 also once the bucket's lifecycle rule removed it.
+      operationId: get-bora-images-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            image/*:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get one of your images
+      tags:
+      - bora
   /api/v1/code/repositories:
     get:
       description: Repositories Sourcebot indexes whose name contains query, at most
@@ -3147,6 +3253,11 @@ components:
       type: object
     AskConversationRequest:
       properties:
+        images:
+          items:
+            $ref: '#/components/schemas/UUID'
+          maxItems: 4
+          type: array
         question:
           example: And on refunds?
           maxLength: 2000
@@ -3247,6 +3358,13 @@ components:
       - project
       - reason
       type: object
+    BoraImageResponse:
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+      required:
+      - id
+      type: object
     BoraMessage:
       properties:
         actions:
@@ -3264,6 +3382,11 @@ components:
           type: array
         content:
           type: string
+        images:
+          items:
+            $ref: '#/components/schemas/UUID'
+          nullable: true
+          type: array
         index:
           type: integer
         ran:
@@ -3289,6 +3412,7 @@ components:
       - choices
       - sources
       - ran
+      - images
       - at
       type: object
     BoraOp:
@@ -3310,6 +3434,11 @@ components:
       type: string
     BoraPending:
       properties:
+        images:
+          items:
+            $ref: '#/components/schemas/UUID'
+          nullable: true
+          type: array
         question:
           type: string
         since:
@@ -3317,6 +3446,7 @@ components:
           type: string
       required:
       - question
+      - images
       - since
       type: object
     Build:
@@ -3628,6 +3758,8 @@ components:
       properties:
         bora:
           type: boolean
+        bora_images:
+          type: boolean
         created_at:
           format: date-time
           type: string
@@ -3680,6 +3812,7 @@ components:
       - my_role
       - tasks
       - bora
+      - bora_images
       type: object
     FleetTask:
       properties:
@@ -4160,6 +4293,11 @@ components:
       properties:
         about:
           $ref: '#/components/schemas/BoraAbout'
+        images:
+          items:
+            $ref: '#/components/schemas/UUID'
+          maxItems: 4
+          type: array
         question:
           example: Why did this fail?
           maxLength: 2000

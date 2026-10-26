@@ -181,6 +181,7 @@ type stubProjects struct {
 	fleet           func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
 	grantedRoles    map[uuid.UUID]core.ProjectRole
 	turn            []service.BoraEvent
+	uploaded        []string // the sniffed type of each image the handler passed on
 }
 
 func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (core.ProjectAccess, error) {
@@ -204,7 +205,18 @@ func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (
 
 func (s *stubProjects) BoraEnabled() bool { return true }
 
-func (s *stubProjects) StartBora(context.Context, core.User, core.BoraAbout, string, string) (<-chan service.BoraEvent, error) {
+func (s *stubProjects) BoraImagesEnabled() bool { return true }
+
+func (s *stubProjects) UploadBoraImage(_ context.Context, _ core.User, mime string, _ []byte) (uuid.UUID, error) {
+	s.uploaded = append(s.uploaded, mime)
+	return uuid.New(), nil
+}
+
+func (s *stubProjects) BoraImage(context.Context, core.User, uuid.UUID) ([]byte, string, error) {
+	return nil, "", core.ErrNotFound
+}
+
+func (s *stubProjects) StartBora(context.Context, core.User, core.BoraAbout, string, string, ...uuid.UUID) (<-chan service.BoraEvent, error) {
 	events := make(chan service.BoraEvent, len(s.turn))
 	for _, e := range s.turn {
 		events <- e
@@ -213,7 +225,7 @@ func (s *stubProjects) StartBora(context.Context, core.User, core.BoraAbout, str
 	return events, nil
 }
 
-func (s *stubProjects) AskBora(ctx context.Context, actor core.User, _ uuid.UUID, question, screen string) (<-chan service.BoraEvent, error) {
+func (s *stubProjects) AskBora(ctx context.Context, actor core.User, _ uuid.UUID, question, screen string, _ ...uuid.UUID) (<-chan service.BoraEvent, error) {
 	return s.StartBora(ctx, actor, core.BoraAbout{}, question, screen)
 }
 

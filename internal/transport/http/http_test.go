@@ -820,9 +820,24 @@ func TestBoraOpsMatchRoutes(t *testing.T) {
 	}
 }
 
+// The handler trusts the bytes, not the header, for an image's type, and stops reading past 5 MiB.
+func TestUploadBoraImage(t *testing.T) {
+	projects := &stubProjects{}
+	h := testHandler(stubTasks{}, &stubAuth{user: testMember}, projects)
+	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
+	r := authed(http.MethodPost, "/api/v1/bora/images", strings.NewReader(png))
+	r.Header.Set("Content-Type", "text/html")
+	if rr := do(h, r); rr.Code != http.StatusCreated || !slices.Equal(projects.uploaded, []string{"image/png"}) {
+		t.Fatalf("upload: %d %s, passed on %v", rr.Code, rr.Body, projects.uploaded)
+	}
+	if rr := do(h, authed(http.MethodPost, "/api/v1/bora/images", strings.NewReader(png+strings.Repeat("x", maxImageBytes)))); rr.Code != http.StatusBadRequest || len(projects.uploaded) != 1 {
+		t.Fatalf("an oversized upload: %d, passed on %v", rr.Code, projects.uploaded)
+	}
+}
+
 func TestBoraConversationRoutes(t *testing.T) {
 	id := uuid.New()
-	answer := core.BoraMessage{Index: 1, Role: core.ChatAssistant, Content: "Down.", Say: "Down.", Actions: []core.BoraAction{}, Choices: []string{}, Sources: []core.CodeSource{}, Ran: []string{}}
+	answer := core.BoraMessage{Index: 1, Role: core.ChatAssistant, Content: "Down.", Say: "Down.", Actions: []core.BoraAction{}, Choices: []string{}, Sources: []core.CodeSource{}, Ran: []string{}, Images: []uuid.UUID{}}
 	projects := &stubProjects{turn: []service.BoraEvent{
 		{Name: "conversation", ID: id},
 		{Name: "reset"},
@@ -840,7 +855,7 @@ func TestBoraConversationRoutes(t *testing.T) {
 		"event: step\ndata: {\"text\":\"Reading web's logs…\"}\n\n",
 		"event: say\ndata: {\"text\":\"Down.\"}\n\n",
 		"event: delta\ndata: {\"text\":\"Down.\"}\n\n",
-		`event: done` + "\n" + `data: {"message":{"index":1,"role":"assistant","content":"Down.","say":"Down.","actions":[],"choices":[],"sources":[],"ran":[],"at":"0001-01-01T00:00:00Z"},"title":"Web"}`,
+		`event: done` + "\n" + `data: {"message":{"index":1,"role":"assistant","content":"Down.","say":"Down.","actions":[],"choices":[],"sources":[],"ran":[],"images":[],"at":"0001-01-01T00:00:00Z"},"title":"Web"}`,
 		`event: error` + "\n" + `data: {"kind":"rate-limited","message":"too many requests","status":429}`,
 	} {
 		if !strings.Contains(rr.Body.String(), frame) {

@@ -21,6 +21,7 @@ import (
 	"github.com/zenkiet/boreas/internal/infra/llm"
 	pginfra "github.com/zenkiet/boreas/internal/infra/postgres"
 	proxyinfra "github.com/zenkiet/boreas/internal/infra/proxy"
+	"github.com/zenkiet/boreas/internal/infra/s3"
 	"github.com/zenkiet/boreas/internal/infra/sourcebot"
 	"github.com/zenkiet/boreas/internal/pkg/database"
 	"github.com/zenkiet/boreas/internal/pkg/logging"
@@ -119,6 +120,9 @@ func run(logger *slog.Logger) error {
 	if cfg.AI.Enabled() {
 		projects.Assist = assistant(llm.New(cfg.AI.BaseURL, cfg.AI.APIKey, cfg.AI.Model), logger)
 	}
+	if cfg.S3.Enabled() {
+		projects.Images = s3.New(cfg.S3.Endpoint, cfg.S3.Bucket, cfg.S3.Region, cfg.S3.AccessKeyID, cfg.S3.SecretAccessKey)
+	}
 	tasks := service.NewTaskService(
 		runtime, taskStore, projectStore, credentials, routes,
 		dockerinfra.TCPReadyChecker{DialTimeout: time.Second}.Ready,
@@ -178,7 +182,7 @@ func assistant(a *llm.Assistant, logger *slog.Logger) func(context.Context, uuid
 	return func(ctx context.Context, user uuid.UUID, ask core.Ask) (string, []string, error) {
 		started := time.Now()
 		reply, err := a.Answer(ctx, ask)
-		logger.Info("answer", "user", user, "tools", len(ask.Tools), "clarified", reply.Choices != nil,
+		logger.Info("answer", "user", user, "tools", len(ask.Tools), "images", len(ask.Images), "clarified", reply.Choices != nil,
 			"prompt_tokens", reply.PromptTokens, "completion_tokens", reply.CompletionTokens, "duration", time.Since(started), "error", err)
 		return reply.Content, reply.Choices, err
 	}

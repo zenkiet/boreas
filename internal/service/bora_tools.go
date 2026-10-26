@@ -545,7 +545,7 @@ func (b *bora) propose(ctx context.Context, in proposal) (string, error) {
 		return "", fmt.Errorf("refused: op must be one of %v", core.BoraOp("").Enum())
 	}
 	if b.tainted && !slices.Contains([]core.BoraOp{"task.start", "task.stop", "task.restart"}, op) {
-		return "", errors.New("refused: after reading code, only start, stop and restart can be offered")
+		return "", errors.New("refused: after reading code or an image, only start, stop and restart can be offered")
 	}
 	acc, ok := b.project(in.Project)
 	if !ok {

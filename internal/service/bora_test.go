@@ -32,6 +32,70 @@ func eventNames(events []BoraEvent) string {
 	return strings.Join(names, " ")
 }
 
+// An image reaches the model with its question and again on a follow-up, never another user's, and goes with its conversation.
+func TestBoraImages(t *testing.T) {
+	svc, _ := newProjects(t)
+	store, objects := newFakeBoraStore(), newFakeObjects()
+	svc.Conversations = store
+	ctx, owner, fleet := context.Background(), member(), core.BoraAbout{Kind: "fleet"}
+	if _, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "shop"}); err != nil {
+		t.Fatal(err)
+	}
+	asks, proposed := make(chan core.Ask, 1), make(chan string, 1)
+	svc.Assist = func(ctx context.Context, _ uuid.UUID, ask core.Ask) (string, []string, error) {
+		asks <- ask
+		for _, tool := range ask.Tools {
+			if tool.Name == "propose_action" {
+				proposed <- tool.Run(ctx, `{"op":"project.delete","project":"shop"}`)
+			}
+		}
+		return "A red error.", nil, nil
+	}
+	if _, err := svc.UploadBoraImage(ctx, owner, "image/png", []byte("png")); !errors.Is(err, core.ErrConflict) {
+		t.Fatalf("an upload without a bucket: %v", err)
+	}
+	svc.Images = objects
+	if _, err := svc.UploadBoraImage(ctx, owner, "text/html; charset=utf-8", []byte("<p>")); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("an upload that is no image: %v", err)
+	}
+	shot, err := svc.UploadBoraImage(ctx, owner, "image/png", []byte("png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.StartBora(ctx, member(), fleet, "What is this?", "", shot); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("someone else asked with the image: %v", err)
+	}
+
+	events, err := svc.StartBora(ctx, owner, fleet, "What is this?", "", shot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := collect(events)[0].ID
+	if ask := <-asks; ask.Clarify || len(ask.Images) != 1 || string(ask.Images[0].Data) != "png" || ask.Images[0].MIME != "image/png" {
+		t.Fatalf("first ask %+v", ask)
+	}
+	if got := <-proposed; !strings.Contains(got, "or an image") {
+		t.Fatalf("a change proposed beside an image: %q", got)
+	}
+	saved, err := store.Get(ctx, owner.ID, false, id)
+	if err != nil || !slices.Equal(saved.Messages[0].Images, []uuid.UUID{shot}) || saved.Messages[1].Images == nil {
+		t.Fatalf("saved %+v, %v", saved, err)
+	}
+
+	events, err = svc.AskBora(ctx, owner, id, "And the bottom left?", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(events)
+	<-proposed
+	if ask := <-asks; ask.Clarify || len(ask.Images) != 1 {
+		t.Fatalf("a follow-up lost the image: %+v", ask)
+	}
+	if err := svc.DeleteBora(ctx, owner, &id); err != nil || !slices.Equal(objects.deleted, []string{imageKey(owner.ID, shot)}) {
+		t.Fatalf("delete: %v, removed %v", err, objects.deleted)
+	}
+}
+
 func TestBoraTurns(t *testing.T) {
 	svc, tasks := newProjects(t)
 	store := newFakeBoraStore()

@@ -142,6 +142,23 @@ func TestAnswerRunsToolsAndStops(t *testing.T) {
 	}
 }
 
+// An image goes inline after the question text, so a model server never has to reach the bucket.
+func TestAnswerSendsImagesInline(t *testing.T) {
+	server, requests := stub(t, completion("A red error."))
+	_, err := New(server.URL, "", "m").Answer(context.Background(), core.Ask{
+		System: "SYS", Question: "What is this?", Images: []core.Image{{MIME: "image/png", Data: []byte("png")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := (*requests)[0]["messages"].([]any)
+	parts, _ := messages[len(messages)-1].(map[string]any)["content"].([]any)
+	if len(parts) != 2 || parts[0].(map[string]any)["text"] != "What is this?" ||
+		parts[1].(map[string]any)["image_url"].(map[string]any)["url"] != "data:image/png;base64,cG5n" {
+		t.Fatalf("question sent as %v", parts)
+	}
+}
+
 func TestAnswerScreensOnlyWhenAsked(t *testing.T) {
 	echo := core.Tool{Name: "echo", Description: "Echo things.", Params: map[string]any{"type": "object"}, Run: func(context.Context, string) string { return "" }}
 	ask := core.Ask{

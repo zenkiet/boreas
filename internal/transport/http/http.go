@@ -59,8 +59,11 @@ type ProjectService interface {
 	Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error)
 	SearchRepositories(ctx context.Context, query string) ([]string, error)
 	BoraEnabled() bool
-	StartBora(ctx context.Context, actor core.User, about core.BoraAbout, question, screen string) (<-chan service.BoraEvent, error)
-	AskBora(ctx context.Context, actor core.User, id uuid.UUID, question, screen string) (<-chan service.BoraEvent, error)
+	BoraImagesEnabled() bool
+	UploadBoraImage(ctx context.Context, actor core.User, mime string, body []byte) (uuid.UUID, error)
+	BoraImage(ctx context.Context, actor core.User, id uuid.UUID) ([]byte, string, error)
+	StartBora(ctx context.Context, actor core.User, about core.BoraAbout, question, screen string, images ...uuid.UUID) (<-chan service.BoraEvent, error)
+	AskBora(ctx context.Context, actor core.User, id uuid.UUID, question, screen string, images ...uuid.UUID) (<-chan service.BoraEvent, error)
 	FollowBora(ctx context.Context, actor core.User, id uuid.UUID) <-chan service.BoraEvent
 	StopBora(actor core.User, id uuid.UUID)
 	BoraConversations(ctx context.Context, actor core.User, query, before string, limit int) ([]core.BoraConversation, string, error)
@@ -80,7 +83,10 @@ type PushStore interface {
 	Delete(ctx context.Context, userID uuid.UUID, token string) error
 }
 
-const maxRequestBytes = 1 << 20
+const (
+	maxRequestBytes = 1 << 20
+	maxImageBytes   = 5 << 20
+)
 
 // APIHandler serves the API and applies each route's declared access policy.
 func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, events *Hub, version string, logger *slog.Logger) http.Handler {

@@ -3,6 +3,8 @@ package httptransport
 import (
 	"cmp"
 	"context"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -174,7 +176,7 @@ func (h *Handler) deleteCredential(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 	accesses, fleet, err := h.projects.Fleet(r.Context(), userFrom(r.Context()))
-	bora := h.projects.BoraEnabled()
+	bora, images := h.projects.BoraEnabled(), h.projects.BoraImagesEnabled()
 	result := make([]fleetProjectDTO, len(accesses))
 	for i, acc := range accesses {
 		tasks := make([]fleetTaskDTO, len(fleet[acc.Project.ID]))
@@ -187,7 +189,7 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 				tasks[j].LastDeploy = &lastDeployDTO{Status: task.LastDeploy.Status, At: task.LastDeploy.CreatedAt}
 			}
 		}
-		result[i] = fleetProjectDTO{projectDTO: projectFromCore(acc.Project, acc.Role), Tasks: tasks, Bora: bora && acc.AllTasks}
+		result[i] = fleetProjectDTO{projectDTO: projectFromCore(acc.Project, acc.Role), Tasks: tasks, Bora: bora && acc.AllTasks, BoraImages: images && acc.AllTasks}
 	}
 	h.reply(w, http.StatusOK, projectsResponse{Projects: result, Total: len(result)}, err)
 }
@@ -385,7 +387,7 @@ func (h *Handler) searchRepositories(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
 	var req startConversationRequest
 	if decode(w, r, &req) {
-		events, err := h.projects.StartBora(r.Context(), userFrom(r.Context()), req.About, req.Question, req.Screen)
+		events, err := h.projects.StartBora(r.Context(), userFrom(r.Context()), req.About, req.Question, req.Screen, req.Images...)
 		h.streamTurn(w, r, events, err)
 	}
 }
@@ -393,7 +395,7 @@ func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) askConversation(w http.ResponseWriter, r *http.Request) {
 	var req askConversationRequest
 	if id, ok := pathID(w, r); ok && decode(w, r, &req) {
-		events, err := h.projects.AskBora(r.Context(), userFrom(r.Context()), id, req.Question, req.Screen)
+		events, err := h.projects.AskBora(r.Context(), userFrom(r.Context()), id, req.Question, req.Screen, req.Images...)
 		h.streamTurn(w, r, events, err)
 	}
 }
@@ -405,6 +407,33 @@ func (h *Handler) streamTurn(w http.ResponseWriter, r *http.Request, events <-ch
 		return
 	}
 	sse(w, r, events, h.boraEvent)
+}
+
+func (h *Handler) uploadBoraImage(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImageBytes))
+	if err != nil {
+		writeServiceError(w, h.logger, errors.Join(core.ErrInvalidInput, errors.New("image must be at most 5 MiB")))
+		return
+	}
+	id, err := h.projects.UploadBoraImage(r.Context(), userFrom(r.Context()), http.DetectContentType(body), body)
+	h.reply(w, http.StatusCreated, boraImageResponse{ID: id}, err)
+}
+
+func (h *Handler) getBoraImage(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	body, mime, err := h.projects.BoraImage(r.Context(), userFrom(r.Context()), id)
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// An id never changes its image.
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(body)
 }
 
 func (h *Handler) followConversation(w http.ResponseWriter, r *http.Request) {

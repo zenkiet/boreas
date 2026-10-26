@@ -452,6 +452,12 @@ looking, when what it found fits several tasks or projects.
   conversation so far go through the same redaction, and so does everything
   stored from an answer: its text, spoken line, title, choices and reasons.
 - A secret in any other shape still goes to the model provider.
+- An image attached to a question goes to it as it is, with nothing redacted,
+  and again with a follow-up until a newer question carries images. Text
+  inside it counts as written by others, so after one only start, stop and
+  restart are offered. Images live in the S3 bucket, readable only by whoever
+  uploaded them, until their conversation is deleted or the bucket's
+  lifecycle rule removes them.
 
 **Load.**
 
@@ -792,6 +798,11 @@ the database connection and the initial administrator.
 | `BOREAS_AI_API_KEY`     | unset             | Bearer key for that endpoint; local servers such as Ollama need none         |
 | `BOREAS_SOURCEBOT_URL`  | unset             | Sourcebot that indexes the code Bora reads                                   |
 | `BOREAS_SOURCEBOT_API_KEY` | unset          | Sourcebot API key                                                            |
+| `BOREAS_S3_ENDPOINT`    | unset             | S3-compatible endpoint for images asked about, e.g. `https://<account>.r2.cloudflarestorage.com` |
+| `BOREAS_S3_BUCKET`      | unset             | Bucket the images go in, under `bora/`; give it a lifecycle rule that expires them |
+| `BOREAS_S3_REGION`      | `auto`            | Signing region; R2 takes `auto`                                              |
+| `BOREAS_S3_ACCESS_KEY_ID` | unset           | Access key with read and write on that bucket                                |
+| `BOREAS_S3_SECRET_ACCESS_KEY` | unset       | Its secret                                                                   |
 
 Registry credentials are no longer configuration. Store them once through
 `/api/v1/registry-credentials` and attach one to a project; Boreas uses it when

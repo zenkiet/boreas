@@ -368,20 +368,27 @@ type lastDeployDTO struct {
 
 type fleetProjectDTO struct {
 	projectDTO
-	Tasks []fleetTaskDTO `json:"tasks"`
-	Bora  bool           `json:"bora"`
+	Tasks      []fleetTaskDTO `json:"tasks"`
+	Bora       bool           `json:"bora"`
+	BoraImages bool           `json:"bora_images"`
 }
 
 type startConversationRequest struct {
 	About    core.BoraAbout `json:"about"`
 	Question string         `json:"question" minLength:"1" maxLength:"2000" example:"Why did this fail?"`
 	Screen   string         `json:"screen,omitempty" maxLength:"2000" example:"/projects/demo"`
+	Images   []uuid.UUID    `json:"images,omitempty" maxItems:"4"`
 }
 
 type askConversationRequest struct {
-	ID       uuid.UUID `json:"-" path:"id"`
-	Question string    `json:"question" minLength:"1" maxLength:"2000" example:"And on refunds?"`
-	Screen   string    `json:"screen,omitempty" maxLength:"2000"`
+	ID       uuid.UUID   `json:"-" path:"id"`
+	Question string      `json:"question" minLength:"1" maxLength:"2000" example:"And on refunds?"`
+	Screen   string      `json:"screen,omitempty" maxLength:"2000"`
+	Images   []uuid.UUID `json:"images,omitempty" maxItems:"4"`
+}
+
+type boraImageResponse struct {
+	ID uuid.UUID `json:"id"`
 }
 
 type ranRequest struct {

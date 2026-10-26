@@ -24,9 +24,10 @@ type ProjectService struct {
 	// Optional wiring: Notify reports task assignments; Users, when also set, names the grantee.
 	Notify func(context.Context, core.Notification)
 	Users  core.UserStore
-	// Bora answers with Assist and keeps Conversations; Code, Logs and Metrics feed its tools.
+	// Bora answers with Assist and keeps Conversations and their Images; Code, Logs and Metrics feed its tools.
 	Assist        func(ctx context.Context, userID uuid.UUID, ask core.Ask) (string, []string, error)
 	Conversations core.BoraStore
+	Images        core.ObjectStore
 	Code          core.CodeIndex
 	Logs          func(ctx context.Context, project, task string, opts core.LogOptions) (string, error)
 	Metrics       func(ctx context.Context, acc core.ProjectAccess, task string) (<-chan core.TaskMetric, error)

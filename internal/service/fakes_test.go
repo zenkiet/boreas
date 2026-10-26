@@ -630,18 +630,56 @@ func (f *fakeBoraStore) AddRan(_ context.Context, id uuid.UUID, index int, line 
 	return nil
 }
 
-func (f *fakeBoraStore) Delete(_ context.Context, userID uuid.UUID, _ bool, id *uuid.UUID) error {
+func (f *fakeBoraStore) Delete(_ context.Context, userID uuid.UUID, _ bool, id *uuid.UUID) ([]uuid.UUID, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	found := false
+	var images []uuid.UUID
 	for cid, c := range f.convs {
 		if c.UserID == userID && (id == nil || cid == *id) {
+			for _, m := range c.Messages {
+				images = append(images, m.Images...)
+			}
 			delete(f.convs, cid)
 			found = true
 		}
 	}
 	if id != nil && !found {
-		return core.ErrNotFound
+		return nil, core.ErrNotFound
 	}
+	return images, nil
+}
+
+// fakeObjects keeps objects in memory and records every deleted key.
+type fakeObjects struct {
+	mu      sync.Mutex
+	objects map[string]core.Image
+	deleted []string
+}
+
+func newFakeObjects() *fakeObjects { return &fakeObjects{objects: map[string]core.Image{}} }
+
+func (f *fakeObjects) Put(_ context.Context, key, contentType string, body []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.objects[key] = core.Image{MIME: contentType, Data: body}
+	return nil
+}
+
+func (f *fakeObjects) Get(_ context.Context, key string) ([]byte, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	o, ok := f.objects[key]
+	if !ok {
+		return nil, "", core.ErrNotFound
+	}
+	return o.Data, o.MIME, nil
+}
+
+func (f *fakeObjects) Delete(_ context.Context, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.objects, key)
+	f.deleted = append(f.deleted, key)
 	return nil
 }

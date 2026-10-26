@@ -562,6 +562,7 @@ type Ask struct {
 	Budget         int
 	History        []ChatMessage
 	Question, Data string
+	Images         []Image
 	// ClarifyData replaces Data for screening, which has no tools to read with.
 	ClarifyData string
 	Delta       func(string)
@@ -657,12 +658,26 @@ type BoraMessage struct {
 	Choices []string     `json:"choices"`
 	Sources []CodeSource `json:"sources"`
 	Ran     []string     `json:"ran"`
+	Images  []uuid.UUID  `json:"images"`
 	At      time.Time    `json:"at"`
 }
 
 type BoraPending struct {
-	Question string    `json:"question"`
-	Since    time.Time `json:"since"`
+	Question string      `json:"question"`
+	Images   []uuid.UUID `json:"images"`
+	Since    time.Time   `json:"since"`
+}
+
+type Image struct {
+	MIME string
+	Data []byte
+}
+
+// ObjectStore keeps files under keys that callers scope themselves.
+type ObjectStore interface {
+	Put(ctx context.Context, key, contentType string, body []byte) error
+	Get(ctx context.Context, key string) ([]byte, string, error)
+	Delete(ctx context.Context, key string) error
 }
 
 // BoraConversation is one user's, hidden while a project its answers read is out of their reach.
@@ -693,8 +708,8 @@ type BoraStore interface {
 	List(ctx context.Context, userID uuid.UUID, admin bool, query string, before BoraCursor, limit int) ([]BoraConversation, error)
 	// AddRan expects a checked conversation, and refuses an index that is not an answer with room left.
 	AddRan(ctx context.Context, id uuid.UUID, index int, line string) error
-	// Delete with a nil id removes every conversation of the user, hidden ones included.
-	Delete(ctx context.Context, userID uuid.UUID, admin bool, id *uuid.UUID) error
+	// Delete with a nil id removes every conversation of the user, hidden ones included; it returns their images.
+	Delete(ctx context.Context, userID uuid.UUID, admin bool, id *uuid.UUID) ([]uuid.UUID, error)
 }
 
 type ContainerRuntime interface {

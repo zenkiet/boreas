@@ -39,9 +39,9 @@ func (s *BoraStore) Save(ctx context.Context, c core.BoraConversation, turn []co
 		}
 		for _, m := range turn {
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO bora_messages (conversation_id, index, role, content, say, actions, choices, sources, ran, at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-				c.ID, m.Index, m.Role, m.Content, m.Say, m.Actions, m.Choices, m.Sources, m.Ran, m.At); err != nil {
+				INSERT INTO bora_messages (conversation_id, index, role, content, say, actions, choices, sources, ran, images, at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+				c.ID, m.Index, m.Role, m.Content, m.Say, m.Actions, m.Choices, m.Sources, m.Ran, m.Images, m.At); err != nil {
 				return err
 			}
 		}
@@ -56,7 +56,7 @@ func (s *BoraStore) Get(ctx context.Context, userID uuid.UUID, admin bool, id uu
 		return c, err
 	}
 	c.Messages, err = many(ctx, s.pool, scanMessage, "list messages", "scan messages", `
-		SELECT index, role, content, say, actions, choices, sources, ran, at FROM bora_messages
+		SELECT index, role, content, say, actions, choices, sources, ran, images, at FROM bora_messages
 		WHERE conversation_id = $1 ORDER BY index`, id)
 	return c, err
 }
@@ -101,13 +101,25 @@ func (s *BoraStore) AddRan(ctx context.Context, id uuid.UUID, index int, line st
 	return nil
 }
 
-func (s *BoraStore) Delete(ctx context.Context, userID uuid.UUID, admin bool, id *uuid.UUID) error {
-	if id == nil {
-		_, err := s.pool.Exec(ctx, `DELETE FROM bora_conversations WHERE user_id = $1`, userID)
-		return mapError("delete conversations", err)
+func (s *BoraStore) Delete(ctx context.Context, userID uuid.UUID, admin bool, id *uuid.UUID) ([]uuid.UUID, error) {
+	where, args := `c.user_id = $1`, []any{userID}
+	if id != nil {
+		where, args = visibleConversation+` AND c.id = $3`, []any{userID, admin, *id}
 	}
-	return deleteRow(ctx, s.pool, "delete conversation",
-		`DELETE FROM bora_conversations c WHERE `+visibleConversation+` AND c.id = $3`, userID, admin, *id)
+	var images []uuid.UUID
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT coalesce(array_agg(i), '{}') FROM bora_conversations c
+			JOIN bora_messages m ON m.conversation_id = c.id CROSS JOIN LATERAL unnest(m.images) i WHERE `+where,
+			args...).Scan(&images); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM bora_conversations c WHERE `+where, args...)
+		if err == nil && id != nil && tag.RowsAffected() == 0 {
+			return core.ErrNotFound
+		}
+		return err
+	})
+	return images, mapError("delete conversations", err)
 }
 
 func scanConversation(row pgx.CollectableRow) (core.BoraConversation, error) {
@@ -118,6 +130,6 @@ func scanConversation(row pgx.CollectableRow) (core.BoraConversation, error) {
 
 func scanMessage(row pgx.CollectableRow) (core.BoraMessage, error) {
 	var m core.BoraMessage
-	err := row.Scan(&m.Index, &m.Role, &m.Content, &m.Say, &m.Actions, &m.Choices, &m.Sources, &m.Ran, &m.At)
+	err := row.Scan(&m.Index, &m.Role, &m.Content, &m.Say, &m.Actions, &m.Choices, &m.Sources, &m.Ran, &m.Images, &m.At)
 	return m, err
 }
