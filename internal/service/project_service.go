@@ -94,19 +94,26 @@ func (s *ProjectService) Fleet(ctx context.Context, actor core.User) ([]core.Pro
 	if err != nil {
 		return nil, nil, fmt.Errorf("list last deploys: %w", err)
 	}
-	fleet := make(map[uuid.UUID][]core.FleetTask, len(accesses))
+	tasks, err := s.tasks.ListAll(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list tasks: %w", err)
+	}
+	reach := make(map[uuid.UUID]core.ProjectAccess, len(accesses))
 	for _, acc := range accesses {
-		tasks, err := s.tasks.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks)
-		if err != nil {
-			return nil, nil, fmt.Errorf("list tasks: %w", err)
+		reach[acc.Project.ID] = acc
+	}
+	fleet := make(map[uuid.UUID][]core.FleetTask, len(accesses))
+	for _, task := range tasks {
+		acc, member := reach[task.ProjectID]
+		grant, granted := grants[task.ID]
+		if !member || (!acc.AllTasks && !granted) {
+			continue
 		}
-		for _, task := range tasks {
-			entry := core.FleetTask{Task: task, Role: acc.Role.Max(grants[task.ID])}
-			if deploy, ok := deploys[task.ID]; ok {
-				entry.LastDeploy = &deploy
-			}
-			fleet[acc.Project.ID] = append(fleet[acc.Project.ID], entry)
+		entry := core.FleetTask{Task: task, Role: acc.Role.Max(grant)}
+		if deploy, ok := deploys[task.ID]; ok {
+			entry.LastDeploy = &deploy
 		}
+		fleet[task.ProjectID] = append(fleet[task.ProjectID], entry)
 	}
 	return accesses, fleet, nil
 }
