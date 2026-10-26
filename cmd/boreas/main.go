@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -190,13 +188,22 @@ func taskLogs(tasks *service.TaskService) func(context.Context, string, string, 
 			return "", err
 		}
 		defer logs.Close()
-		var out bytes.Buffer
-		// ponytail: only the first 1 MiB, so huge lines lose the newest part of a tail; lower the tail if that bites.
-		if _, err := stdcopy.StdCopy(&out, &out, io.LimitReader(logs, 1<<20)); err != nil && out.Len() == 0 {
+		var out newest
+		if _, err := stdcopy.StdCopy(&out, &out, logs); err != nil && len(out) == 0 {
 			return "", fmt.Errorf("read logs: %w", err)
 		}
-		return out.String(), nil
+		return string(out), nil
 	}
+}
+
+// newest keeps the last 64 KiB written; Bora reads only a log's newest 16 KiB.
+type newest []byte
+
+func (b *newest) Write(p []byte) (int, error) {
+	if *b = append(*b, p...); len(*b) > 64<<10 {
+		*b = (*b)[len(*b)-64<<10:]
+	}
+	return len(p), nil
 }
 
 func notifier(store *pginfra.NotificationStore, events *httptransport.Hub, sender *fcm.Sender, team *apprise.Sender, logger *slog.Logger) func(context.Context, core.Notification) {
