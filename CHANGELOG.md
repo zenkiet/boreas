@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.23.0 - 2026-10-26
+#### 🚀 Features
+- (**bora**) ✨ attach images to a question - (3d1f6a3) - *zenkiet*
+#### 🐛 Bug Fixes
+- 🐛 restart the database after a reboot - (93b0248) - *zenkiet*
+
+- - -
+
 ## v1.22.1 - 2026-10-26
 #### 🐛 Bug Fixes
 - (**bora**) 🐛 read every number aloud without a panic - (3b31f4a) - *zenkiet*
