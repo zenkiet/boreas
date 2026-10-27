@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.24.0 - 2026-10-27
+#### 🚀 Features
+- (**users**) ✨ upload an avatar - (4841993) - *zenkiet*
+#### ⚡ Performance Improvements
+- (**metrics**) ⚡ share one stream per container and replay its last minute - (1191906) - *zenkiet*
+
+- - -
+
 ## v1.23.1 - 2026-10-27
 #### 🐛 Bug Fixes
 - (**proxy**) 🐛 handle rewrite basehref - (385e757) - *zenkiet*
