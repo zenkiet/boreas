@@ -49,7 +49,7 @@ func TestRegistryProxyPathHeadersAndHTML(t *testing.T) {
 		t.Fatalf("status = %d", recorder.Code)
 	}
 	body := recorder.Body.String()
-	if !strings.Contains(body, `<base href="/team/Task.1/">`) || strings.Contains(body, "/old/") {
+	if !strings.Contains(body, `<base href="/team/Task.1/old/">`) {
 		t.Fatalf("HTML = %s", body)
 	}
 }
@@ -134,6 +134,24 @@ func TestRegistryLeavesNonHTMLAndEncodedHTMLAlone(t *testing.T) {
 		registry.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/team/id/", nil))
 		if r.Body.String() != payload {
 			t.Fatalf("%v: body = %q", header, r.Body.String())
+		}
+	}
+}
+
+func TestHopBaseKeepsTheAppsPathUnderTheTask(t *testing.T) {
+	h := &hop{public: "/team/Task.1"}
+	for tag, want := range map[string]string{
+		`<base href="/">`:                      `<base href="/team/Task.1/">`,
+		`<base href="/client/">`:               `<base href="/team/Task.1/client/">`,
+		`<BASE target="_top" HREF='/client/'>`: `<base href="/team/Task.1/client/">`,
+		`<base href="/team/Task.1/client/">`:   `<base href="/team/Task.1/client/">`,
+		`<base href="./">`:                     `<base href="/team/Task.1/">`,
+		`<base href="//cdn.example/">`:         `<base href="/team/Task.1/">`,
+		`<base href="https://example.com/x/">`: `<base href="/team/Task.1/">`,
+		`<base target="_blank">`:               `<base href="/team/Task.1/">`,
+	} {
+		if got := string(h.base([]byte(tag))); got != want {
+			t.Errorf("%s → %s, want %s", tag, got, want)
 		}
 	}
 }

@@ -234,7 +234,7 @@ func (h *hop) modifyResponse(response *http.Response) error {
 		return fmt.Errorf("close HTML response: %w", err)
 	}
 	// Only a <base> the app declared moves under the task: adding one would re-aim a page's own relative URLs.
-	body = baseTagPattern.ReplaceAllLiteral(body, []byte(`<base href="`+h.public+`/">`))
+	body = baseTagPattern.ReplaceAllFunc(body, h.base)
 	response.Body = io.NopCloser(bytes.NewReader(body))
 	response.ContentLength = int64(len(body))
 	response.Header.Set("Content-Length", fmt.Sprint(len(body)))
@@ -324,7 +324,23 @@ func kind(err error) string {
 	return "unreachable"
 }
 
-var baseTagPattern = regexp.MustCompile(`(?is)<base\b[^>]*>`)
+var (
+	baseTagPattern  = regexp.MustCompile(`(?is)<base\b[^>]*>`)
+	baseHrefPattern = regexp.MustCompile(`(?is)\bhref\s*=\s*["']([^"']*)["']`)
+)
+
+// base maps the app's <base> under the task as rewriteLocation maps its redirects: the path it is served at stays
+// (/client/ becomes /team/task/client/); one already under the task stays as it is; any other the task root.
+func (h *hop) base(tag []byte) []byte {
+	href := "/"
+	if m := baseHrefPattern.FindSubmatch(tag); m != nil && bytes.HasPrefix(m[1], []byte("/")) && !bytes.HasPrefix(m[1], []byte("//")) {
+		href = string(m[1])
+	}
+	if !under(href, h.public) {
+		href = h.public + href
+	}
+	return []byte(`<base href="` + href + `">`)
+}
 
 func isHTML(contentType string) bool {
 	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
