@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.23.1 - 2026-10-27
+#### 🐛 Bug Fixes
+- (**proxy**) 🐛 handle rewrite basehref - (385e757) - *zenkiet*
+
+- - -
+
 ## v1.23.0 - 2026-10-26
 #### 🚀 Features
 - (**bora**) ✨ attach images to a question - (3d1f6a3) - *zenkiet*
