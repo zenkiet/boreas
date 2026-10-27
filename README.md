@@ -613,8 +613,12 @@ in front of Boreas must pass streams through unbuffered; Boreas sends
 ## Resource metrics
 
 Boreas streams live CPU, memory, and network usage straight from the Docker
-socket, roughly one sample per task per second. Nothing is stored, so the stream
-only reports what is happening while a client is listening.
+socket, roughly one sample per task per second. Every listener of a container
+shares one Docker stream, which keeps that container's last minute in memory: a
+new stream starts with those samples, oldest first, then follows live, so a
+chart fills at once. Place and deduplicate samples by `observed_at`. A
+container's Docker stream stops five minutes after its last listener leaves, and
+nothing is written to the database.
 
 ```bash
 # every running task in the project
@@ -633,8 +637,9 @@ Each event carries one sample:
  "network_rx_bytes":1024,"network_tx_bytes":2048,"observed_at":"2026-01-02T03:04:05Z"}
 ```
 
-`cpu_percent` is a rate, so the first event for each task reports `0`: Docker
-reports cumulative counters and the first sample has nothing to compare against.
+`cpu_percent` is a rate, so a container's first sample after nobody was
+listening reports `0`: Docker reports cumulative counters and that sample has
+nothing to compare against.
 `memory_bytes` excludes page cache, matching what `docker stats` shows rather
 than the larger raw cgroup figure. Tasks that are not running are omitted, and a
 grantee sees only the tasks they were granted.

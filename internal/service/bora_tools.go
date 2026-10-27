@@ -351,6 +351,7 @@ func (b *bora) metrics(ctx context.Context, in args) (string, error) {
 		return "", noTask(in.Project, in.Task)
 	}
 	b.step("Measuring " + cmp.Or(in.Task, in.Project) + "…")
+	started := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, metricsWindow)
 	defer cancel()
 	samples, err := b.s.Metrics(ctx, acc, in.Task)
@@ -360,16 +361,16 @@ func (b *bora) metrics(ctx context.Context, in args) (string, error) {
 	case err != nil:
 		return "", errors.New("error: could not read the metrics")
 	}
-	last, seen, measured := map[string]core.TaskMetric{}, map[string]int{}, 0
+	last, measured := map[string]core.TaskMetric{}, map[string]bool{}
 	for m := range samples {
+		_, again := last[m.TaskName]
 		last[m.TaskName] = m
-		seen[m.TaskName]++
-		// The second sample is the first with CPU, so a task is measured once it has two.
-		if seen[m.TaskName] == 2 {
-			measured++
-		}
-		if measured == want {
-			cancel()
+		// A stream's first sample has no CPU, and replayed ones are up to a minute old.
+		if again && m.ObservedAt.After(started) && !measured[m.TaskName] {
+			measured[m.TaskName] = true
+			if len(measured) == want {
+				cancel()
+			}
 		}
 	}
 	mib := func(n int64) string { return fmt.Sprintf("%.0f MiB", float64(n)/(1<<20)) }

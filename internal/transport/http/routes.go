@@ -478,6 +478,7 @@ var routeTable = [...]route{
 		description: "Server-Sent Events, roughly one per task per second, each carrying " +
 			`{"task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit": integer, ` +
 			`"network_rx_bytes": integer, "network_tx_bytes": integer, "observed_at": string}. ` +
+			"Each task starts with up to its last minute of samples, oldest first; place and deduplicate them by observed_at. " +
 			"Tasks that are not running are omitted, and a comment heartbeat fills idle time. " + readSSE,
 		req: new(projectPath), resp: new(string), contentType: "text/event-stream",
 	},

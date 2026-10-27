@@ -36,6 +36,7 @@ type TaskService struct {
 	cfg         Config
 	locksMu     sync.Mutex
 	locks       map[string]*sync.Mutex
+	metrics     *metricsHub
 }
 
 func NewTaskService(
@@ -50,6 +51,7 @@ func NewTaskService(
 	return &TaskService{
 		runtime: runtime, tasks: tasks, projects: projects, credentials: credentials,
 		routes: routes, ready: ready, cfg: cfg, locks: make(map[string]*sync.Mutex),
+		metrics: &metricsHub{open: runtime.Stats, feeds: map[string]*metricsFeed{}},
 	}
 }
 
@@ -579,7 +581,7 @@ func (s *TaskService) Metrics(ctx context.Context, acc core.ProjectAccess, name 
 	out := make(chan core.TaskMetric)
 	var wg sync.WaitGroup
 	for _, task := range sources {
-		samples, err := s.runtime.Stats(ctx, task.ContainerID)
+		samples, err := s.metrics.watch(ctx, task.ContainerID)
 		if err != nil {
 			// One unreadable container must not sink a whole project's stream.
 			if name == "" {
@@ -603,6 +605,106 @@ func (s *TaskService) Metrics(ctx context.Context, acc core.ProjectAccess, name 
 		close(out)
 	}()
 	return out, nil
+}
+
+const (
+	metricsHistory = 60 // a minute at Docker's fixed 1s cadence
+	metricsLinger  = 5 * time.Minute
+)
+
+// metricsHub shares one Docker stream per container and keeps its last minute, so a viewer
+// gets a full chart at once instead of waiting up to 2s for Docker's first CPU figure.
+type metricsHub struct {
+	open  func(ctx context.Context, containerID string) (<-chan core.TaskMetric, error)
+	mu    sync.Mutex
+	feeds map[string]*metricsFeed
+}
+
+type metricsFeed struct {
+	recent []core.TaskMetric
+	subs   map[chan core.TaskMetric]struct{}
+	stop   context.CancelFunc
+	idle   *time.Timer
+}
+
+// watch replays the container's recent samples, oldest first, then follows it until ctx ends or it stops.
+func (h *metricsHub) watch(ctx context.Context, containerID string) (<-chan core.TaskMetric, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	f := h.feeds[containerID]
+	if f == nil {
+		// ponytail: Docker answers in ms, so opening holds the hub lock; per-feed locks if a slow daemon stalls viewers.
+		feedCtx, stop := context.WithCancel(context.Background())
+		samples, err := h.open(feedCtx, containerID)
+		if err != nil {
+			stop()
+			return nil, err
+		}
+		f = &metricsFeed{subs: map[chan core.TaskMetric]struct{}{}, stop: stop}
+		h.feeds[containerID] = f
+		go h.pump(containerID, f, samples)
+	}
+	if f.idle != nil {
+		f.idle.Stop()
+		f.idle = nil
+	}
+	ch := make(chan core.TaskMetric, 2*metricsHistory)
+	for _, m := range f.recent {
+		ch <- m
+	}
+	f.subs[ch] = struct{}{}
+	context.AfterFunc(ctx, func() { h.leave(containerID, f, ch) })
+	return ch, nil
+}
+
+func (h *metricsHub) pump(containerID string, f *metricsFeed, samples <-chan core.TaskMetric) {
+	for m := range samples {
+		h.mu.Lock()
+		f.recent = append(f.recent, m)
+		f.recent = f.recent[max(0, len(f.recent)-metricsHistory):]
+		for ch := range f.subs {
+			// A viewer that stops reading misses samples rather than stalling the others.
+			select {
+			case ch <- m:
+			default:
+			}
+		}
+		h.mu.Unlock()
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.feeds[containerID] == f {
+		delete(h.feeds, containerID)
+	}
+	for ch := range f.subs {
+		close(ch)
+	}
+	f.subs = nil
+	f.stop()
+}
+
+func (h *metricsHub) leave(containerID string, f *metricsFeed, ch chan core.TaskMetric) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := f.subs[ch]; !ok {
+		return
+	}
+	delete(f.subs, ch)
+	close(ch)
+	if len(f.subs) > 0 {
+		return
+	}
+	var idle *time.Timer
+	idle = time.AfterFunc(metricsLinger, func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		// A viewer who came back while this waited for the lock cleared or replaced the timer.
+		if f.idle == idle && h.feeds[containerID] == f {
+			delete(h.feeds, containerID)
+			f.stop()
+		}
+	})
+	f.idle = idle
 }
 
 // Reconcile repairs state and routes because Docker may change while Boreas is offline.

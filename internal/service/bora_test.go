@@ -580,9 +580,12 @@ func TestBoraScope(t *testing.T) {
 		return "a line\n", nil
 	}
 	svc.Metrics = func(ctx context.Context, _ core.ProjectAccess, _ string) (<-chan core.TaskMetric, error) {
-		samples := make(chan core.TaskMetric, 2)
-		samples <- core.TaskMetric{TaskName: "web"}
-		samples <- core.TaskMetric{TaskName: "web", CPUPercent: 12.5, MemoryBytes: 64 << 20}
+		// Two replayed samples from the last minute come before the live one Bora must report.
+		ago := time.Now().Add(-30 * time.Second)
+		samples := make(chan core.TaskMetric, 3)
+		samples <- core.TaskMetric{TaskName: "web", CPUPercent: 50, ObservedAt: ago}
+		samples <- core.TaskMetric{TaskName: "web", CPUPercent: 60, ObservedAt: ago.Add(time.Second)}
+		samples <- core.TaskMetric{TaskName: "web", CPUPercent: 12.5, MemoryBytes: 64 << 20, ObservedAt: time.Now()}
 		go func() {
 			<-ctx.Done()
 			close(samples)

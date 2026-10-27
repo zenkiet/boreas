@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/uuid"
@@ -668,6 +669,60 @@ func TestMetricsForOneTaskRequiresAContainer(t *testing.T) {
 	if !errors.Is(err, core.ErrConflict) {
 		t.Fatalf("got %v, want ErrConflict", err)
 	}
+}
+
+// One Docker stream serves every viewer of a container; a viewer back within the linger gets
+// its last minute at once, and the stream ends a linger after the last viewer leaves.
+func TestMetricsHubSharesAndReplays(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var streams []context.Context
+		src := make(chan core.TaskMetric)
+		hub := &metricsHub{feeds: map[string]*metricsFeed{}, open: func(ctx context.Context, _ string) (<-chan core.TaskMetric, error) {
+			streams = append(streams, ctx)
+			return src, nil
+		}}
+		watch := func() (<-chan core.TaskMetric, context.CancelFunc) {
+			ctx, leave := context.WithCancel(context.Background())
+			ch, err := hub.watch(ctx, "c")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return ch, leave
+		}
+
+		a, leaveA := watch()
+		b, leaveB := watch()
+		src <- core.TaskMetric{CPUPercent: 1}
+		src <- core.TaskMetric{CPUPercent: 2}
+		synctest.Wait()
+		if len(streams) != 1 || len(a) != 2 || len(b) != 2 {
+			t.Fatalf("%d streams for two viewers, who got %d and %d samples", len(streams), len(a), len(b))
+		}
+		leaveA()
+		leaveB()
+		time.Sleep(metricsLinger - time.Second)
+
+		c, leaveC := watch()
+		if got := []float64{(<-c).CPUPercent, (<-c).CPUPercent}; len(streams) != 1 || !slices.Equal(got, []float64{1, 2}) {
+			t.Fatalf("back within the linger: %d streams, replayed %v", len(streams), got)
+		}
+		leaveC()
+		time.Sleep(metricsLinger + time.Second)
+		synctest.Wait()
+		if streams[0].Err() == nil {
+			t.Fatal("the Docker stream outlived the linger")
+		}
+		close(src) // Docker ends the stream with its ctx
+
+		// A container that stops ends its viewers' streams.
+		src = make(chan core.TaskMetric)
+		d, leaveD := watch()
+		defer leaveD()
+		close(src)
+		if _, open := <-d; open || len(streams) != 2 {
+			t.Fatalf("after the container stopped: open %v, %d streams", open, len(streams))
+		}
+	})
 }
 
 func TestMetricsStopsWhenTheClientLeaves(t *testing.T) {
