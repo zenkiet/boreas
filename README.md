@@ -160,6 +160,7 @@ All API routes are under `/api/v1`.
 | `POST`   | `/auth/login`                                  | public        | Exchange credentials for a token                |
 | `POST`   | `/auth/logout`                                 | user          | Revoke the current token                        |
 | `GET`    | `/auth/me`                                     | user          | Current user                                    |
+| `PUT`    | `/auth/me/avatar`                              | login session | Set your avatar                                 |
 | `GET`    | `/auth/tokens`                                 | login session | List your API tokens                            |
 | `POST`   | `/auth/tokens`                                 | login session | Create an API token                             |
 | `DELETE` | `/auth/tokens/{id}`                            | login session | Revoke one of your API tokens                   |
@@ -169,6 +170,7 @@ All API routes are under `/api/v1`.
 | `POST`   | `/users`                                       | admin         | Create a user                                   |
 | `PATCH`  | `/users/{id}`                                  | admin         | Update a user                                   |
 | `DELETE` | `/users/{id}`                                  | admin         | Delete a user                                   |
+| `GET`    | `/users/{id}/avatar`                           | user          | Get a user's avatar                             |
 | `GET`    | `/registry-credentials`                        | admin         | List registry credentials                       |
 | `POST`   | `/registry-credentials`                        | admin         | Create a registry credential                    |
 | `DELETE` | `/registry-credentials/{id}`                   | admin         | Delete a registry credential                    |
@@ -798,8 +800,8 @@ the database connection and the initial administrator.
 | `BOREAS_AI_API_KEY`     | unset             | Bearer key for that endpoint; local servers such as Ollama need none         |
 | `BOREAS_SOURCEBOT_URL`  | unset             | Sourcebot that indexes the code Bora reads                                   |
 | `BOREAS_SOURCEBOT_API_KEY` | unset          | Sourcebot API key                                                            |
-| `BOREAS_S3_ENDPOINT`    | unset             | S3-compatible endpoint for images asked about, e.g. `https://<account>.r2.cloudflarestorage.com` |
-| `BOREAS_S3_BUCKET`      | unset             | Bucket the images go in, under `bora/`; give it a lifecycle rule that expires them |
+| `BOREAS_S3_ENDPOINT`    | unset             | S3-compatible endpoint for images asked about and avatars, e.g. `https://<account>.r2.cloudflarestorage.com` |
+| `BOREAS_S3_BUCKET`      | unset             | Bucket the images go in, under `bora/`, and avatars, under `avatars/`; give `bora/` alone a lifecycle rule that expires them |
 | `BOREAS_S3_REGION`      | `auto`            | Signing region; R2 takes `auto`                                              |
 | `BOREAS_S3_ACCESS_KEY_ID` | unset           | Access key with read and write on that bucket                                |
 | `BOREAS_S3_SECRET_ACCESS_KEY` | unset       | Its secret                                                                   |

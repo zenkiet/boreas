@@ -199,6 +199,7 @@ type User struct {
 	PasswordHash string
 	Role         UserRole
 	DisabledAt   *time.Time
+	AvatarAt     *time.Time
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -744,6 +745,7 @@ type UserStore interface {
 	Count(context.Context) (int, error)
 	Create(context.Context, User) (User, error)
 	Update(context.Context, User) (User, error)
+	SetAvatar(ctx context.Context, id uuid.UUID) (User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 

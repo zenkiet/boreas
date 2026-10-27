@@ -111,6 +111,7 @@ type stubAuth struct {
 	revokeAPI func(context.Context, uuid.UUID, uuid.UUID) error
 	listUsers func(context.Context) ([]core.User, error)
 	loggedOut []string
+	avatars   []string
 }
 
 func (s *stubAuth) Login(c context.Context, username, password string) (string, core.User, error) {
@@ -168,6 +169,15 @@ func (*stubAuth) UpdateUser(context.Context, uuid.UUID, service.UpdateUserInput)
 	return core.User{}, nil
 }
 func (*stubAuth) DeleteUser(context.Context, uuid.UUID) error { return nil }
+
+func (s *stubAuth) SetAvatar(_ context.Context, actor core.User, mime string, _ []byte) (core.User, error) {
+	s.avatars = append(s.avatars, mime)
+	return actor, nil
+}
+
+func (*stubAuth) Avatar(context.Context, uuid.UUID) ([]byte, string, error) {
+	return nil, "", core.ErrNotFound
+}
 
 type stubProjects struct {
 	role            core.ProjectRole

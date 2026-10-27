@@ -428,6 +428,12 @@ func TestUserAndTokenStores(t *testing.T) {
 	}); !errors.Is(err, core.ErrAlreadyExists) {
 		t.Fatalf("got %v, want ErrAlreadyExists", err)
 	}
+	if withAvatar, err := users.SetAvatar(ctx, user.ID); err != nil || withAvatar.AvatarAt == nil {
+		t.Fatalf("set avatar: %+v %v", withAvatar, err)
+	}
+	if _, err := users.SetAvatar(ctx, uuid.New()); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("set avatar of nobody: %v, want ErrNotFound", err)
+	}
 
 	hash := uuid.New().String()
 	now := time.Now().UTC()

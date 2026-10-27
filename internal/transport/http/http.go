@@ -41,6 +41,8 @@ type AuthService interface {
 	CreateUser(context.Context, service.CreateUserInput) (core.User, error)
 	UpdateUser(ctx context.Context, id uuid.UUID, in service.UpdateUserInput) (core.User, error)
 	DeleteUser(ctx context.Context, id uuid.UUID) error
+	SetAvatar(ctx context.Context, actor core.User, mime string, body []byte) (core.User, error)
+	Avatar(ctx context.Context, id uuid.UUID) ([]byte, string, error)
 }
 
 type ProjectService interface {

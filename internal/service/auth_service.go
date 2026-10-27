@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,8 +25,9 @@ const (
 )
 
 type AuthService struct {
-	users  core.UserStore
-	tokens core.TokenStore
+	users   core.UserStore
+	tokens  core.TokenStore
+	Avatars core.ObjectStore
 }
 
 func NewAuthService(users core.UserStore, tokens core.TokenStore) *AuthService {
@@ -252,8 +254,39 @@ func (s *AuthService) UpdateUser(ctx context.Context, id uuid.UUID, in UpdateUse
 }
 
 func (s *AuthService) DeleteUser(ctx context.Context, id uuid.UUID) error {
-	return wrap("delete user", s.users.Delete(ctx, id))
+	if err := s.users.Delete(ctx, id); err != nil {
+		return wrap("delete user", err)
+	}
+	if s.Avatars != nil {
+		// Best effort: an orphan only costs storage.
+		_ = s.Avatars.Delete(ctx, avatarKey(id))
+	}
+	return nil
 }
+
+func (s *AuthService) SetAvatar(ctx context.Context, actor core.User, mime string, body []byte) (core.User, error) {
+	if s.Avatars == nil {
+		return core.User{}, core.ErrConflict
+	}
+	if !slices.Contains(boraImageTypes, mime) {
+		return core.User{}, errors.Join(core.ErrInvalidInput, errors.New("image must be JPEG, PNG, WebP or GIF"))
+	}
+	if err := s.Avatars.Put(ctx, avatarKey(actor.ID), mime, body); err != nil {
+		return core.User{}, wrap("store avatar", err)
+	}
+	user, err := s.users.SetAvatar(ctx, actor.ID)
+	return user, wrap("set avatar", err)
+}
+
+func (s *AuthService) Avatar(ctx context.Context, id uuid.UUID) ([]byte, string, error) {
+	if s.Avatars == nil {
+		return nil, "", core.ErrNotFound
+	}
+	body, mime, err := s.Avatars.Get(ctx, avatarKey(id))
+	return body, mime, wrap("get avatar", err)
+}
+
+func avatarKey(id uuid.UUID) string { return "avatars/" + id.String() }
 
 // EnsureAdmin seeds only an empty installation to avoid creating extra privileged users.
 func (s *AuthService) EnsureAdmin(ctx context.Context, username, email, password string) (bool, error) {

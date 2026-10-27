@@ -96,6 +96,58 @@ paths:
       summary: Current user
       tags:
       - auth
+  /api/v1/auth/me/avatar:
+    put:
+      description: The body is the image itself, JPEG, PNG, WebP or GIF, at most 5
+        MiB; it replaces the one before. 409 when the server has no S3 bucket.
+      operationId: put-auth-me-avatar
+      requestBody:
+        content:
+          image/*:
+            schema:
+              type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Set your avatar
+      tags:
+      - auth
   /api/v1/auth/tokens:
     get:
       description: Metadata only; tokens and hashes are never returned.
@@ -3189,6 +3241,53 @@ paths:
       summary: Update a user
       tags:
       - users
+  /api/v1/users/{id}/avatar:
+    get:
+      description: Add ?v= with the user's avatar_at, so a new avatar is not served
+        from cache. 404 when the user has none.
+      operationId: get-users-id-avatar
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            image/*:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get a user's avatar
+      tags:
+      - users
 components:
   schemas:
     APIToken:
@@ -4567,6 +4666,10 @@ components:
       type: object
     User:
       properties:
+        avatar_at:
+          format: date-time
+          nullable: true
+          type: string
         created_at:
           format: date-time
           type: string

@@ -121,7 +121,8 @@ func run(logger *slog.Logger) error {
 		projects.Assist = assistant(llm.New(cfg.AI.BaseURL, cfg.AI.APIKey, cfg.AI.Model), logger)
 	}
 	if cfg.S3.Enabled() {
-		projects.Images = s3.New(cfg.S3.Endpoint, cfg.S3.Bucket, cfg.S3.Region, cfg.S3.AccessKeyID, cfg.S3.SecretAccessKey)
+		store := s3.New(cfg.S3.Endpoint, cfg.S3.Bucket, cfg.S3.Region, cfg.S3.AccessKeyID, cfg.S3.SecretAccessKey)
+		projects.Images, auth.Avatars = store, store
 	}
 	tasks := service.NewTaskService(
 		runtime, taskStore, projectStore, credentials, routes,

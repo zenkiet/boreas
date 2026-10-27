@@ -263,3 +263,32 @@ func TestDeleteUser(t *testing.T) {
 		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }
+
+// The avatar is keyed by its owner, so replacing it leaves nothing behind, and deleting the user removes it.
+func TestSetAvatar(t *testing.T) {
+	ctx := context.Background()
+	auth, _, _ := newAuth(t)
+	user := newUser(t, auth, "grace")
+	png := []byte("\x89PNG\r\n\x1a\n")
+	if _, err := auth.SetAvatar(ctx, user, "image/png", png); !errors.Is(err, core.ErrConflict) {
+		t.Fatalf("no bucket: %v, want ErrConflict", err)
+	}
+	objects := newFakeObjects()
+	auth.Avatars = objects
+	if _, err := auth.SetAvatar(ctx, user, "text/html; charset=utf-8", png); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("html: %v, want ErrInvalidInput", err)
+	}
+	updated, err := auth.SetAvatar(ctx, user, "image/png", png)
+	if err != nil || updated.AvatarAt == nil {
+		t.Fatalf("set: %+v %v", updated, err)
+	}
+	if body, mime, err := auth.Avatar(ctx, user.ID); err != nil || string(body) != string(png) || mime != "image/png" {
+		t.Fatalf("get: %q %q %v", body, mime, err)
+	}
+	if err := auth.DeleteUser(ctx, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := auth.Avatar(ctx, user.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("after delete: %v, want ErrNotFound", err)
+	}
+}

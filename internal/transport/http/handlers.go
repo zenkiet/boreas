@@ -58,6 +58,33 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userResponse{User: userFromCore(userFrom(r.Context()))})
 }
 
+func (h *Handler) setAvatar(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImageBytes))
+	if err != nil {
+		writeServiceError(w, h.logger, errors.Join(core.ErrInvalidInput, errors.New("image must be at most 5 MiB")))
+		return
+	}
+	user, err := h.auth.SetAvatar(r.Context(), userFrom(r.Context()), http.DetectContentType(body), body)
+	h.reply(w, http.StatusOK, userResponse{User: userFromCore(user)}, err)
+}
+
+func (h *Handler) getAvatar(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	body, mime, err := h.auth.Avatar(r.Context(), id)
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Clients version the URL with avatar_at, so a new avatar misses this cache.
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(body)
+}
+
 func (h *Handler) createAPIToken(w http.ResponseWriter, r *http.Request) {
 	var req createAPITokenRequest
 	if !decode(w, r, &req) {

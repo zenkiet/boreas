@@ -13,7 +13,7 @@ type UserStore struct{ pool *pgxpool.Pool }
 
 func NewUserStore(pool *pgxpool.Pool) *UserStore { return &UserStore{pool: pool} }
 
-const userColumns = `id, username, email, password_hash, role, disabled_at, created_at, updated_at`
+const userColumns = `id, username, email, password_hash, role, disabled_at, avatar_at, created_at, updated_at`
 
 func (s *UserStore) List(ctx context.Context) ([]core.User, error) {
 	return many(ctx, s.pool, scanUser, "list users", "scan users",
@@ -49,6 +49,11 @@ func (s *UserStore) Update(ctx context.Context, user core.User) (core.User, erro
 		user.ID, user.Username, user.Email, user.PasswordHash, user.Role, user.DisabledAt)
 }
 
+func (s *UserStore) SetAvatar(ctx context.Context, id uuid.UUID) (core.User, error) {
+	return one(ctx, s.pool, scanUser, "set avatar",
+		`UPDATE users SET avatar_at = now() WHERE id = $1 RETURNING `+userColumns, id)
+}
+
 func (s *UserStore) Delete(ctx context.Context, id uuid.UUID) error {
 	return deleteRow(ctx, s.pool, "delete user", `DELETE FROM users WHERE id = $1`, id)
 }
@@ -56,6 +61,6 @@ func (s *UserStore) Delete(ctx context.Context, id uuid.UUID) error {
 func scanUser(row pgx.CollectableRow) (core.User, error) {
 	var u core.User
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role,
-		&u.DisabledAt, &u.CreatedAt, &u.UpdatedAt)
+		&u.DisabledAt, &u.AvatarAt, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }

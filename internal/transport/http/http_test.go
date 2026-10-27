@@ -835,6 +835,24 @@ func TestUploadBoraImage(t *testing.T) {
 	}
 }
 
+// The handler types an avatar by its bytes, not the header, and stops reading past 5 MiB.
+func TestSetAvatar(t *testing.T) {
+	auth := &stubAuth{user: testMember}
+	h := testHandler(stubTasks{}, auth, &stubProjects{})
+	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
+	r := authed(http.MethodPut, "/api/v1/auth/me/avatar", strings.NewReader(png))
+	r.Header.Set("Content-Type", "text/html")
+	if rr := do(h, r); rr.Code != http.StatusOK || !slices.Equal(auth.avatars, []string{"image/png"}) {
+		t.Fatalf("set: %d %s, passed on %v", rr.Code, rr.Body, auth.avatars)
+	}
+	if rr := do(h, authed(http.MethodPut, "/api/v1/auth/me/avatar", strings.NewReader(png+strings.Repeat("x", maxImageBytes)))); rr.Code != http.StatusBadRequest || len(auth.avatars) != 1 {
+		t.Fatalf("an oversized avatar: %d, passed on %v", rr.Code, auth.avatars)
+	}
+	if rr := do(h, authed(http.MethodGet, "/api/v1/users/"+uuid.NewString()+"/avatar", nil)); rr.Code != http.StatusNotFound {
+		t.Fatalf("no avatar: %d, want 404", rr.Code)
+	}
+}
+
 func TestBoraConversationRoutes(t *testing.T) {
 	id := uuid.New()
 	answer := core.BoraMessage{Index: 1, Role: core.ChatAssistant, Content: "Down.", Say: "Down.", Actions: []core.BoraAction{}, Choices: []string{}, Sources: []core.CodeSource{}, Ran: []string{}, Images: []uuid.UUID{}}

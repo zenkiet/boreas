@@ -383,6 +383,16 @@ func (f *fakeUserStore) Update(_ context.Context, user core.User) (core.User, er
 	return user, nil
 }
 
+func (f *fakeUserStore) SetAvatar(_ context.Context, id uuid.UUID) (core.User, error) {
+	user, ok := f.users[id]
+	if !ok {
+		return core.User{}, core.ErrNotFound
+	}
+	user.AvatarAt = new(time.Now())
+	f.users[id] = user
+	return user, nil
+}
+
 func (f *fakeUserStore) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := f.users[id]; !ok {
 		return core.ErrNotFound

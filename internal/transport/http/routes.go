@@ -91,6 +91,14 @@ var routeTable = [...]route{
 		resp: new(userResponse),
 	},
 	{
+		method: http.MethodPut, path: "/api/v1/auth/me/avatar", access: accessSession, handler: (*Handler).setAvatar,
+		tag: "auth", summary: "Set your avatar",
+		description: "The body is the image itself, JPEG, PNG, WebP or GIF, at most 5 MiB; it replaces the one before. " +
+			"409 when the server has no S3 bucket.",
+		req: new(string), reqType: "image/*", resp: new(userResponse),
+		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
+	},
+	{
 		method: http.MethodGet, path: "/api/v1/auth/tokens", access: accessSession, handler: (*Handler).listAPITokens,
 		tag: "auth", summary: "List your API tokens",
 		description: "Metadata only; tokens and hashes are never returned.",
@@ -152,6 +160,12 @@ var routeTable = [...]route{
 		description: "A user cannot delete their own account.",
 		req:         new(idPath), resp: new(successResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict},
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/users/{id}/avatar", access: accessAuthed, handler: (*Handler).getAvatar,
+		tag: "users", summary: "Get a user's avatar",
+		description: "Add ?v= with the user's avatar_at, so a new avatar is not served from cache. 404 when the user has none.",
+		req:         new(idPath), resp: new(string), contentType: "image/*", extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 
 	{
