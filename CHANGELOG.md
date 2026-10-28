@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.24.1 - 2026-10-28
+#### ♻️ Code Refactoring
+- (**http**) ♻️ share image upload and download handling - (2ce1046) - *zenkiet*
+
+- - -
+
 ## v1.24.0 - 2026-10-27
 #### 🚀 Features
 - (**users**) ✨ upload an avatar - (4841993) - *zenkiet*
