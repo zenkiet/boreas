@@ -255,6 +255,7 @@ type ProjectMember struct {
 	UserID    uuid.UUID
 	Username  string
 	Role      ProjectRole
+	AvatarAt  *time.Time
 	CreatedAt time.Time
 }
 
@@ -265,6 +266,13 @@ type TaskGrant struct {
 	Username  string
 	Role      ProjectRole
 	CreatedAt time.Time
+}
+
+// Assignee is a person on a task: their task grant, read with who they are.
+type Assignee struct {
+	UserID   uuid.UUID  `json:"user_id"`
+	Username string     `json:"username"`
+	AvatarAt *time.Time `json:"avatar_at,omitempty"`
 }
 
 // ProjectAccess is one caller's effective reach in one project.
@@ -291,6 +299,7 @@ type Task struct {
 	Env             map[string]string
 	Volumes         map[string]string
 	Routes          []Route
+	Assignees       []Assignee
 	Build           Build
 	PendingRecreate bool
 	Error           string
@@ -316,6 +325,7 @@ func (t Task) Clone() Task {
 	t.Env = maps.Clone(t.Env)
 	t.Volumes = maps.Clone(t.Volumes)
 	t.Routes = slices.Clone(t.Routes)
+	t.Assignees = slices.Clone(t.Assignees)
 	return t
 }
 
@@ -370,6 +380,7 @@ type Notification struct {
 	Status    NotificationStatus
 	Title     string
 	Body      string
+	UserID    *uuid.UUID // its one recipient; nil reaches everyone who sees the task
 	Seen      bool
 	CreatedAt time.Time
 }

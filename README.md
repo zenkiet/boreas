@@ -146,6 +146,23 @@ Grants are deleted with the task they point at, so access cannot outlive its
 subject. A project or task the caller cannot reach answers `404`, not `403`, so
 that names do not leak. `403` means the caller can see it but ranks too low.
 
+### Assignees
+
+Every task carries `assignees`, the people its grants name, with their username
+and `avatar_at`. Replace them in one call; `[]` unassigns everyone, and a body
+without `user_ids` is refused:
+
+```bash
+curl -X PUT http://localhost:8080/api/v1/projects/demo/tasks/web/assignees \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"user_ids":["<id>"]}'
+```
+
+Assigning grants `member` on that task, and unassigning revokes it. Members of
+the project at `member` rank or above may assign, but only other project members;
+only an owner or administrator assigns someone outside the project. A new task
+takes `assignees` too, and they land even when its container then fails.
+
 Every project and task response carries `my_role`, the caller's effective role,
 so a client can hide what it cannot do. `GET /projects` lists each project with
 the tasks the caller sees, each with its own `my_role` and `last_deploy`.
@@ -179,7 +196,7 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}`                          | viewer        | Get a project                                   |
 | `PATCH`  | `/projects/{project}`                          | owner         | Update a project                                |
 | `DELETE` | `/projects/{project}`                          | owner         | Delete a project                                |
-| `GET`    | `/projects/{project}/members`                  | owner         | List members                                    |
+| `GET`    | `/projects/{project}/members`                  | member        | List members                                    |
 | `POST`   | `/projects/{project}/members`                  | owner         | Add or promote a member                         |
 | `DELETE` | `/projects/{project}/members/{userID}`         | owner         | Remove a member                                 |
 | `GET`    | `/notifications`                               | user          | List notifications across projects              |
@@ -212,6 +229,7 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/tasks/{name}/grants`      | owner         | List task grants                                |
 | `POST`   | `/projects/{project}/tasks/{name}/grants`      | owner         | Grant a user access to one task                 |
 | `DELETE` | `/projects/{project}/tasks/{name}/grants/{userID}` | owner     | Revoke a task grant                             |
+| `PUT`    | `/projects/{project}/tasks/{name}/assignees`   | member        | Replace a task's assignees                      |
 
 Only the fields present in a `PATCH` body are changed. Editing just the
 description or dev status leaves a running container alone; changing `image`,
@@ -668,11 +686,15 @@ arrival timestamp.
 | `deployed`       | `success` | `🚀 Deploy Succeeded • Shop` / `web: Task completed at 11:00PM`                  |
 | `deploy_failed`  | `failure` | `❌ Deploy Failed • Shop` / `web: Failed at 11:00PM: pull image: unavailable`    |
 | `task_created`   | `info`    | `📋 Task Created • Shop` / `web: Customer checkout service`                      |
-| `task_assigned`  | `info`    | `👤 Task Assigned • Shop` / `web: assigned to nam (member)`                      |
+| `task_assigned`  | `info`    | `👤 Task Assigned • Shop` / `web: assigned to you (member)`                      |
 | `status_changed` | `info`    | `🔄 Status Changed • Shop` / `web: In Progress ➔ Ready`                          |
 | `build_failed`   | `failure` | `🔨 Build Failed • Shop` / `web: failed at Test`                                 |
 
 Route on `type` and `project` (the slug), not on the title, which is for people.
+
+An assignment goes to the assignee alone: it shows in their feed and reaches their
+devices, never anyone else's, administrators' included, nor the team destinations.
+Nobody is told about assigning themselves.
 
 A retried callback for the image a task already runs records nothing, so it
 does not repeat a notification a pipeline has already produced.

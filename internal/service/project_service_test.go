@@ -302,30 +302,129 @@ func TestGrantNotifiesAssignment(t *testing.T) {
 
 	var notified []core.Notification
 	svc.Notify = func(_ context.Context, n core.Notification) { notified = append(notified, n) }
-	users := newFakeUserStore()
-	grantee, err := users.Create(ctx, core.User{Username: "nam"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	svc.Users = users
+	grantee := uuid.New()
 
-	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleMember); err != nil {
+	if err := svc.Grant(ctx, "team", "web", grantee, core.ProjectRoleOperator); err != nil {
 		t.Fatal(err)
 	}
 	want := core.Notification{
 		ProjectID: project.ID, TaskName: "web", Type: core.NotificationTaskAssigned,
-		Status: core.NotificationInfo, Title: "👤 Task Assigned • Team Alpha", Body: "web: assigned to nam (member)",
+		Status: core.NotificationInfo, Title: "👤 Task Assigned • Team Alpha", Body: "web: assigned to you (operator)",
 	}
-	if len(notified) != 1 || notified[0] != want {
-		t.Fatalf("notified %+v, want %+v", notified, want)
+	if len(notified) != 1 || notified[0].UserID == nil || *notified[0].UserID != grantee {
+		t.Fatalf("notified %+v, want one addressed to the grantee", notified)
 	}
+	got := notified[0]
+	got.UserID = nil
+	if got != want {
+		t.Fatalf("notified %+v, want %+v", got, want)
+	}
+}
 
-	svc.Users, notified = nil, nil
-	if err := svc.Grant(ctx, "team", "web", grantee.ID, core.ProjectRoleOperator); err != nil {
+// assigneeTeam seeds team/web with an owner, a member dev, a viewer vic and an outsider out.
+func assigneeTeam(t *testing.T) (svc *ProjectService, owner, dev, vic, out core.User, notified *[]core.Notification) {
+	t.Helper()
+	svc, tasks := newProjects(t)
+	ctx := context.Background()
+	users := newFakeUserStore()
+	person := func(name string) core.User {
+		user, err := users.Create(ctx, core.User{Username: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return user
+	}
+	owner, dev, vic, out = person("own"), person("dev"), person("vic"), person("out")
+	project, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "team"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(notified) != 1 || notified[0].Body != "web: operator access granted" {
-		t.Fatalf("unexpected fallback notification: %+v", notified)
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "web"})
+	if err := svc.AddMember(ctx, "team", dev.ID, core.ProjectRoleMember); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember(ctx, "team", vic.ID, core.ProjectRoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	notified = new([]core.Notification)
+	svc.Notify = func(_ context.Context, n core.Notification) { *notified = append(*notified, n) }
+	return svc, owner, dev, vic, out, notified
+}
+
+func roleOn(t *testing.T, svc *ProjectService, user core.User) core.ProjectRole {
+	t.Helper()
+	acc, err := svc.Access(context.Background(), user, "team", "web")
+	if err != nil && !errors.Is(err, core.ErrNotFound) {
+		t.Fatal(err)
+	}
+	return acc.Role
+}
+
+func assign(svc *ProjectService, by core.User, users ...core.User) error {
+	ctx := context.Background()
+	acc, err := svc.Access(ctx, by, "team", "web")
+	if err != nil {
+		return err
+	}
+	ids := make([]uuid.UUID, 0, len(users))
+	for _, user := range users {
+		ids = append(ids, user.ID)
+	}
+	return svc.SetAssignees(ctx, acc, "web", ids)
+}
+
+func TestAssigningGivesMemberAndUnassigningTakesItBack(t *testing.T) {
+	svc, _, dev, vic, _, notified := assigneeTeam(t)
+
+	if err := assign(svc, dev, vic); err != nil {
+		t.Fatal(err)
+	}
+	if role := roleOn(t, svc, vic); role != core.ProjectRoleMember {
+		t.Fatalf("assigned viewer = %s, want member", role)
+	}
+	if n := *notified; len(n) != 1 || n[0].Body != "web: assigned to you (member)" || n[0].UserID == nil || *n[0].UserID != vic.ID {
+		t.Fatalf("notified %+v, want one addressed to vic", n)
+	}
+
+	// The same list again changes nothing and says nothing, and nobody hears about assigning themselves.
+	if err := assign(svc, dev, vic, dev); err != nil || len(*notified) != 1 {
+		t.Fatalf("resend and self: err %v, %d notifications", err, len(*notified))
+	}
+
+	if err := assign(svc, dev); err != nil {
+		t.Fatal(err)
+	}
+	if role := roleOn(t, svc, vic); role != core.ProjectRoleViewer {
+		t.Fatalf("unassigned viewer = %s, want their project role back", role)
+	}
+}
+
+func TestOnlyOwnersAssignOutsiders(t *testing.T) {
+	svc, owner, dev, _, out, _ := assigneeTeam(t)
+
+	if err := assign(svc, dev, out); !errors.Is(err, core.ErrForbidden) {
+		t.Fatalf("member assigning an outsider: %v, want forbidden", err)
+	}
+	if err := assign(svc, owner, out); err != nil {
+		t.Fatal(err)
+	}
+	if role := roleOn(t, svc, out); role != core.ProjectRoleMember {
+		t.Fatalf("assigned outsider = %s, want member on the task", role)
+	}
+	// A member can't take back what only an owner could give.
+	if err := assign(svc, dev); !errors.Is(err, core.ErrForbidden) {
+		t.Fatalf("member unassigning an outsider: %v, want forbidden", err)
+	}
+}
+
+// Being assigned raises a viewer to member on the task, but assigning stays with the project's members.
+func TestAnAssignedViewerCannotAssign(t *testing.T) {
+	svc, owner, dev, vic, _, _ := assigneeTeam(t)
+	if err := assign(svc, owner, vic); err != nil {
+		t.Fatal(err)
+	}
+	if err := assign(svc, vic, vic, dev); !errors.Is(err, core.ErrForbidden) {
+		t.Fatalf("assigned viewer assigning: %v, want forbidden", err)
 	}
 }
 

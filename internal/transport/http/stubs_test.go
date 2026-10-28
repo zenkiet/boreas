@@ -182,6 +182,7 @@ func (*stubAuth) Avatar(context.Context, uuid.UUID) ([]byte, string, error) {
 type stubProjects struct {
 	role            core.ProjectRole
 	project         core.Project
+	members         []core.ProjectMember
 	allTasks        *bool
 	accessErr       error
 	update          func(context.Context, string, service.UpdateProjectInput) (core.Project, error)
@@ -190,6 +191,7 @@ type stubProjects struct {
 	markSeen        func(context.Context, core.User, []uuid.UUID) error
 	fleet           func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
 	grantedRoles    map[uuid.UUID]core.ProjectRole
+	assign          func(core.ProjectAccess, string, []uuid.UUID) error
 	turn            []service.BoraEvent
 	uploaded        []string // the sniffed type of each image the handler passed on
 }
@@ -312,8 +314,8 @@ func (*stubProjects) Create(context.Context, core.User, service.CreateProjectInp
 	return core.Project{}, nil
 }
 func (*stubProjects) Delete(context.Context, string) error { return nil }
-func (*stubProjects) ListMembers(context.Context, string) ([]core.ProjectMember, error) {
-	return nil, nil
+func (s *stubProjects) ListMembers(context.Context, string) ([]core.ProjectMember, error) {
+	return s.members, nil
 }
 
 func (*stubProjects) AddMember(context.Context, string, uuid.UUID, core.ProjectRole) error {
@@ -332,6 +334,13 @@ func (*stubProjects) Grant(context.Context, string, string, uuid.UUID, core.Proj
 	return nil
 }
 func (*stubProjects) Revoke(context.Context, string, string, uuid.UUID) error { return nil }
+func (s *stubProjects) SetAssignees(_ context.Context, acc core.ProjectAccess, task string, ids []uuid.UUID) error {
+	if s.assign != nil {
+		return s.assign(acc, task, ids)
+	}
+	return nil
+}
+
 func (*stubProjects) CreateCredential(context.Context, core.User, service.CreateCredentialInput) (core.RegistryCredential, error) {
 	return core.RegistryCredential{}, nil
 }

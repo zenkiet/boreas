@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -29,13 +28,13 @@ const (
 type Sender struct {
 	url    string
 	client *http.Client
-	tokens func(context.Context, uuid.UUID, string) ([]string, error)
+	tokens func(context.Context, core.Notification) ([]string, error)
 	remove func(context.Context, []string) error
 	logger *slog.Logger
 }
 
 // New reads the keyfile once so a broken one stops startup instead of failing every send.
-func New(project, keyfile string, tokens func(context.Context, uuid.UUID, string) ([]string, error),
+func New(project, keyfile string, tokens func(context.Context, core.Notification) ([]string, error),
 	remove func(context.Context, []string) error, logger *slog.Logger,
 ) (*Sender, error) {
 	if project == "" {
@@ -62,7 +61,7 @@ func (s *Sender) Send(ctx context.Context, n core.Notification) error {
 	if s.url == "" {
 		return nil
 	}
-	tokens, err := s.tokens(ctx, n.ProjectID, n.TaskName)
+	tokens, err := s.tokens(ctx, n)
 	if err != nil {
 		return err
 	}

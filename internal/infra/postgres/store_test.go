@@ -579,6 +579,18 @@ func TestTaskGrantsDieWithTheirTask(t *testing.T) {
 	if len(scoped) != 1 || scoped[0].Name != "web" {
 		t.Fatalf("task list ignored grants: %+v", scoped)
 	}
+	// A grantee is an assignee, read with every task, a write's RETURNING included.
+	if a := scoped[0].Assignees; len(a) != 1 || a[0].UserID != user.ID || a[0].Username != user.Username || a[0].AvatarAt != nil {
+		t.Fatalf("listed assignees = %+v", a)
+	}
+	at := time.Date(2026, 10, 28, 9, 30, 0, 0, time.UTC)
+	if _, err := pool.Exec(ctx, `UPDATE users SET avatar_at = $2 WHERE id = $1`, user.ID, at); err != nil {
+		t.Fatal(err)
+	}
+	if updated, err := tasks.Update(ctx, web); err != nil || len(updated.Assignees) != 1 ||
+		updated.Assignees[0].AvatarAt == nil || !updated.Assignees[0].AvatarAt.Equal(at) {
+		t.Fatalf("updated assignees = %+v, %v", updated.Assignees, err)
+	}
 	feed, err := notifications.List(ctx, user.ID, false, &project.ID, nil, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -768,7 +780,7 @@ func TestPushTokensMatchNotificationAudience(t *testing.T) {
 		}
 	}
 
-	tokens, err := push.Tokens(ctx, project.ID, web.Name)
+	tokens, err := push.Tokens(ctx, core.Notification{ProjectID: project.ID, TaskName: web.Name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +802,7 @@ func TestPushTokensMatchNotificationAudience(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tokens, err = push.Tokens(ctx, project.ID, api.Name); err != nil {
+	if tokens, err = push.Tokens(ctx, core.Notification{ProjectID: project.ID, TaskName: api.Name}); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(tokens, token["grantee"]) {
@@ -800,11 +812,32 @@ func TestPushTokensMatchNotificationAudience(t *testing.T) {
 		t.Error("a project member must receive every task in the project")
 	}
 
+	// One addressed to someone reaches them alone, in the feed and by push; not even an administrator.
+	if tokens, err = push.Tokens(ctx, core.Notification{ProjectID: project.ID, TaskName: web.Name, UserID: &grantee.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(tokens, []string{token["grantee"]}) {
+		t.Errorf("a personal notification reached %v, want only the grantee", tokens)
+	}
+	notifications := NewNotificationStore(pool)
+	personal, err := notifications.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: web.Name, Type: core.NotificationTaskAssigned,
+		Status: core.NotificationInfo, Title: "assigned", UserID: &grantee.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, user := range map[string]core.User{"grantee": grantee, "member": member, "admin": admin} {
+		if _, err := notifications.Get(ctx, user.ID, user.Role == core.RoleAdmin, personal.ID); (name == "grantee") != (err == nil) {
+			t.Errorf("%s reading the grantee's notification: %v", name, err)
+		}
+	}
+
 	// The subscription dies with its user, so a deleted account leaves no target behind.
 	if err := users.Delete(ctx, admin.ID); err != nil {
 		t.Fatal(err)
 	}
-	if tokens, err = push.Tokens(ctx, project.ID, web.Name); err != nil {
+	if tokens, err = push.Tokens(ctx, core.Notification{ProjectID: project.ID, TaskName: web.Name}); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(tokens, token["admin"]) {

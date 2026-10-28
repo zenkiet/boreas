@@ -75,6 +75,7 @@ type ProjectService interface {
 	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
 	Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error
 	Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error
+	SetAssignees(ctx context.Context, acc core.ProjectAccess, taskName string, userIDs []uuid.UUID) error
 	ListCredentials(context.Context) ([]core.RegistryCredential, error)
 	CreateCredential(ctx context.Context, actor core.User, in service.CreateCredentialInput) (core.RegistryCredential, error)
 	DeleteCredential(ctx context.Context, id uuid.UUID) error

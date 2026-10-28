@@ -80,7 +80,7 @@ func (s *ProjectStore) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (s *ProjectStore) ListMembers(ctx context.Context, projectID uuid.UUID) ([]core.ProjectMember, error) {
 	return many(ctx, s.pool, scanMember, "list members", "scan members", `
-		SELECT m.project_id, m.user_id, u.username, m.role, m.created_at
+		SELECT m.project_id, m.user_id, u.username, m.role, u.avatar_at, m.created_at
 		FROM project_members m
 		JOIN users u ON u.id = m.user_id
 		WHERE m.project_id = $1
@@ -89,7 +89,7 @@ func (s *ProjectStore) ListMembers(ctx context.Context, projectID uuid.UUID) ([]
 
 func (s *ProjectStore) GetMember(ctx context.Context, projectID, userID uuid.UUID) (core.ProjectMember, error) {
 	return one(ctx, s.pool, scanMember, "get member", `
-		SELECT m.project_id, m.user_id, u.username, m.role, m.created_at
+		SELECT m.project_id, m.user_id, u.username, m.role, u.avatar_at, m.created_at
 		FROM project_members m
 		JOIN users u ON u.id = m.user_id
 		WHERE m.project_id = $1 AND m.user_id = $2`, projectID, userID)
@@ -119,6 +119,6 @@ func scanProject(row pgx.CollectableRow) (core.Project, error) {
 
 func scanMember(row pgx.CollectableRow) (core.ProjectMember, error) {
 	var m core.ProjectMember
-	err := row.Scan(&m.ProjectID, &m.UserID, &m.Username, &m.Role, &m.CreatedAt)
+	err := row.Scan(&m.ProjectID, &m.UserID, &m.Username, &m.Role, &m.AvatarAt, &m.CreatedAt)
 	return m, err
 }

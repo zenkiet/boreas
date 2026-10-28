@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
 )
 
@@ -69,7 +68,7 @@ func TestSendPrunesOnlyForgottenTokens(t *testing.T) {
 	var removed []string
 	s := &Sender{
 		url: server.URL, client: server.Client(), logger: slog.New(slog.DiscardHandler),
-		tokens: func(context.Context, uuid.UUID, string) ([]string, error) { return tokens, nil },
+		tokens: func(context.Context, core.Notification) ([]string, error) { return tokens, nil },
 		remove: func(_ context.Context, gone []string) error { removed = gone; return nil },
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

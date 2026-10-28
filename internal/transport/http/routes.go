@@ -233,9 +233,10 @@ var routeTable = [...]route{
 		req:         new(projectPath), resp: new(successResponse), extraErrors: []int{http.StatusConflict},
 	},
 	{
-		method: http.MethodGet, path: "/api/v1/projects/{project}/members", access: accessOwner, handler: (*Handler).listMembers,
+		method: http.MethodGet, path: "/api/v1/projects/{project}/members", access: accessMember, handler: (*Handler).listMembers,
 		tag: "projects", summary: "List project members",
-		req: new(projectPath), resp: new(membersResponse),
+		description: "Members read it too, to pick a task's assignees.",
+		req:         new(projectPath), resp: new(membersResponse),
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/members", access: accessOwner, handler: (*Handler).addMember,
@@ -508,6 +509,15 @@ var routeTable = [...]route{
 		method: http.MethodDelete, path: "/api/v1/projects/{project}/tasks/{name}/grants/{userID}", access: accessOwner, handler: (*Handler).revokeGrant,
 		tag: "tasks", summary: "Revoke a task grant",
 		req: new(grantPath), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest},
+	},
+	{
+		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/assignees", access: accessMember, handler: (*Handler).setAssignees,
+		tag: "tasks", summary: "Replace a task's assignees",
+		description: "An assignee is a member grant on this task: assigning gives member here and never " +
+			"lowers a project role, and unassigning takes back what assigning gave. Below owner, only " +
+			"project members of member rank assign, and only project members. user_ids is required; " +
+			"[] unassigns everyone. Every task carries its assignees.",
+		req: new(assigneesRequest), resp: new(taskResponse), extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 }
 

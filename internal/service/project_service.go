@@ -401,15 +401,7 @@ func (s *ProjectService) Grant(ctx context.Context, slug, taskName string, userI
 	if err := s.grants.Grant(ctx, core.TaskGrant{TaskID: task.ID, UserID: userID, Role: role}); err != nil {
 		return fmt.Errorf("grant task: %w", err)
 	}
-	if s.Notify != nil {
-		detail := string(role) + " access granted"
-		if s.Users != nil {
-			if user, err := s.Users.Get(ctx, userID); err == nil {
-				detail = "assigned to " + user.Username + " (" + string(role) + ")"
-			}
-		}
-		s.Notify(ctx, notification(project, taskName, core.NotificationTaskAssigned, "👤 Task Assigned", detail))
-	}
+	s.tellAssignee(ctx, project, taskName, userID, role)
 	return nil
 }
 
@@ -419,6 +411,82 @@ func (s *ProjectService) Revoke(ctx context.Context, slug, taskName string, user
 		return err
 	}
 	return wrap("revoke task grant", s.grants.Revoke(ctx, task.ID, userID))
+}
+
+// SetAssignees replaces who is on a task. An assignee is a member grant on it, so unassigning takes
+// back only what assigning gave; below owner, only project members assign, and only project members.
+func (s *ProjectService) SetAssignees(ctx context.Context, acc core.ProjectAccess, taskName string, userIDs []uuid.UUID) error {
+	task, err := s.tasks.GetByName(ctx, acc.Project.ID, taskName)
+	if err != nil {
+		return wrap("get task", err)
+	}
+	current, err := s.grants.ListForTask(ctx, task.ID)
+	if err != nil {
+		return fmt.Errorf("list task grants: %w", err)
+	}
+	had := make(map[uuid.UUID]bool, len(current))
+	for _, grant := range current {
+		had[grant.UserID] = true
+	}
+	kept := make(map[uuid.UUID]bool, len(userIDs))
+	var added, removed []uuid.UUID
+	for _, id := range userIDs {
+		if !kept[id] && !had[id] {
+			added = append(added, id)
+		}
+		kept[id] = true
+	}
+	for _, grant := range current {
+		if !kept[grant.UserID] {
+			removed = append(removed, grant.UserID)
+		}
+	}
+	// A grant never reaches owner, so below it the caller's project role decides, not their grant on this task.
+	if acc.Role != core.ProjectRoleOwner {
+		members, err := s.projects.ListMembers(ctx, acc.Project.ID)
+		if err != nil {
+			return fmt.Errorf("list project members: %w", err)
+		}
+		roles := make(map[uuid.UUID]core.ProjectRole, len(members))
+		for _, member := range members {
+			roles[member.UserID] = member.Role
+		}
+		if roles[acc.UserID].Rank() < core.ProjectRoleMember.Rank() {
+			return core.ErrForbidden
+		}
+		for _, id := range slices.Concat(added, removed) {
+			if roles[id] == "" {
+				return core.ErrForbidden
+			}
+		}
+	}
+	for _, id := range added {
+		if err := s.grants.Grant(ctx, core.TaskGrant{TaskID: task.ID, UserID: id, Role: core.ProjectRoleMember}); err != nil {
+			return fmt.Errorf("assign task: %w", err)
+		}
+	}
+	for _, id := range removed {
+		if err := s.grants.Revoke(ctx, task.ID, id); err != nil && !errors.Is(err, core.ErrNotFound) {
+			return fmt.Errorf("unassign task: %w", err)
+		}
+	}
+	for _, id := range added {
+		if id != acc.UserID {
+			s.tellAssignee(ctx, acc.Project, taskName, id, core.ProjectRoleMember)
+		}
+	}
+	return nil
+}
+
+// tellAssignee writes to the assignee alone: the rest of the project sees who is on a task on the task.
+func (s *ProjectService) tellAssignee(ctx context.Context, project core.Project, task string, userID uuid.UUID, role core.ProjectRole) {
+	if s.Notify == nil {
+		return
+	}
+	n := notification(project, task, core.NotificationTaskAssigned, "👤 Task Assigned",
+		"assigned to you ("+string(role)+")")
+	n.UserID = &userID
+	s.Notify(ctx, n)
 }
 
 func (s *ProjectService) ListCredentials(ctx context.Context) ([]core.RegistryCredential, error) {

@@ -17,19 +17,21 @@ func NewNotificationStore(pool *pgxpool.Pool) *NotificationStore {
 
 func (s *NotificationStore) Create(ctx context.Context, n core.Notification) (core.Notification, error) {
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO notifications (project_id, task_name, type, status, title, body)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
-		n.ProjectID, n.TaskName, n.Type, n.Status, n.Title, n.Body).Scan(&n.ID, &n.CreatedAt)
+		INSERT INTO notifications (project_id, task_name, type, status, title, body, user_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+		n.ProjectID, n.TaskName, n.Type, n.Status, n.Title, n.Body, n.UserID).Scan(&n.ID, &n.CreatedAt)
 	if err != nil {
 		return core.Notification{}, mapError("create notification", err)
 	}
 	return n, nil
 }
 
-// visible keeps the notifications n that user $1 may read; $2 marks an administrator.
-const visible = `($2 OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = n.project_id AND m.user_id = $1)
+// visible keeps the notifications n that user $1 may read; $2 marks an administrator, who still
+// never reads one addressed to someone else.
+const visible = `(n.user_id = $1 OR n.user_id IS NULL AND ($2
+	OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = n.project_id AND m.user_id = $1)
 	OR EXISTS (SELECT 1 FROM task_grants g JOIN tasks t ON t.id = g.task_id
-		WHERE g.user_id = $1 AND t.project_id = n.project_id AND t.name = n.task_name))`
+		WHERE g.user_id = $1 AND t.project_id = n.project_id AND t.name = n.task_name)))`
 
 // selectNotifications takes $1 as the user and $2 as whether they are an admin.
 const selectNotifications = `

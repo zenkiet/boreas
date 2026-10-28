@@ -121,6 +121,7 @@ type taskDTO struct {
 	Env             map[string]string `json:"env"`
 	Volumes         map[string]string `json:"volumes,omitempty"`
 	Routes          []core.Route      `json:"routes"`
+	Assignees       []core.Assignee   `json:"assignees"`
 	Error           string            `json:"error,omitempty"`
 	PendingRecreate bool              `json:"pending_recreate,omitempty"`
 	Build           core.Build        `json:"build,omitzero"`
@@ -134,13 +135,16 @@ func taskFromCore(t core.Task, role core.ProjectRole) taskDTO {
 	if t.Routes == nil {
 		t.Routes = []core.Route{}
 	}
+	if t.Assignees == nil {
+		t.Assignees = []core.Assignee{}
+	}
 	return taskDTO{
 		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description, Note: t.Note,
 		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
-		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Routes: t.Routes, Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role,
-		Build: t.Build,
+		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Routes: t.Routes, Assignees: t.Assignees,
+		Error: t.Error, PendingRecreate: t.PendingRecreate, MyRole: role, Build: t.Build,
 	}
 }
 
@@ -163,6 +167,15 @@ type createTaskRequest struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 	Volumes     map[string]string `json:"volumes,omitempty" example:"{\"/app/certs\":\"certs\"}"`
+	Assignees   []uuid.UUID       `json:"assignees,omitempty" maxItems:"50"`
+}
+
+const maxAssignees = 50
+
+type assigneesRequest struct {
+	Project string      `json:"-" path:"project" example:"demo"`
+	Name    string      `json:"-" path:"name" example:"web"`
+	UserIDs []uuid.UUID `json:"user_ids" maxItems:"50"`
 }
 
 type updateTaskRequest struct {
@@ -323,6 +336,7 @@ type memberDTO struct {
 	UserID    uuid.UUID        `json:"user_id"`
 	Username  string           `json:"username"`
 	Role      core.ProjectRole `json:"role"`
+	AvatarAt  *time.Time       `json:"avatar_at,omitempty"`
 	CreatedAt time.Time        `json:"created_at"`
 }
 
@@ -359,6 +373,7 @@ type fleetTaskDTO struct {
 	MyRole      core.ProjectRole `json:"my_role"`
 	LastDeploy  *lastDeployDTO   `json:"last_deploy,omitempty"`
 	Build       core.Build       `json:"build,omitzero"`
+	Assignees   []core.Assignee  `json:"assignees,omitempty"`
 }
 
 type lastDeployDTO struct {

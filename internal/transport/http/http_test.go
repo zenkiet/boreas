@@ -134,7 +134,10 @@ func TestRouteAccessLadder(t *testing.T) {
 
 		{core.ProjectRoleMember, http.MethodPatch, "/api/v1/projects/team/tasks/web", http.StatusOK},
 		{core.ProjectRoleMember, http.MethodDelete, "/api/v1/projects/team/tasks/web", http.StatusOK},
-		{core.ProjectRoleMember, http.MethodGet, "/api/v1/projects/team/members", http.StatusForbidden},
+		{core.ProjectRoleMember, http.MethodGet, "/api/v1/projects/team/members", http.StatusOK},
+		{core.ProjectRoleMember, http.MethodPost, "/api/v1/projects/team/members", http.StatusForbidden},
+		{core.ProjectRoleMember, http.MethodPut, "/api/v1/projects/team/tasks/web/assignees", http.StatusOK},
+		{core.ProjectRoleOperator, http.MethodPut, "/api/v1/projects/team/tasks/web/assignees", http.StatusForbidden},
 		{core.ProjectRoleMember, http.MethodDelete, "/api/v1/projects/team", http.StatusForbidden},
 
 		{core.ProjectRoleOwner, http.MethodGet, "/api/v1/projects/team/members", http.StatusOK},
@@ -143,11 +146,26 @@ func TestRouteAccessLadder(t *testing.T) {
 	}
 	bodies := map[string]string{http.MethodPut: `{"action":"start"}`, http.MethodPatch: `{"dev_status":"ready"}`}
 	for _, tc := range cases {
+		body := bodies[tc.method]
+		if strings.HasSuffix(tc.path, "/assignees") {
+			body = `{"user_ids":[]}`
+		}
 		h := testHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{role: tc.role})
-		rr := do(h, authed(tc.method, tc.path, strings.NewReader(bodies[tc.method])))
+		rr := do(h, authed(tc.method, tc.path, strings.NewReader(body)))
 		if rr.Code != tc.want {
 			t.Fatalf("%s %s as %s = %d, want %d", tc.method, tc.path, tc.role, rr.Code, tc.want)
 		}
+	}
+}
+
+// A member row versions its avatar URL, so a new photo is not served from the day-long cache.
+func TestMembersCarryTheirAvatarVersion(t *testing.T) {
+	at := time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)
+	members := []core.ProjectMember{{UserID: uuid.New(), Username: "kiet", Role: core.ProjectRoleOwner, AvatarAt: &at}}
+	h := testHandler(stubTasks{}, nil, &stubProjects{role: core.ProjectRoleOwner, members: members})
+	body := do(h, authed(http.MethodGet, "/api/v1/projects/team/members", nil)).Body.String()
+	if !strings.Contains(body, `"avatar_at":"2026-10-28T09:00:00Z"`) {
+		t.Fatalf("members = %s", body)
 	}
 }
 
@@ -351,6 +369,53 @@ func TestCreateTaskPassesProject(t *testing.T) {
 	}
 	if seen != "team" || input.Name != "web" || input.Image != "nginx" || input.Port != 8080 {
 		t.Fatalf("project=%q input=%+v", seen, input)
+	}
+}
+
+// The people picked on a new task land even when its container failed after the row was written.
+func TestCreateTaskAssignsWhatItWasGiven(t *testing.T) {
+	nam := uuid.New()
+	var assigned []uuid.UUID
+	projects := &stubProjects{assign: func(_ core.ProjectAccess, task string, ids []uuid.UUID) error {
+		if task == "web" {
+			assigned = ids
+		}
+		return nil
+	}}
+	h := testHandler(stubTasks{
+		create: func(context.Context, string, service.CreateTaskInput) (core.Task, error) {
+			return core.Task{ID: uuid.New(), Name: "web"}, errors.New("pull failed")
+		},
+	}, nil, projects)
+	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks",
+		strings.NewReader(`{"name":"web","image":"nginx","assignees":["`+nam.String()+`"]}`)))
+	if rr.Code == http.StatusCreated || !slices.Equal(assigned, []uuid.UUID{nam}) {
+		t.Fatalf("status = %d, assigned %v; want the error and nam assigned", rr.Code, assigned)
+	}
+}
+
+func TestAssigneesReplaceAndReturnTheTask(t *testing.T) {
+	nam := uuid.New()
+	var assigned []uuid.UUID
+	projects := &stubProjects{assign: func(_ core.ProjectAccess, _ string, ids []uuid.UUID) error {
+		assigned = ids
+		return nil
+	}}
+	h := testHandler(stubTasks{get: func(context.Context, string, string) (core.Task, error) {
+		return core.Task{Name: "web", Assignees: []core.Assignee{{UserID: nam, Username: "nam"}}}, nil
+	}}, nil, projects)
+	path := "/api/v1/projects/team/tasks/web/assignees"
+
+	rr := do(h, authed(http.MethodPut, path, strings.NewReader(`{"user_ids":["`+nam.String()+`"]}`)))
+	if rr.Code != http.StatusOK || !slices.Equal(assigned, []uuid.UUID{nam}) ||
+		!strings.Contains(rr.Body.String(), `"assignees":[{"user_id":"`+nam.String()+`","username":"nam"}]`) {
+		t.Fatalf("status = %d, assigned %v, body %s", rr.Code, assigned, rr.Body.String())
+	}
+	// Leaving the list out must never read as "unassign everyone".
+	for _, body := range []string{`{}`, `{"user_ids":null}`} {
+		if rr := do(h, authed(http.MethodPut, path, strings.NewReader(body))); rr.Code != http.StatusBadRequest {
+			t.Fatalf("%s = %d, want 400", body, rr.Code)
+		}
 	}
 }
 
@@ -835,18 +900,13 @@ func TestUploadBoraImage(t *testing.T) {
 	}
 }
 
-// The handler types an avatar by its bytes, not the header, and stops reading past 5 MiB.
+// Avatars share readImage with Bora's images, whose test covers the type sniffing and the size cap.
 func TestSetAvatar(t *testing.T) {
 	auth := &stubAuth{user: testMember}
 	h := testHandler(stubTasks{}, auth, &stubProjects{})
 	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
-	r := authed(http.MethodPut, "/api/v1/auth/me/avatar", strings.NewReader(png))
-	r.Header.Set("Content-Type", "text/html")
-	if rr := do(h, r); rr.Code != http.StatusOK || !slices.Equal(auth.avatars, []string{"image/png"}) {
+	if rr := do(h, authed(http.MethodPut, "/api/v1/auth/me/avatar", strings.NewReader(png))); rr.Code != http.StatusOK || !slices.Equal(auth.avatars, []string{"image/png"}) {
 		t.Fatalf("set: %d %s, passed on %v", rr.Code, rr.Body, auth.avatars)
-	}
-	if rr := do(h, authed(http.MethodPut, "/api/v1/auth/me/avatar", strings.NewReader(png+strings.Repeat("x", maxImageBytes)))); rr.Code != http.StatusBadRequest || len(auth.avatars) != 1 {
-		t.Fatalf("an oversized avatar: %d, passed on %v", rr.Code, auth.avatars)
 	}
 	if rr := do(h, authed(http.MethodGet, "/api/v1/users/"+uuid.NewString()+"/avatar", nil)); rr.Code != http.StatusNotFound {
 		t.Fatalf("no avatar: %d, want 404", rr.Code)

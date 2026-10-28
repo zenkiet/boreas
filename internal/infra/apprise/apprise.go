@@ -21,8 +21,9 @@ func New(url string, timeout time.Duration) *Sender {
 	return &Sender{url: url, client: &http.Client{Timeout: timeout}}
 }
 
+// Send skips a notification with a recipient: the team channel is no place for someone's own.
 func (s *Sender) Send(ctx context.Context, n core.Notification) error {
-	if s.url == "" {
+	if s.url == "" || n.UserID != nil {
 		return nil
 	}
 	payload, err := json.Marshal(map[string]string{"title": n.Title, "body": n.Body, "type": string(n.Status)})

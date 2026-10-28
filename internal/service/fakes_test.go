@@ -343,7 +343,14 @@ func (f *fakeGrantStore) Grant(_ context.Context, grant core.TaskGrant) error {
 	return nil
 }
 
-func (*fakeGrantStore) Revoke(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (f *fakeGrantStore) Revoke(_ context.Context, taskID, userID uuid.UUID) error {
+	key := grantKey{taskID, userID}
+	if _, ok := f.tasks.roles[key]; !ok {
+		return core.ErrNotFound
+	}
+	delete(f.tasks.roles, key)
+	return nil
+}
 
 type fakeUserStore struct{ users map[uuid.UUID]core.User }
 

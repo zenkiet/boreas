@@ -59,30 +59,17 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) setAvatar(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImageBytes))
-	if err != nil {
-		writeServiceError(w, h.logger, errors.Join(core.ErrInvalidInput, errors.New("image must be at most 5 MiB")))
-		return
+	if body, mime, ok := h.readImage(w, r); ok {
+		user, err := h.auth.SetAvatar(r.Context(), userFrom(r.Context()), mime, body)
+		h.reply(w, http.StatusOK, userResponse{User: userFromCore(user)}, err)
 	}
-	user, err := h.auth.SetAvatar(r.Context(), userFrom(r.Context()), http.DetectContentType(body), body)
-	h.reply(w, http.StatusOK, userResponse{User: userFromCore(user)}, err)
 }
 
 func (h *Handler) getAvatar(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r)
-	if !ok {
-		return
+	if id, ok := pathID(w, r); ok {
+		body, mime, err := h.auth.Avatar(r.Context(), id)
+		h.writeImage(w, body, mime, err)
 	}
-	body, mime, err := h.auth.Avatar(r.Context(), id)
-	if err != nil {
-		writeServiceError(w, h.logger, err)
-		return
-	}
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	// Clients version the URL with avatar_at, so a new avatar misses this cache.
-	w.Header().Set("Cache-Control", "private, max-age=86400")
-	_, _ = w.Write(body)
 }
 
 func (h *Handler) createAPIToken(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +198,7 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 			tasks[j] = fleetTaskDTO{
 				Name: task.Name, Description: task.Description, Image: task.Image,
 				Status: task.Status, DevStatus: task.DevStatus, MyRole: task.Role, Build: task.Build,
+				Assignees: task.Assignees,
 			}
 			if task.LastDeploy != nil {
 				tasks[j].LastDeploy = &lastDeployDTO{Status: task.LastDeploy.Status, At: task.LastDeploy.CreatedAt}
@@ -287,7 +275,7 @@ func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listMembers(w http.ResponseWriter, r *http.Request) {
 	members, err := h.projects.ListMembers(r.Context(), r.PathValue("project"))
 	result := convert(members, func(m core.ProjectMember) memberDTO {
-		return memberDTO{UserID: m.UserID, Username: m.Username, Role: m.Role, CreatedAt: m.CreatedAt}
+		return memberDTO{UserID: m.UserID, Username: m.Username, Role: m.Role, AvatarAt: m.AvatarAt, CreatedAt: m.CreatedAt}
 	})
 	h.reply(w, http.StatusOK, membersResponse{Members: result, Total: len(result)}, err)
 }
@@ -437,28 +425,37 @@ func (h *Handler) streamTurn(w http.ResponseWriter, r *http.Request, events <-ch
 }
 
 func (h *Handler) uploadBoraImage(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImageBytes))
-	if err != nil {
-		writeServiceError(w, h.logger, errors.Join(core.ErrInvalidInput, errors.New("image must be at most 5 MiB")))
-		return
+	if body, mime, ok := h.readImage(w, r); ok {
+		id, err := h.projects.UploadBoraImage(r.Context(), userFrom(r.Context()), mime, body)
+		h.reply(w, http.StatusCreated, boraImageResponse{ID: id}, err)
 	}
-	id, err := h.projects.UploadBoraImage(r.Context(), userFrom(r.Context()), http.DetectContentType(body), body)
-	h.reply(w, http.StatusCreated, boraImageResponse{ID: id}, err)
 }
 
 func (h *Handler) getBoraImage(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r)
-	if !ok {
-		return
+	if id, ok := pathID(w, r); ok {
+		body, mime, err := h.projects.BoraImage(r.Context(), userFrom(r.Context()), id)
+		h.writeImage(w, body, mime, err)
 	}
-	body, mime, err := h.projects.BoraImage(r.Context(), userFrom(r.Context()), id)
+}
+
+// readImage types an upload by its bytes, never by the header the client sent.
+func (h *Handler) readImage(w http.ResponseWriter, r *http.Request) ([]byte, string, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImageBytes))
+	if err != nil {
+		writeServiceError(w, h.logger, errors.Join(core.ErrInvalidInput, errors.New("image must be at most 5 MiB")))
+		return nil, "", false
+	}
+	return body, http.DetectContentType(body), true
+}
+
+func (h *Handler) writeImage(w http.ResponseWriter, body []byte, mime string, err error) {
 	if err != nil {
 		writeServiceError(w, h.logger, err)
 		return
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	// An id never changes its image.
+	// A Bora image never changes, and clients version an avatar's URL with avatar_at.
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	_, _ = w.Write(body)
 }
@@ -587,11 +584,45 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	task, err := h.tasks.Create(r.Context(), r.PathValue("project"), service.CreateTaskInput{
+	if len(req.Assignees) > maxAssignees {
+		writeBadRequest(w)
+		return
+	}
+	ctx, project, acc := r.Context(), r.PathValue("project"), accessFrom(r.Context())
+	task, err := h.tasks.Create(ctx, project, service.CreateTaskInput{
 		Name: req.Name, Description: req.Description, Note: req.Note, Image: req.Image,
 		Port: req.Port, Labels: req.Labels, Env: req.Env, Volumes: req.Volumes,
 	})
-	h.reply(w, http.StatusCreated, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
+	// A container that failed still leaves its row, so the people picked land either way.
+	if task.ID != uuid.Nil && len(req.Assignees) > 0 {
+		assignErr := h.projects.SetAssignees(ctx, acc, task.Name, req.Assignees)
+		if err == nil {
+			err = assignErr
+		}
+		if err == nil {
+			task, err = h.tasks.Get(ctx, project, task.Name)
+		}
+	}
+	h.reply(w, http.StatusCreated, taskResponse{Task: taskFromCore(task, acc.Role)}, err)
+}
+
+func (h *Handler) setAssignees(w http.ResponseWriter, r *http.Request) {
+	var req assigneesRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	// Absent or null would unassign everyone; only an explicit [] may.
+	if req.UserIDs == nil || len(req.UserIDs) > maxAssignees {
+		writeBadRequest(w)
+		return
+	}
+	ctx, acc := r.Context(), accessFrom(r.Context())
+	err := h.projects.SetAssignees(ctx, acc, r.PathValue("name"), req.UserIDs)
+	var task core.Task
+	if err == nil {
+		task, err = h.tasks.Get(ctx, r.PathValue("project"), r.PathValue("name"))
+	}
+	h.reply(w, http.StatusOK, taskResponse{Task: taskFromCore(task, acc.Role)}, err)
 }
 
 func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {

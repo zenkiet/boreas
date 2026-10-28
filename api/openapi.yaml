@@ -1415,6 +1415,7 @@ paths:
       - projects
   /api/v1/projects/{project}/members:
     get:
+      description: Members read it too, to pick a task's assignees.
       operationId: get-projects-project-members
       parameters:
       - in: path
@@ -2108,6 +2109,80 @@ paths:
       security:
       - bearerAuth: []
       summary: Update a task
+      tags:
+      - tasks
+  /api/v1/projects/{project}/tasks/{name}/assignees:
+    put:
+      description: 'An assignee is a member grant on this task: assigning gives member
+        here and never lowers a project role, and unassigning takes back what assigning
+        gave. Below owner, only project members of member rank assign, and only project
+        members. user_ids is required; [] unassigns everyone. Every task carries its
+        assignees.'
+      operationId: put-projects-project-tasks-name-assignees
+      parameters:
+      - in: path
+        name: project
+        required: true
+        schema:
+          example: demo
+          type: string
+      - in: path
+        name: name
+        required: true
+        schema:
+          example: web
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssigneesRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Replace a task's assignees
       tags:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/build:
@@ -3369,6 +3444,31 @@ components:
       required:
       - question
       type: object
+    Assignee:
+      properties:
+        avatar_at:
+          format: date-time
+          nullable: true
+          type: string
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+      required:
+      - user_id
+      - username
+      type: object
+    AssigneesRequest:
+      properties:
+        user_ids:
+          items:
+            $ref: '#/components/schemas/UUID'
+          maxItems: 50
+          nullable: true
+          type: array
+      required:
+      - user_ids
+      type: object
     BoraAbout:
       properties:
         at:
@@ -3741,6 +3841,11 @@ components:
       type: object
     CreateTaskRequest:
       properties:
+        assignees:
+          items:
+            $ref: '#/components/schemas/UUID'
+          maxItems: 50
+          type: array
         description:
           type: string
         env:
@@ -3916,6 +4021,10 @@ components:
       type: object
     FleetTask:
       properties:
+        assignees:
+          items:
+            $ref: '#/components/schemas/Assignee'
+          type: array
         build:
           $ref: '#/components/schemas/Build'
         description:
@@ -4059,6 +4168,10 @@ components:
       type: object
     Member:
       properties:
+        avatar_at:
+          format: date-time
+          nullable: true
+          type: string
         created_at:
           format: date-time
           type: string
@@ -4441,6 +4554,11 @@ components:
       type: object
     Task:
       properties:
+        assignees:
+          items:
+            $ref: '#/components/schemas/Assignee'
+          nullable: true
+          type: array
         build:
           $ref: '#/components/schemas/Build'
         container_id:
@@ -4513,6 +4631,7 @@ components:
       - updated_at
       - env
       - routes
+      - assignees
       - my_role
       type: object
     TaskDeletedResponse:
