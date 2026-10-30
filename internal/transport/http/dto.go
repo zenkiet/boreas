@@ -219,6 +219,9 @@ type deployTaskRequest struct {
 	Project string `json:"-" path:"project" example:"demo"`
 	Name    string `json:"-" path:"name" example:"web"`
 	Image   string `json:"image" example:"ghcr.io/acme/web@sha256:0000000000000000000000000000000000000000000000000000000000000000"`
+	// Repository and Revision name the commit the image was built from, so Bora reads the code the task runs.
+	Repository string `json:"repository,omitempty" example:"github.com/acme/web"`
+	Revision   string `json:"revision,omitempty" example:"4f2f39c2cece1503771938c3880b8a616b54f046"`
 }
 
 type updateStateRequest struct {
@@ -244,14 +247,6 @@ type streamLogsRequest struct {
 type foldersResponse struct {
 	Folders []string `json:"folders" example:"[\"certs\",\"init\"]"`
 	Total   int      `json:"total"`
-}
-
-type repositoriesRequest struct {
-	Query string `query:"query" example:"blogic"`
-}
-
-type repositoriesResponse struct {
-	Repositories []string `json:"repositories" example:"[\"github.com/acme/web\"]"`
 }
 
 type taskResponse struct {
@@ -281,7 +276,6 @@ type projectDTO struct {
 	DefaultImage         string            `json:"default_image" example:"nginx:alpine"`
 	DefaultPort          int               `json:"default_port" example:"80"`
 	DefaultEnv           map[string]string `json:"default_env"`
-	Repositories         []string          `json:"repositories"`
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
 	MyRole               core.ProjectRole  `json:"my_role"`
@@ -291,14 +285,11 @@ func projectFromCore(p core.Project, role core.ProjectRole) projectDTO {
 	if p.DefaultEnv == nil {
 		p.DefaultEnv = map[string]string{}
 	}
-	if p.Repositories == nil {
-		p.Repositories = []string{}
-	}
 	return projectDTO{
 		ID: p.ID, Slug: p.Slug, Name: p.Name,
 		RegistryCredentialID: p.RegistryCredentialID,
 		DefaultImage:         p.DefaultImage, DefaultPort: p.DefaultPort, DefaultEnv: p.DefaultEnv,
-		Repositories: p.Repositories, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
 	}
 }
 
@@ -318,7 +309,6 @@ type updateProjectRequest struct {
 	DefaultImage         *string            `json:"default_image,omitempty" example:"nginx:alpine"`
 	DefaultPort          *int               `json:"default_port,omitempty" example:"80"`
 	DefaultEnv           *map[string]string `json:"default_env,omitempty"`
-	Repositories         *[]string          `json:"repositories,omitempty"`
 }
 
 type addMemberRequest struct {
@@ -463,6 +453,8 @@ type boraDone struct {
 type projectsResponse struct {
 	Projects []fleetProjectDTO `json:"projects"`
 	Total    int               `json:"total"`
+	// CodeSearch is whether Bora reads code here: an assistant, and Sourcebot set up.
+	CodeSearch bool `json:"code_search"`
 }
 
 type membersResponse struct {

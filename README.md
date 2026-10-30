@@ -204,7 +204,6 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/notifications`            | viewer        | List a project's notifications                  |
 | `GET`    | `/projects/{project}/metrics/stream`           | viewer        | Stream metrics for every running task over SSE  |
 | `GET`    | `/projects/{project}/folders`                  | viewer        | List the folders task volumes can mount         |
-| `GET`    | `/code/repositories`                           | admin         | Search the repositories Sourcebot indexes       |
 | `POST`   | `/bora/conversations`                          | login session | Ask Bora in a new conversation, streamed        |
 | `POST`   | `/bora/conversations/{id}/messages`            | login session | Ask a follow-up question, streamed              |
 | `GET`    | `/bora/conversations/{id}/stream`              | login session | Follow a running answer from its start          |
@@ -356,12 +355,16 @@ Bora is the app's assistant. Members ask it about the running system (why a
 deploy failed, what a log line means, which tasks need attention) and about how
 a project's code behaves. It answers from their projects, tasks, builds,
 activity, settings, live metrics, task logs (the newest 200 lines, or those
-from a time on) and, where a project lists repositories, its code, with the
-OpenAI-compatible model in `BOREAS_AI_*`, which must support tool calling and
-streaming. Owners also let it read who is a member and who holds a grant. Bora
-takes login sessions only, and only for projects the caller is a member of: a
-project reached through task grants alone gets 403, and anything the caller
-cannot see gets 404.
+from a time on) and its code, with the OpenAI-compatible model in
+`BOREAS_AI_*`, which must support tool calling and streaming. Owners also let
+it read who is a member and who holds a grant. Bora takes login sessions only,
+and only for projects the caller is a member of: a project reached through task
+grants alone gets 403, and anything the caller cannot see gets 404. With
+Sourcebot set up, Bora serves only the projects it has a search context for
+(see Code below); any other project gets 403, and `bora` is false for it in the
+project list, so the app leaves it out. The list's `code_search` says whether
+Bora reads code on this server at all, so the app tells a project waiting for
+its context from a server without Sourcebot.
 
 Every question is asked in a conversation, which Boreas keeps. The first
 question starts one about the whole `fleet`, a `project`, a `task`, its latest
@@ -435,23 +438,37 @@ administrators may list users and registry credentials:
 
 Bora reads a project's code through a self-hosted
 [Sourcebot](https://www.sourcebot.dev) (its free plan is enough), set by
-`BOREAS_SOURCEBOT_URL` and `BOREAS_SOURCEBOT_API_KEY`. An admin picks the
-repositories each project reads:
+`BOREAS_SOURCEBOT_URL` and `BOREAS_SOURCEBOT_API_KEY`. A project's code is the
+Sourcebot [search context](https://docs.sourcebot.dev/docs/features/search/search-contexts)
+named after its slug; nothing is set in Boreas. For the project `demo`, in
+Sourcebot's config:
 
-```bash
-curl -H "$AUTH" 'http://localhost:8080/api/v1/code/repositories?query=acme'
-curl -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"repositories":["github.com/acme/web","github.com/acme/api"]}' \
-  http://localhost:8080/api/v1/projects/demo
+```json
+"contexts": {
+  "demo": {
+    "include": ["github.com/acme/web", "github.com/acme/api"],
+    "description": "Demo: web app and its API"
+  }
+}
 ```
 
-- It reads each repository's default branch, and lists the files it read under
-  its answer.
+- Boreas asks Sourcebot which projects have a context at most every 5 minutes,
+  so a context added or removed shows within that time.
+- Bora searches each repository's default branch and reads any branch, tag or
+  commit, a folder too. It lists commits (a range such as `HEAD..<commit>` keeps
+  a branch's own), compares two commits, and says who last changed each line.
+- A task whose pipeline reports the commit it deployed (see Deploy from CI)
+  lets Bora read the code it runs and say what changed since the deploy
+  before. Sourcebot fetches each repository on its own schedule
+  (`reindexIntervalMs`, an hour by default), so a commit pushed moments ago may
+  not be there yet.
+- It lists the files it read under its answer.
 - A turn that can read code gets a 96 KiB tool budget instead of 48 KiB.
 - Code has many authors, so once Bora has read code in a turn, it proposes
   nothing but start, stop and restart.
 - Files that usually hold secrets (`*.config`, `appsettings*.json`, env files,
-  keys, certificates, cloud and Terraform credentials) are never read.
+  keys, certificates, cloud and Terraform credentials) are never read, nor
+  shown in a comparison or a folder.
 
 ### Safety and limits
 
@@ -534,6 +551,20 @@ of `docker/build-push-action`.
 Boreas pulls the image and recreates the container, restarting a running task
 and leaving a stopped one stopped. Deploying the image a task already runs
 changes nothing, so a pipeline may retry its callback safely.
+
+Send the commit the image was built from too, and Bora reads the code the task
+runs and can say what changed since the deploy before: `repository` as
+Sourcebot names it and `revision`, the full commit hash, always together. In
+Jenkins:
+
+```bash
+repo=${GIT_URL#*://}; repo=${repo%.git}   # github.com/acme/web
+curl -X POST -H "$AUTH" -H "$JSON" \
+  -d '{"image":"ghcr.io/acme/web@sha256:'"$DIGEST"'","repository":"'"$repo"'","revision":"'"$GIT_COMMIT"'"}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/web/deploy
+```
+
+An image changed by hand forgets the commit.
 
 ### Report build progress
 

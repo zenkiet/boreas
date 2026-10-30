@@ -17,7 +17,7 @@ type TaskService interface {
 	Get(ctx context.Context, project, name string) (core.Task, error)
 	Create(ctx context.Context, project string, in service.CreateTaskInput) (core.Task, error)
 	Update(ctx context.Context, project, name string, in service.UpdateTaskInput, recreate bool) (core.Task, error)
-	Deploy(ctx context.Context, project, name, image string) (core.Task, error)
+	Deploy(ctx context.Context, project, name, image string, rev core.Revision) (core.Task, error)
 	CheckRoute(ctx context.Context, project, name string, route core.Route) (core.RouteCheck, error)
 	ReportBuild(ctx context.Context, project, name string, build core.Build) error
 	Start(ctx context.Context, project, name string) (core.Task, error)
@@ -59,9 +59,10 @@ type ProjectService interface {
 	MarkNotificationsSeen(ctx context.Context, actor core.User, ids []uuid.UUID) error
 	MarkNotificationUnseen(ctx context.Context, acc core.ProjectAccess, id uuid.UUID) error
 	Access(ctx context.Context, actor core.User, slug, taskName string) (core.ProjectAccess, error)
-	SearchRepositories(ctx context.Context, query string) ([]string, error)
 	BoraEnabled() bool
+	BoraServes(ctx context.Context, accesses []core.ProjectAccess) []bool
 	BoraImagesEnabled() bool
+	CodeSearchEnabled() bool
 	UploadBoraImage(ctx context.Context, actor core.User, mime string, body []byte) (uuid.UUID, error)
 	BoraImage(ctx context.Context, actor core.User, id uuid.UUID) ([]byte, string, error)
 	StartBora(ctx context.Context, actor core.User, about core.BoraAbout, question, screen string, images ...uuid.UUID) (<-chan service.BoraEvent, error)

@@ -100,7 +100,7 @@ func TestUnknownAndInvalidNamesAreRejected(t *testing.T) {
 	if _, err := h.svc.Create(ctx, "missing", CreateTaskInput{Name: "x", Image: "img"}); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("unknown project: got %v, want ErrNotFound", err)
 	}
-	if _, err := h.svc.Deploy(ctx, "team", "absent", deployDigestA); !errors.Is(err, core.ErrNotFound) {
+	if _, err := h.svc.Deploy(ctx, "team", "absent", deployDigestA, core.Revision{}); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("unknown task: got %v, want ErrNotFound", err)
 	}
 	if _, err := h.svc.Create(ctx, "team", CreateTaskInput{Name: "bad name", Image: "img"}); !errors.Is(err, core.ErrInvalidInput) {
@@ -179,7 +179,7 @@ func TestDeployPullsAndRestartsARunningTask(t *testing.T) {
 	}
 	h.runtime.calls = nil
 
-	deployed, err := h.svc.Deploy(context.Background(), "team", "web", " "+deployDigestB+" ")
+	deployed, err := h.svc.Deploy(context.Background(), "team", "web", " "+deployDigestB+" ", core.Revision{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,12 +208,45 @@ func TestDeployRetriesPendingRecreate(t *testing.T) {
 	}
 	h.runtime.calls = nil
 
-	deployed, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA)
+	deployed, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA, core.Revision{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if deployed.PendingRecreate || !slices.Contains(h.runtime.calls, "recreate") {
 		t.Fatalf("pending deployment was not retried: task=%+v calls=%v", deployed, h.runtime.calls)
+	}
+}
+
+func TestDeployRecordsTheCommitAndTheOneBefore(t *testing.T) {
+	h := newHarness(t)
+	h.create(t, CreateTaskInput{Name: "web", Image: deployDigestA})
+	ctx, repo := context.Background(), "github.com/acme/web"
+	one, two := strings.Repeat("1", 40), strings.Repeat("2", 40)
+	deploy := func(image string, rev core.Revision) core.Revision {
+		t.Helper()
+		task, err := h.svc.Deploy(ctx, "team", "web", image, rev)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return task.Revision
+	}
+	if got := deploy(deployDigestB, core.Revision{Repo: repo, Commit: one}); got != (core.Revision{Repo: repo, Commit: one}) {
+		t.Fatalf("first deploy: %+v", got)
+	}
+	if got := deploy(deployDigestA, core.Revision{Repo: repo, Commit: two}); got != (core.Revision{Repo: repo, Commit: two, Previous: one}) {
+		t.Fatalf("second deploy: %+v", got)
+	}
+	if got := deploy(deployDigestB, core.Revision{Repo: repo, Commit: two}); got.Previous != one {
+		t.Fatalf("a rebuild of the same commit lost the one before it: %+v", got)
+	}
+	for _, rev := range []core.Revision{{Repo: repo}, {Commit: one}, {Repo: repo, Commit: "abc123"}, {Repo: "acme web", Commit: one}} {
+		if _, err := h.svc.Deploy(ctx, "team", "web", deployDigestA, rev); !errors.Is(err, core.ErrInvalidInput) {
+			t.Errorf("revision %+v: %v", rev, err)
+		}
+	}
+	image := "nginx:alpine"
+	if task, err := h.svc.Update(ctx, "team", "web", UpdateTaskInput{Image: &image}, true); err != nil || task.Revision != (core.Revision{}) {
+		t.Fatalf("a hand-picked image kept the commit: %+v, err %v", task.Revision, err)
 	}
 }
 
@@ -223,7 +256,7 @@ func TestDeployPullFailureLeavesRunningTaskUntouched(t *testing.T) {
 	h.runtime.calls = nil
 	h.runtime.pullErr = errors.New("registry unavailable")
 
-	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err == nil {
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB, core.Revision{}); err == nil {
 		t.Fatal("expected pull failure")
 	}
 	stored, err := h.svc.Get(context.Background(), "team", "web")
@@ -251,7 +284,7 @@ func TestDeployRejectsMutableAndMalformedImages(t *testing.T) {
 		"other digest": "ghcr.io/acme/web@sha512:" + strings.Repeat("a", 64),
 		"empty":        "",
 	} {
-		if _, err := h.svc.Deploy(context.Background(), "team", "web", image); !errors.Is(err, core.ErrInvalidInput) {
+		if _, err := h.svc.Deploy(context.Background(), "team", "web", image, core.Revision{}); !errors.Is(err, core.ErrInvalidInput) {
 			t.Fatalf("%s: got %v, want ErrInvalidInput", name, err)
 		}
 	}
@@ -279,7 +312,7 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 		t.Fatalf("unexpected creation notification: %+v", created)
 	}
 
-	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err != nil {
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB, core.Revision{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.notified) != 2 {
@@ -294,7 +327,7 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 
 	// A retried callback for the running image is not a deployment.
 	h.runtime.calls = nil
-	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB); err != nil {
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestB, core.Revision{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.notified) != 2 || len(h.runtime.calls) != 0 {
@@ -302,7 +335,7 @@ func TestDeployNotifiesOutcomeOnlyForRealDeployments(t *testing.T) {
 	}
 
 	h.runtime.pullErr = errors.New("registry unavailable")
-	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA); err == nil {
+	if _, err := h.svc.Deploy(context.Background(), "team", "web", deployDigestA, core.Revision{}); err == nil {
 		t.Fatal("expected pull failure")
 	}
 	if len(h.notified) != 3 {

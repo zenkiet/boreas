@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -22,7 +23,7 @@ type stubTasks struct {
 	get     func(context.Context, string, string) (core.Task, error)
 	create  func(context.Context, string, service.CreateTaskInput) (core.Task, error)
 	update  func(context.Context, string, string, service.UpdateTaskInput, bool) (core.Task, error)
-	deploy  func(context.Context, string, string, string) (core.Task, error)
+	deploy  func(context.Context, string, string, string, core.Revision) (core.Task, error)
 	logs    func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
 	stats   func(context.Context) (core.SystemStats, error)
 	list    func(context.Context, core.ProjectAccess) ([]core.Task, error)
@@ -63,9 +64,9 @@ func (stubTasks) CheckRoute(context.Context, string, string, core.Route) (core.R
 
 func (stubTasks) ReportBuild(context.Context, string, string, core.Build) error { return nil }
 
-func (s stubTasks) Deploy(c context.Context, project, name, image string) (core.Task, error) {
+func (s stubTasks) Deploy(c context.Context, project, name, image string, rev core.Revision) (core.Task, error) {
 	if s.deploy != nil {
-		return s.deploy(c, project, name, image)
+		return s.deploy(c, project, name, image, rev)
 	}
 	return core.Task{}, nil
 }
@@ -194,6 +195,7 @@ type stubProjects struct {
 	assign          func(core.ProjectAccess, string, []uuid.UUID) error
 	turn            []service.BoraEvent
 	uploaded        []string // the sniffed type of each image the handler passed on
+	unserved        []string // projects Sourcebot has no search context for
 }
 
 func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (core.ProjectAccess, error) {
@@ -218,6 +220,16 @@ func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (
 func (s *stubProjects) BoraEnabled() bool { return true }
 
 func (s *stubProjects) BoraImagesEnabled() bool { return true }
+
+func (s *stubProjects) CodeSearchEnabled() bool { return true }
+
+func (s *stubProjects) BoraServes(_ context.Context, accesses []core.ProjectAccess) []bool {
+	served := make([]bool, len(accesses))
+	for i, acc := range accesses {
+		served[i] = acc.AllTasks && !slices.Contains(s.unserved, acc.Project.Slug)
+	}
+	return served
+}
 
 func (s *stubProjects) UploadBoraImage(_ context.Context, _ core.User, mime string, _ []byte) (uuid.UUID, error) {
 	s.uploaded = append(s.uploaded, mime)
@@ -260,10 +272,6 @@ func (s *stubProjects) AddBoraRan(context.Context, core.User, uuid.UUID, int, st
 }
 
 func (s *stubProjects) DeleteBora(context.Context, core.User, *uuid.UUID) error { return nil }
-
-func (s *stubProjects) SearchRepositories(context.Context, string) ([]string, error) {
-	return []string{"github.com/acme/web"}, nil
-}
 
 func (s *stubProjects) Fleet(c context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
 	if s.fleet != nil {

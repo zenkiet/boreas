@@ -200,7 +200,8 @@ var routeTable = [...]route{
 		tag: "projects", summary: "List reachable projects with their tasks",
 		description: "Administrators see every project, others their memberships and grants. my_role is the " +
 			"caller's role, per project and per task, where a grant can raise it; last_deploy is the newest deploy; " +
-			"bora is whether the caller may ask Bora about the project.",
+			"bora is whether the caller may ask Bora about the project: a member may, and when the server reads code " +
+			"through Sourcebot, only about a project Sourcebot has a search context for, named after its slug.",
 		resp: new(projectsResponse),
 	},
 	{
@@ -221,7 +222,6 @@ var routeTable = [...]route{
 		method: http.MethodPatch, path: "/api/v1/projects/{project}", access: accessOwner, handler: (*Handler).updateProject,
 		tag: "projects", summary: "Update a project",
 		description: "registry_credential_id null detaches the credential, omitted leaves it unchanged. " +
-			"Only admins may set repositories, the Sourcebot repositories Bora reads. " +
 			"An empty default_image or default_env clears that form default. " +
 			"Existing tasks and containers are never touched.",
 		req: new(updateProjectRequest), resp: new(projectResponse), extraErrors: []int{http.StatusBadRequest},
@@ -288,13 +288,6 @@ var routeTable = [...]route{
 	},
 
 	{
-		method: http.MethodGet, path: "/api/v1/code/repositories", access: accessAdmin, handler: (*Handler).searchRepositories,
-		tag: "projects", summary: "Search indexed code repositories",
-		description: "Repositories Sourcebot indexes whose name contains query, at most 20, for a project's repositories. " +
-			"409 when no Sourcebot is configured.",
-		req: new(repositoriesRequest), resp: new(repositoriesResponse), extraErrors: []int{http.StatusConflict},
-	},
-	{
 		method: http.MethodPost, path: "/api/v1/bora/images", access: accessSession, handler: (*Handler).uploadBoraImage,
 		tag: "bora", summary: "Upload an image to ask about",
 		description: "The body is the image itself, JPEG, PNG, WebP or GIF, at most 5 MiB; send its id in a question's images. " +
@@ -313,8 +306,10 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/bora/conversations", access: accessSession, handler: (*Handler).startConversation,
 		tag: "bora", summary: "Ask Bora in a new conversation",
 		description: "Answers a first question about `about`: every project, one project, a task, its latest build, an Activity " +
-			"event or a log line, from the projects the caller is a member of. " + boraStream + " Before the stream begins, " +
-			"403 answers an API token, task grants alone or no project, 404 a subject the caller cannot see, 409 a server without " +
+			"event or a log line, from the projects the caller is a member of that Bora serves (bora on the project list). " +
+			boraStream + " Before the stream begins, " +
+			"403 answers an API token, task grants alone, a project Bora does not serve or no project, 404 a subject the caller " +
+			"cannot see, 409 a server without " +
 			"an assistant, and 429 a caller with 3 turns running or a server with 20. The conversation is saved with its first " +
 			"answer; until then only its stream and GET reach it.",
 		req: new(startConversationRequest), resp: new(string), contentType: "text/event-stream",
@@ -430,7 +425,10 @@ var routeTable = [...]route{
 		description: "For a build pipeline to call after pushing an image. The image must be immutable, " +
 			"of the form repository@sha256:<64 hex digits>, so the artifact that was built is the one " +
 			"that runs. Pulls it and recreates the container, leaving a stopped task stopped. " +
-			"Deploying the image a task already runs changes nothing, so callbacks are safe to retry.",
+			"Deploying the image a task already runs changes nothing, so callbacks are safe to retry. " +
+			"repository and revision, sent together, name the commit the image was built from " +
+			"(the repository as Sourcebot names it, and a full commit hash), so Bora reads the code the task runs " +
+			"and what changed since the deploy before.",
 		req: new(deployTaskRequest), resp: new(taskResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},

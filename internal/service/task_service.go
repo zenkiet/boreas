@@ -293,6 +293,8 @@ type UpdateTaskInput struct {
 	Env         *map[string]string
 	Volumes     *map[string]string
 	Routes      *[]core.Route
+	// Revision is what a new image was built from; an image changed without one runs code of an unknown commit.
+	Revision core.Revision
 }
 
 // Update avoids container churn for metadata-only edits and can defer container changes until the next start.
@@ -318,11 +320,14 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 var deployDigest = regexp.MustCompile(`^[^@\s]+@sha256:[0-9a-f]{64}$`)
 
 // Deploy applies an immutable image and treats an already-deployed image as an idempotent retry.
-func (s *TaskService) Deploy(ctx context.Context, slug, name, image string) (core.Task, error) {
+func (s *TaskService) Deploy(ctx context.Context, slug, name, image string, rev core.Revision) (core.Task, error) {
 	trimmed := strings.TrimSpace(image)
 	if !deployDigest.MatchString(trimmed) {
 		return core.Task{}, errors.Join(core.ErrInvalidInput,
 			errors.New("deploy image must be immutable, of the form repository@sha256:<64 hex digits>"))
+	}
+	if err := rev.Validate(); err != nil {
+		return core.Task{}, err
 	}
 	unlock := s.lockTask(slug, name)
 	defer unlock()
@@ -334,7 +339,14 @@ func (s *TaskService) Deploy(ctx context.Context, slug, name, image string) (cor
 	if task.Image == trimmed && !task.PendingRecreate {
 		return task.Clone(), nil
 	}
-	deployed, err := s.update(ctx, task, project, UpdateTaskInput{Image: &trimmed}, true)
+	if rev.Repo == task.Revision.Repo {
+		rev.Previous = task.Revision.Commit
+		if rev.Commit == task.Revision.Commit {
+			// A rebuild of the same commit keeps the one before it.
+			rev.Previous = task.Revision.Previous
+		}
+	}
+	deployed, err := s.update(ctx, task, project, UpdateTaskInput{Image: &trimmed, Revision: rev}, true)
 	s.cfg.Notify(ctx, deployNotification(project, name, time.Now(), err))
 	return deployed, err
 }
@@ -443,6 +455,9 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 			return s.failTask(ctx, task, fmt.Errorf("stop for update: %w", err))
 		}
 		_ = s.routes.Unregister(ctx, project.Slug, task.Name)
+	}
+	if spec.Image != task.Image {
+		task.Revision = in.Revision
 	}
 	task.Image, task.Port, task.Labels, task.Env, task.Volumes = spec.Image, spec.Port, spec.Labels, spec.Env, spec.Volumes
 	// Clear stale failures because this configuration may fix them.

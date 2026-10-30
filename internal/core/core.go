@@ -244,7 +244,6 @@ type Project struct {
 	DefaultImage         string
 	DefaultPort          int
 	DefaultEnv           map[string]string
-	Repositories         []string
 	CreatedBy            *uuid.UUID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -301,6 +300,7 @@ type Task struct {
 	Routes          []Route
 	Assignees       []Assignee
 	Build           Build
+	Revision        Revision
 	PendingRecreate bool
 	Error           string
 	CreatedAt       time.Time
@@ -360,6 +360,22 @@ func (b Build) Validate() error {
 		return errors.Join(ErrInvalidInput, errors.New("build progress must be between 0 and 100"))
 	case b.URL != "" && (err != nil || len(b.URL) > 2048 || link.Host == "" || (link.Scheme != "http" && link.Scheme != "https")):
 		return errors.Join(ErrInvalidInput, errors.New("build url must be an absolute http or https URL"))
+	}
+	return nil
+}
+
+// Revision is the commit a task's image was built from, as its pipeline reported it; the zero value means unknown.
+type Revision struct {
+	Repo     string `json:"repo,omitempty"`
+	Commit   string `json:"commit,omitempty"`
+	Previous string `json:"previous,omitempty"` // the commit the deploy before ran, from the same repo
+}
+
+var fullCommit = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
+
+func (r Revision) Validate() error {
+	if (r.Repo != "" || r.Commit != "") && (!ValidRepoName(r.Repo) || !fullCommit.MatchString(r.Commit)) {
+		return errors.Join(ErrInvalidInput, errors.New("repository and revision come together: the repository as Sourcebot names it, such as github.com/org/repo, and a full commit hash"))
 	}
 	return nil
 }
@@ -522,11 +538,17 @@ type TaskMetric struct {
 	ObservedAt     time.Time `json:"observed_at"`
 }
 
-// CodeIndex reads indexed source code; every call is confined to the repos it is given.
+// CodeIndex reads indexed source code. A project's code is the search context named after it, and every call is
+// confined to that context. A ref is a branch, tag or commit, and empty for the default branch.
 type CodeIndex interface {
-	Repos(ctx context.Context) ([]string, error)
-	Search(ctx context.Context, repos []string, query string) ([]CodeMatch, error)
-	Read(ctx context.Context, repos []string, repo, path string) (CodeFile, error)
+	Has(ctx context.Context, projects []string) []bool
+	Search(ctx context.Context, project, query string) ([]CodeMatch, error)
+	// Read lists a folder when path ends in /.
+	Read(ctx context.Context, project, repo, ref, path string) (CodeFile, error)
+	// Commits returns the newest commits at ref, which may be a range a..b, and how many there are in all.
+	Commits(ctx context.Context, project, repo, ref, path, query string) ([]Commit, int, error)
+	Diff(ctx context.Context, project, repo, base, head, path string) ([]CodeChange, error)
+	Blame(ctx context.Context, project, repo, ref, path string) ([]BlameRange, error)
 }
 
 type CodeMatch struct {
@@ -538,6 +560,26 @@ type CodeMatch struct {
 type CodeFile struct {
 	Repo, Path, Content, URL string
 }
+
+type Commit struct {
+	Hash, Date, Author, Subject, Refs string
+}
+
+// CodeChange is one file a diff changed: Status is A, D, M or R, and Body holds its hunks.
+type CodeChange struct {
+	Path, Status, Body string
+	Added, Removed     int
+}
+
+type BlameRange struct {
+	Start, Lines int
+	Commit       Commit
+}
+
+var repoName = regexp.MustCompile(`^[\w.-]+(/[\w.-]+)+$`)
+
+// ValidRepoName accepts a repository as Sourcebot names it, such as github.com/org/repo.
+func ValidRepoName(name string) bool { return len(name) <= 200 && repoName.MatchString(name) }
 
 type ChatRole string
 

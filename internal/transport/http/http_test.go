@@ -171,13 +171,13 @@ func TestMembersCarryTheirAvatarVersion(t *testing.T) {
 
 // Task form defaults may carry project secrets, so only members receive them.
 func TestGranteeDoesNotReceiveProjectDefaultEnv(t *testing.T) {
-	project := core.Project{Slug: "team", DefaultEnv: map[string]string{"API_KEY": "s3cret"}, Repositories: []string{"github.com/acme/private-api"}}
+	project := core.Project{Slug: "team", DefaultEnv: map[string]string{"API_KEY": "s3cret"}}
 	grantee := false
 	h := testHandler(stubTasks{}, &stubAuth{user: testMember},
 		&stubProjects{role: core.ProjectRoleViewer, project: project, allTasks: &grantee})
 	body := do(h, authed(http.MethodGet, "/api/v1/projects/team", nil)).Body.String()
-	if strings.Contains(body, "s3cret") || strings.Contains(body, "API_KEY") || strings.Contains(body, "private-api") {
-		t.Fatalf("project defaults or repositories leaked to a grantee: %s", body)
+	if strings.Contains(body, "s3cret") || strings.Contains(body, "API_KEY") {
+		t.Fatalf("project defaults leaked to a grantee: %s", body)
 	}
 
 	member := true
@@ -225,8 +225,13 @@ func TestNotificationFeeds(t *testing.T) {
 
 func TestProjectListIsTheFleet(t *testing.T) {
 	project := core.Project{ID: uuid.New(), Slug: "team"}
-	projects := &stubProjects{fleet: func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
-		return []core.ProjectAccess{{Project: project, Role: core.ProjectRoleViewer}},
+	coded, bare := core.Project{ID: uuid.New(), Slug: "coded"}, core.Project{ID: uuid.New(), Slug: "bare"}
+	projects := &stubProjects{unserved: []string{"bare"}, fleet: func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
+		return []core.ProjectAccess{
+				{Project: project, Role: core.ProjectRoleViewer},
+				{Project: coded, Role: core.ProjectRoleMember, AllTasks: true},
+				{Project: bare, Role: core.ProjectRoleMember, AllTasks: true},
+			},
 			map[uuid.UUID][]core.FleetTask{project.ID: {{
 				Task: core.Task{Name: "web", Env: map[string]string{"SECRET": "s3cret"}},
 				Role: core.ProjectRoleOperator,
@@ -246,6 +251,18 @@ func TestProjectListIsTheFleet(t *testing.T) {
 	}
 	if strings.Contains(body, "s3cret") {
 		t.Fatalf("the fleet leaked task env: %s", body)
+	}
+	var fleet projectsResponse
+	if err := json.Unmarshal([]byte(body), &fleet); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range fleet.Projects {
+		if p.Bora != (p.Slug == "coded") || p.BoraImages != p.Bora {
+			t.Errorf("Bora serves %s: %v, images %v; only members, and where Sourcebot has its context", p.Slug, p.Bora, p.BoraImages)
+		}
+	}
+	if !fleet.CodeSearch {
+		t.Error("code_search must say Bora reads code where an assistant and Sourcebot are set up")
 	}
 }
 
@@ -567,12 +584,13 @@ func TestAPITokenCannotManageAPITokens(t *testing.T) {
 func TestAPITokenDeploysImage(t *testing.T) {
 	digest := "ghcr.io/acme/web@sha256:" + strings.Repeat("a", 64)
 	var got string
-	h := testHandler(stubTasks{deploy: func(_ context.Context, project, name, image string) (core.Task, error) {
-		got = project + " " + name + " " + image
+	h := testHandler(stubTasks{deploy: func(_ context.Context, project, name, image string, rev core.Revision) (core.Task, error) {
+		got = project + " " + name + " " + image + " " + rev.Repo + "@" + rev.Commit
 		return core.Task{Name: name, Image: image}, nil
 	}}, &stubAuth{user: testMember, kind: core.TokenKindAPI}, &stubProjects{role: core.ProjectRoleOperator})
-	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks/T-1/deploy", strings.NewReader(`{"image":"`+digest+`"}`)))
-	if rr.Code != http.StatusOK || got != "team T-1 "+digest || !strings.Contains(rr.Body.String(), digest) {
+	body := `{"image":"` + digest + `","repository":"github.com/acme/web","revision":"` + strings.Repeat("c", 40) + `"}`
+	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks/T-1/deploy", strings.NewReader(body)))
+	if rr.Code != http.StatusOK || got != "team T-1 "+digest+" github.com/acme/web@"+strings.Repeat("c", 40) || !strings.Contains(rr.Body.String(), digest) {
 		t.Fatalf("status=%d forwarded=%q body=%s", rr.Code, got, rr.Body.String())
 	}
 }
@@ -842,25 +860,6 @@ func TestOnlySuccessfulAuthenticatedWritesPublish(t *testing.T) {
 			if tc.want {
 				t.Errorf("%s (%d) did not publish", tc.name, code)
 			}
-		}
-	}
-}
-
-func TestOnlyAdminsPickProjectRepositories(t *testing.T) {
-	projects := &stubProjects{role: core.ProjectRoleOwner, update: func(context.Context, string, service.UpdateProjectInput) (core.Project, error) {
-		return core.Project{}, nil
-	}}
-	for _, tc := range []struct {
-		user core.User
-		want int
-	}{{testMember, http.StatusForbidden}, {testAdmin, http.StatusOK}} {
-		h := testHandler(stubTasks{}, &stubAuth{user: tc.user}, projects)
-		rr := do(h, authed(http.MethodPatch, "/api/v1/projects/demo", strings.NewReader(`{"repositories":["github.com/acme/web"]}`)))
-		if rr.Code != tc.want {
-			t.Errorf("%s sets repositories: %d, want %d", tc.user.Username, rr.Code, tc.want)
-		}
-		if rr := do(h, authed(http.MethodGet, "/api/v1/code/repositories?query=acme", nil)); rr.Code != tc.want {
-			t.Errorf("%s searches repositories: %d, want %d", tc.user.Username, rr.Code, tc.want)
 		}
 	}
 }

@@ -330,23 +330,23 @@ func TestBoraCutsLogsAtLines(t *testing.T) {
 
 func TestBoraCode(t *testing.T) {
 	svc, tasks := newProjects(t)
-	svc.Code = fakeCode{indexed: []string{"github.com/acme/web"}}
+	svc.Code = fakeCode{contexts: map[string]string{"shop": "github.com/acme/web", "crm": "github.com/acme/crm"}}
 	ctx, owner := context.Background(), member()
-	shop, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "shop"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "bare"}); err != nil {
-		t.Fatal(err)
+	var shop core.Project
+	for _, slug := range []string{"shop", "crm", "bare"} {
+		project, err := svc.Create(ctx, owner, CreateProjectInput{Slug: slug})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slug == "shop" {
+			shop = project
+		}
 	}
 	if _, err := svc.Create(ctx, admin(), CreateProjectInput{Slug: "vault"}); err != nil {
 		t.Fatal(err)
 	}
-	shop.Repositories = []string{"github.com/acme/web", "github.com/acme/unindexed"}
-	if _, err := svc.projects.Update(ctx, shop); err != nil {
-		t.Fatal(err)
-	}
-	seedTask(t, tasks, core.Task{ProjectID: shop.ID, Name: "web"})
+	head, before := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	seedTask(t, tasks, core.Task{ProjectID: shop.ID, Name: "web", Revision: core.Revision{Repo: "github.com/acme/web", Commit: head, Previous: before}})
 	run := func(b *bora, name, args string) string {
 		tools := b.tools(false)
 		if i := slices.IndexFunc(tools, func(tool core.Tool) bool { return tool.Name == name }); i >= 0 {
@@ -362,22 +362,35 @@ func TestBoraCode(t *testing.T) {
 		return b
 	}
 	fleet := as(owner, core.BoraAbout{Kind: "fleet"})
+	web := `"project":"shop","repo":"github.com/acme/web"`
 	for _, tc := range []struct{ name, args, want string }{
 		{"search_code", `{"project":"","query":"fee"}`, "name the project"},
 		{"search_code", `{"project":"vault","query":"fee"}`, "not a member of a project named vault"},
-		{"search_code", `{"project":"bare","query":"fee"}`, "an admin adds its repositories in the project's About"},
+		{"search_code", `{"project":"bare","query":"fee"}`, "Sourcebot has no search context named bare"},
+		{"list_tasks", `{"project":"bare"}`, "Bora does not answer about bare"},
 		{"search_code", `{"project":"shop","query":"fee"}`, "github.com/acme/web src/fee.ts:7"},
-		{"read_file", `{"project":"shop","repo":"github.com/acme/other","path":"src/fee.ts"}`, "not found"},
-		{"read_file", `{"project":"shop","repo":"github.com/acme/web","path":"src/fee.ts"}`, "fee = total * 0.02"},
+		{"read_file", `{"project":"shop","repo":"github.com/acme/crm","path":"src/fee.ts","ref":""}`, "not part of shop's code"},
+		{"read_file", `{` + web + `,"path":"src/fee.ts","ref":""}`, "fee = total * 0.02"},
+		{"code_history", `{` + web + `,"ref":"HEAD..` + head + `","path":"","query":""}`, "c0ffee00c0ff 2026-10-28 Dev: feat(MYL-1): fee at HEAD..aaaa"},
+		{"code_history", `{` + web + `,"ref":"","path":"","query":""}`, "… and 30 older commits"},
+		{"code_diff", `{` + web + `,"base":"","head":"x","path":""}`, "needs base and head"},
+		{"code_history", `{"project":"shop","repo":"","ref":"","path":"","query":""}`, "name the repository"},
+		{"code_diff", `{` + web + `,"base":"` + before + `","head":"` + head + `","path":""}`, "31 commits:"},
+		{"blame", `{` + web + `,"path":"src/fee.ts","ref":""}`, "lines 1-3: c0ffee00c0ff 2026-10-28 Dev: feat(MYL-1): fee"},
+		{"task_details", `{"project":"shop","task":"web"}`, "runs commit " + head + " of github.com/acme/web; the deploy before ran " + before},
 	} {
-		if got := run(fleet, tc.name, tc.args); !strings.Contains(got, tc.want) || strings.Contains(got, "unindexed") {
+		if got := run(fleet, tc.name, tc.args); !strings.Contains(got, tc.want) {
 			t.Errorf("%s %s: %q", tc.name, tc.args, got)
 		}
 	}
-	for _, line := range strings.Split(strings.TrimSpace(fleet.listProjects()), "\n") {
-		if strings.HasSuffix(line, "its code can be read") != strings.HasPrefix(line, "shop ") {
-			t.Errorf("code marked wrongly: %q", line)
-		}
+	diff := run(fleet, "code_diff", `{`+web+`,"base":"`+before+`","head":"`+head+`","path":""}`)
+	if fee, lock := strings.Index(diff, "+fee = 2"), strings.Index(diff, "+lock"); !strings.Contains(diff, "2 files changed:\nM package-lock.json (+5000 -0)\nM src/fee.ts (+1 -1)\n") ||
+		fee < 0 || lock < fee || len(diff) > diffText+100 || !strings.HasSuffix(diff, "… cut: pass path for one file\n") {
+		t.Errorf("the small change goes first and the lockfile is cut: %d bytes\n%.600s", len(diff), diff)
+	}
+	if brief := fleet.brief("", nil); !strings.Contains(brief, "does not answer about yet, as Sourcebot has no search context named after them: bare.") ||
+		strings.Contains(brief, "bare (") {
+		t.Errorf("the brief must name bare as not served, and list it with no project: %s", brief)
 	}
 	if !fleet.readsCode() || !fleet.tainted || !slices.Equal(fleet.sources, []core.CodeSource{{Repo: "github.com/acme/web", Path: "src/fee.ts"}}) {
 		t.Errorf("after reading code: tainted %v, sources %v", fleet.tainted, fleet.sources)
@@ -388,11 +401,28 @@ func TestBoraCode(t *testing.T) {
 	if got := run(as(admin(), core.BoraAbout{Kind: "fleet"}), "search_code", `{"project":"shop","query":"fee"}`); !strings.Contains(got, "src/fee.ts") {
 		t.Errorf("an admin: %q", got)
 	}
-	if got := run(as(owner, core.BoraAbout{Kind: "project", Project: "bare"}), "search_code", `{"project":"bare","query":"fee"}`); got != "not offered" {
-		t.Errorf("code tools without repositories in scope: %q", got)
+	if _, err := svc.newBora(ctx, owner, core.BoraAbout{Kind: "project", Project: "bare"}, false); !errors.Is(err, core.ErrForbidden) {
+		t.Errorf("a project without a search context: %v", err)
+	}
+	accesses, _, err := svc.Fleet(ctx, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, served := range svc.BoraServes(ctx, accesses) {
+		if slug := accesses[i].Project.Slug; served != (slug != "bare") {
+			t.Errorf("Bora serves %s: %v", slug, served)
+		}
 	}
 	if _, err := svc.newBora(ctx, member(), core.BoraAbout{Kind: "fleet"}, false); !errors.Is(err, core.ErrForbidden) {
 		t.Errorf("a member of no project: %v", err)
+	}
+	svc.Code = fakeCode{contexts: map[string]string{"shop": "github.com/acme/web"}, fail: errors.New("sourcebot /api/search: 403 Forbidden DEPLOYMENT_RESTRICTED")}
+	if got := run(fleet, "search_code", `{"project":"shop","query":"fee"}`); got != "error: sourcebot /api/search: 403 Forbidden DEPLOYMENT_RESTRICTED" {
+		t.Errorf("what Sourcebot said is lost: %q", got)
+	}
+	svc.Code = nil
+	if b := as(owner, core.BoraAbout{Kind: "project", Project: "bare"}); b.readsCode() || run(b, "search_code", `{"project":"bare","query":"fee"}`) != "not offered" {
+		t.Error("without Sourcebot Bora serves every project, with no code tools")
 	}
 }
 

@@ -22,6 +22,9 @@ const (
 	activityLimit = 30
 	// Docker reports CPU from the second sample of a stream, about a second in.
 	metricsWindow = 2500 * time.Millisecond
+	// A diff lists this many files, then its changes until the answer reaches diffText bytes.
+	diffFiles = 100
+	diffText  = 20 << 10
 )
 
 var envKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -55,8 +58,8 @@ func integer(description string) map[string]any {
 }
 
 type args struct {
-	Project, Task, Since, Query, Repo, Path, Title string
-	Tail, Limit                                    int
+	Project, Task, Since, Query, Repo, Path, Ref, Base, Head, Title string
+	Tail, Limit                                                     int
 }
 
 var proposeParams = map[string]any{
@@ -94,7 +97,8 @@ func (b *bora) tools(first bool) []core.Tool {
 			}),
 		tool("list_tasks", "List the tasks of one project, or of every project: status, dev status, image, port, description, error, latest build and last deploy.",
 			object(map[string]any{"project": every}), b.listTasks),
-		tool("task_details", "Show one task in full: its list_tasks line plus its note, env variable names (never values), volumes and whether it waits to be recreated.",
+		tool("task_details", "Show one task in full: its list_tasks line plus the commit it runs and the one the deploy before ran, its note, "+
+			"env variable names (never values), volumes and whether it waits to be recreated.",
 			object(map[string]any{"project": project, "task": task}), b.taskDetails),
 		tool("activity", "List the newest events (deploys, failures, status changes, builds) of one project, or of every project.",
 			object(map[string]any{"project": every, "limit": integer("how many, 1 to 50; 0 for 30")}), b.activity),
@@ -121,12 +125,29 @@ func (b *bora) tools(first bool) []core.Tool {
 	}
 	if b.readsCode() {
 		code := text("project slug, or empty for the project asked about")
+		repo := text("repository, as search_code or task_details names it")
+		ref := text("a branch, tag or commit; empty for the default branch")
 		tools = append(tools,
-			tool("search_code", "Search a project's code for words that must all appear; quote a phrase, and file:<regex> narrows paths. "+
-				"Returns snippets with repository, file and line.", object(map[string]any{"project": code, "query": text("the words")}), b.searchCode),
-			tool("read_file", "Read one file of a project's code.", object(map[string]any{
-				"project": code, "repo": text("repository as search_code returns it"), "path": text("file path as search_code returns it"),
-			}), b.readFile))
+			tool("search_code", "Search a project's code on each repository's default branch for words that must all appear; quote a phrase, "+
+				"file:<regex> narrows paths and sym:<name> finds where a symbol is defined. Returns snippets with repository, file and line.",
+				object(map[string]any{"project": code, "query": text("the words")}), b.searchCode),
+			tool("read_file", "Read one file of a project's code at a ref, or list a folder when its path ends in /.", object(map[string]any{
+				"project": code, "repo": repo, "path": text("file path as search_code returns it, or a folder ending in /"), "ref": ref,
+			}), b.readFile),
+			tool("code_history", "List a repository's newest commits at a ref, with how many there are in all: hash, date, author and subject. "+
+				"The ref may be a range: a task's own commits are HEAD..<its commit>. Path keeps the commits that touched it; "+
+				"query keeps those whose message matches, such as a Jira key.", object(map[string]any{
+				"project": code, "repo": repo, "ref": ref, "path": text("a file or folder, or empty"), "query": text("words of the message, or empty"),
+			}), b.codeHistory),
+			tool("code_diff", "Show what changed from base to head: the commits, the files, then the changes, smallest file first, cut when long. "+
+				"What a task's last deploy changed: base is the commit the deploy before ran and head its commit. "+
+				"A whole branch: base is its oldest own commit followed by ^. For one file of a long diff, pass its path.", object(map[string]any{
+				"project": code, "repo": repo, "base": text("a branch, tag or commit"), "head": text("a branch, tag or commit"),
+				"path": text("a file, or empty for every file"),
+			}), b.codeDiff),
+			tool("blame", "Show who last changed each range of lines of one file: lines, commit, date, author and subject.", object(map[string]any{
+				"project": code, "repo": repo, "path": text("file path"), "ref": ref,
+			}), b.blame))
 	}
 	if first {
 		tools = append(tools, tool("set_title", "Name this new conversation in the user's list, in their language, in at most 60 characters.",
@@ -135,11 +156,8 @@ func (b *bora) tools(first bool) []core.Tool {
 	return tools
 }
 
-func (b *bora) readsCode() bool { return slices.ContainsFunc(b.members, b.readable) }
-
-func (b *bora) readable(acc core.ProjectAccess) bool {
-	return b.s.Code != nil && len(acc.Project.Repositories) > 0
-}
+// readsCode holds for every project Bora serves: with code search set up, each has a search context.
+func (b *bora) readsCode() bool { return b.s.Code != nil }
 
 // step shows what Bora does, naming only what was checked, or the file it is about to read.
 func (b *bora) step(text string) {
@@ -153,7 +171,7 @@ func (b *bora) scope(slug string) ([]core.ProjectAccess, error) {
 	if slug != "" {
 		acc, ok := b.project(slug)
 		if !ok {
-			return nil, notMember(slug)
+			return nil, b.notMember(slug)
 		}
 		return []core.ProjectAccess{acc}, nil
 	}
@@ -170,11 +188,17 @@ func named(scope []core.ProjectAccess) string {
 	return "your projects"
 }
 
-func notMember(slug string) error {
+func (b *bora) notMember(slug string) error {
+	if slices.Contains(b.unserved, slug) {
+		return errors.New("error: Bora does not answer about " + slug + ": Sourcebot has no search context named " + slug)
+	}
 	return errors.New("error: you are not a member of a project named " + slug)
 }
 
-func noTask(slug, name string) error {
+func (b *bora) noTask(slug, name string) error {
+	if slices.Contains(b.unserved, slug) {
+		return b.notMember(slug)
+	}
 	return errors.New("error: there is no task " + slug + "/" + name + " in your projects")
 }
 
@@ -226,9 +250,6 @@ func (b *bora) listProjects() string {
 		if last.LastDeploy != nil {
 			fmt.Fprintf(&out, ", last deploy %s of %s at %s", last.LastDeploy.Status, last.Name, last.LastDeploy.CreatedAt.Format(time.RFC3339))
 		}
-		if b.readable(acc) {
-			out.WriteString(", its code can be read")
-		}
 		out.WriteByte('\n')
 	}
 	return out.String()
@@ -253,11 +274,17 @@ func (b *bora) listTasks(_ context.Context, in args) (string, error) {
 func (b *bora) taskDetails(_ context.Context, in args) (string, error) {
 	t, ok := b.find(in.Project, in.Task)
 	if !ok {
-		return "", noTask(in.Project, in.Task)
+		return "", b.noTask(in.Project, in.Task)
 	}
 	b.step("Reading " + in.Project + "/" + in.Task + "…")
 	var out strings.Builder
 	out.WriteString(taskLine(t))
+	if r := t.Revision; r.Commit != "" {
+		fmt.Fprintf(&out, "\nruns commit %s of %s", r.Commit, r.Repo)
+		if r.Previous != "" {
+			fmt.Fprintf(&out, "; the deploy before ran %s", r.Previous)
+		}
+	}
 	if t.Note != "" {
 		fmt.Fprintf(&out, "\nnote: %s", t.Note)
 	}
@@ -273,7 +300,7 @@ func (b *bora) taskDetails(_ context.Context, in args) (string, error) {
 
 func (b *bora) taskLogs(ctx context.Context, in args) (string, error) {
 	if _, ok := b.find(in.Project, in.Task); !ok {
-		return "", noTask(in.Project, in.Task)
+		return "", b.noTask(in.Project, in.Task)
 	}
 	opts := core.LogOptions{Tail: cmp.Or(in.Tail, 200)}
 	if opts.Tail < 1 || opts.Tail > 200 {
@@ -342,13 +369,13 @@ func (b *bora) activity(ctx context.Context, in args) (string, error) {
 func (b *bora) metrics(ctx context.Context, in args) (string, error) {
 	acc, ok := b.project(in.Project)
 	if !ok {
-		return "", notMember(in.Project)
+		return "", b.notMember(in.Project)
 	}
 	want := 1
 	if in.Task == "" {
 		want = b.running(acc)
 	} else if _, ok := b.task(acc, in.Task); !ok {
-		return "", noTask(in.Project, in.Task)
+		return "", b.noTask(in.Project, in.Task)
 	}
 	b.step("Measuring " + cmp.Or(in.Task, in.Project) + "…")
 	started := time.Now()
@@ -398,7 +425,7 @@ func (b *bora) running(acc core.ProjectAccess) int {
 func (b *bora) owned(slug string) (core.ProjectAccess, error) {
 	acc, ok := b.project(slug)
 	if !ok {
-		return acc, notMember(slug)
+		return acc, b.notMember(slug)
 	}
 	if acc.Role != core.ProjectRoleOwner {
 		return acc, errors.New("refused: only owners see who has access to " + slug)
@@ -430,7 +457,7 @@ func (b *bora) listGrants(ctx context.Context, in args) (string, error) {
 	}
 	task, ok := b.task(acc, in.Task)
 	if !ok {
-		return "", noTask(in.Project, in.Task)
+		return "", b.noTask(in.Project, in.Task)
 	}
 	b.step("Reading who holds " + in.Task + "…")
 	grants, err := b.s.grants.ListForTask(ctx, task.ID)
@@ -447,7 +474,7 @@ func (b *bora) listGrants(ctx context.Context, in args) (string, error) {
 func (b *bora) projectSettings(ctx context.Context, in args) (string, error) {
 	acc, ok := b.project(in.Project)
 	if !ok {
-		return "", notMember(in.Project)
+		return "", b.notMember(in.Project)
 	}
 	b.step("Reading " + in.Project + "'s settings…")
 	p := acc.Project
@@ -474,17 +501,17 @@ func (b *bora) setTitle(_ context.Context, in args) (string, error) {
 
 func (b *bora) searchCode(ctx context.Context, in args) (string, error) {
 	b.tainted = true
-	acc, err := b.repos(in.Project)
+	slug, err := b.code(in.Project)
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(in.Query) == "" {
 		return "", errors.New("error: query is empty")
 	}
-	b.step("Searching " + acc.Project.Slug + "'s code…")
-	matches, err := b.s.Code.Search(ctx, acc.Project.Repositories, in.Query)
+	b.step("Searching " + slug + "'s code…")
+	matches, err := b.s.Code.Search(ctx, slug, in.Query)
 	if err != nil {
-		return "", errors.New("error: code search failed")
+		return "", codeError(err)
 	}
 	var out strings.Builder
 	for _, m := range matches {
@@ -495,36 +522,132 @@ func (b *bora) searchCode(ctx context.Context, in args) (string, error) {
 
 func (b *bora) readFile(ctx context.Context, in args) (string, error) {
 	b.tainted = true
-	acc, err := b.repos(in.Project)
+	slug, err := b.repo(in)
 	if err != nil {
 		return "", err
 	}
 	b.step(fmt.Sprintf("Reading %.60s…", path.Base(in.Path)))
-	file, err := b.s.Code.Read(ctx, acc.Project.Repositories, in.Repo, in.Path)
+	file, err := b.s.Code.Read(ctx, slug, in.Repo, in.Ref, in.Path)
 	if err != nil {
-		return "", errors.New("error: file not found or not readable")
+		return "", codeError(err)
 	}
-	if source := (core.CodeSource{Repo: file.Repo, Path: file.Path, URL: file.URL}); !slices.Contains(b.sources, source) {
+	if source := (core.CodeSource{Repo: file.Repo, Path: file.Path, URL: file.URL}); !strings.HasSuffix(file.Path, "/") && !slices.Contains(b.sources, source) {
 		b.sources = append(b.sources, source)
 	}
-	return file.Content, nil
+	return cmp.Or(file.Content, "empty"), nil
 }
 
-// repos is the project whose code a tool reads: the one named, or the only one Bora sees.
-func (b *bora) repos(slug string) (core.ProjectAccess, error) {
+func (b *bora) codeHistory(ctx context.Context, in args) (string, error) {
+	b.tainted = true
+	slug, err := b.repo(in)
+	if err != nil {
+		return "", err
+	}
+	b.step("Reading the history of " + path.Base(in.Repo) + "…")
+	commits, total, err := b.s.Code.Commits(ctx, slug, in.Repo, in.Ref, in.Path, in.Query)
+	if err != nil {
+		return "", codeError(err)
+	}
+	return cmp.Or(commitList(commits, total), "no commits"), nil
+}
+
+func (b *bora) codeDiff(ctx context.Context, in args) (string, error) {
+	b.tainted = true
+	slug, err := b.repo(in)
+	if err != nil {
+		return "", err
+	}
+	if in.Base == "" || in.Head == "" {
+		return "", errors.New("error: a diff needs base and head")
+	}
+	b.step("Comparing the commits of " + path.Base(in.Repo) + "…")
+	commits, total, err := b.s.Code.Commits(ctx, slug, in.Repo, in.Base+".."+in.Head, in.Path, "")
+	if err != nil {
+		return "", codeError(err)
+	}
+	changes, err := b.s.Code.Diff(ctx, slug, in.Repo, in.Base, in.Head, in.Path)
+	if err != nil {
+		return "", codeError(err)
+	}
+	var out strings.Builder
+	fmt.Fprintf(&out, "%d commits:\n%s%d files changed:\n", total, commitList(commits, total), len(changes))
+	for i, c := range changes {
+		if i == diffFiles {
+			fmt.Fprintf(&out, "… and %d more files\n", len(changes)-i)
+			break
+		}
+		fmt.Fprintf(&out, "%s %s (+%d -%d)\n", c.Status, c.Path, c.Added, c.Removed)
+	}
+	// The smallest changes first, so a lockfile does not crowd out the code.
+	slices.SortStableFunc(changes, func(a, b core.CodeChange) int { return cmp.Compare(len(a.Body), len(b.Body)) })
+	for _, c := range changes {
+		hunks := "--- " + c.Path + "\n" + c.Body
+		if room := diffText - out.Len(); len(hunks) > room {
+			out.WriteString(strings.ToValidUTF8(hunks[:max(room, 0)], "") + "\n… cut: pass path for one file\n")
+			break
+		}
+		out.WriteString(hunks)
+	}
+	return out.String(), nil
+}
+
+func (b *bora) blame(ctx context.Context, in args) (string, error) {
+	b.tainted = true
+	slug, err := b.repo(in)
+	if err != nil {
+		return "", err
+	}
+	b.step(fmt.Sprintf("Checking who changed %.60s…", path.Base(in.Path)))
+	ranges, err := b.s.Code.Blame(ctx, slug, in.Repo, in.Ref, in.Path)
+	if err != nil {
+		return "", codeError(err)
+	}
+	var out strings.Builder
+	for _, r := range ranges {
+		fmt.Fprintf(&out, "lines %d-%d: %.12s %.10s %s: %s\n", r.Start, r.Start+r.Lines-1, r.Commit.Hash, r.Commit.Date, r.Commit.Author, r.Commit.Subject)
+	}
+	return cmp.Or(out.String(), "no lines"), nil
+}
+
+// commitList writes a commit a line, newest first, and how many older ones it leaves out.
+func commitList(commits []core.Commit, total int) string {
+	var out strings.Builder
+	for _, c := range commits {
+		fmt.Fprintf(&out, "%.12s %.10s %s: %s", c.Hash, c.Date, c.Author, c.Subject)
+		if c.Refs != "" {
+			fmt.Fprintf(&out, " (%s)", c.Refs)
+		}
+		out.WriteByte('\n')
+	}
+	if more := total - len(commits); more > 0 {
+		fmt.Fprintf(&out, "… and %d older commits\n", more)
+	}
+	return out.String()
+}
+
+// codeError passes on what Sourcebot said, so the model can name the cause or try another repository, path or ref.
+func codeError(err error) error { return errors.New("error: " + err.Error()) }
+
+// repo is the project of a tool that reads one repository, which it must name.
+func (b *bora) repo(in args) (string, error) {
+	if in.Repo == "" {
+		return "", errors.New("error: name the repository, as search_code or task_details names it")
+	}
+	return b.code(in.Project)
+}
+
+// code is the project whose code a tool reads: the one named, or the only one Bora sees.
+func (b *bora) code(slug string) (string, error) {
 	if slug == "" && len(b.members) == 1 {
 		slug = b.members[0].Project.Slug
 	}
-	acc, ok := b.project(slug)
-	switch {
-	case slug == "":
-		return acc, errors.New("error: name the project whose code to read")
-	case !ok:
-		return acc, notMember(slug)
-	case len(acc.Project.Repositories) == 0:
-		return acc, errors.New("error: you cannot see " + slug + "'s code: an admin adds its repositories in the project's About")
+	if slug == "" {
+		return "", errors.New("error: name the project whose code to read")
 	}
-	return acc, nil
+	if _, ok := b.project(slug); !ok {
+		return "", b.notMember(slug)
+	}
+	return slug, nil
 }
 
 type proposal struct {

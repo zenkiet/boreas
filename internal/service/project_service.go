@@ -190,7 +190,6 @@ type UpdateProjectInput struct {
 	DefaultImage         *string
 	DefaultPort          *int
 	DefaultEnv           *map[string]string
-	Repositories         *[]string
 }
 
 func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProjectInput) (core.Project, error) {
@@ -225,48 +224,8 @@ func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProje
 		}
 		project.RegistryCredentialID = *in.RegistryCredentialID
 	}
-	if in.Repositories != nil {
-		if err := s.checkRepositories(ctx, *in.Repositories); err != nil {
-			return core.Project{}, err
-		}
-		project.Repositories = *in.Repositories
-	}
 	updated, err := s.projects.Update(ctx, project)
 	return updated, wrap("update project", err)
-}
-
-// checkRepositories needs no name format: only names Sourcebot already indexes pass.
-func (s *ProjectService) checkRepositories(ctx context.Context, repos []string) error {
-	if len(repos) == 0 {
-		return nil
-	}
-	if len(repos) > 20 || s.Code == nil {
-		return errors.Join(core.ErrInvalidInput, errors.New("at most 20 repositories, and code search must be configured"))
-	}
-	indexed, err := s.Code.Repos(ctx)
-	if err != nil {
-		return fmt.Errorf("list indexed repositories: %w", err)
-	}
-	for i, repo := range repos {
-		if slices.Contains(repos[:i], repo) || !slices.Contains(indexed, repo) {
-			return errors.Join(core.ErrInvalidInput, errors.New("repository "+repo+" is repeated or not indexed"))
-		}
-	}
-	return nil
-}
-
-// SearchRepositories lists indexed repositories whose name contains query, for picking a project's repositories.
-func (s *ProjectService) SearchRepositories(ctx context.Context, query string) ([]string, error) {
-	if s.Code == nil {
-		return nil, core.ErrConflict
-	}
-	indexed, err := s.Code.Repos(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list indexed repositories: %w", err)
-	}
-	query = strings.ToLower(strings.TrimSpace(query))
-	found := slices.DeleteFunc(indexed, func(repo string) bool { return !strings.Contains(strings.ToLower(repo), query) })
-	return found[:min(len(found), 20)], nil
 }
 
 func (s *ProjectService) Delete(ctx context.Context, slug string) error {

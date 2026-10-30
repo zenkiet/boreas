@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,11 +122,12 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 	fetched.Status, fetched.ContainerIP = core.StatusRunning, "10.0.0.5"
 	fetched.Routes = []core.Route{{Path: "/api", URL: "https://10.0.0.9", AnyCert: true}}
+	fetched.Revision = core.Revision{Repo: "github.com/acme/web", Commit: strings.Repeat("a", 40), Previous: strings.Repeat("b", 40)}
 	updated, err := store.Update(ctx, fetched)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !updated.UpdatedAt.After(created.UpdatedAt) || !updated.CreatedAt.Equal(created.CreatedAt) ||
+	if !updated.UpdatedAt.After(created.UpdatedAt) || !updated.CreatedAt.Equal(created.CreatedAt) || updated.Revision != fetched.Revision ||
 		updated.Description != "front door" || updated.Note != created.Note || !slices.Equal(updated.Routes, fetched.Routes) {
 		t.Fatalf("update must advance only updated_at and keep the rest: %v -> %+v", created.UpdatedAt, updated)
 	}
@@ -153,7 +155,6 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 
 	project.DefaultImage, project.DefaultPort = "nginx:alpine", 8080
 	project.DefaultEnv = map[string]string{"APP_ENV": "dev"}
-	project.Repositories = []string{"github.com/acme/web", "github.com/acme/api"}
 	updated, err := store.Update(ctx, project)
 	if err != nil {
 		t.Fatal(err)
@@ -166,8 +167,7 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" ||
-		!slices.Equal(fetched.Repositories, project.Repositories) {
+	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" {
 		t.Fatalf("select round trip = %+v", fetched)
 	}
 

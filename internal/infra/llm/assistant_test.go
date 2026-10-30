@@ -245,7 +245,10 @@ crm (Acme CRM): you are owner, 2 tasks, 2 running`
 		"List who is a member of a project you own.",
 		"List who holds a grant on one task of a project you own.",
 		"Search a project's code for words that must all appear.",
-		"Read one file of a project's code.",
+		"Read one file of a project's code at a ref, or list a folder.",
+		"List a repository's newest commits at a ref.",
+		"Show what changed from base to head: the commits, the files, then the changes.",
+		"Show who last changed each range of lines of one file.",
 	} {
 		tools = append(tools, core.Tool{Description: description})
 	}

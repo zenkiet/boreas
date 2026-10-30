@@ -365,20 +365,22 @@ paths:
     post:
       description: 'Answers a first question about `about`: every project, one project,
         a task, its latest build, an Activity event or a log line, from the projects
-        the caller is a member of. The answer comes as Server-Sent Events, each an
-        `event: <name>` with a JSON data line: conversation {id} first on a new conversation;
-        step {text} before each tool call; say {text}, the line to read aloud, written
-        as it is spoken, before the answer''s first delta, or just before done when
-        the model wrote none; delta {text} as the answer is written; reset {} when
-        the text so far, its say included, led into a tool call, so the client drops
-        it; then done {message, title?} with the saved answer, title on a new conversation,
-        error {status, kind, message}, or stopped {} after a stop. A dropped connection
-        does not stop the turn, and a comment heartbeat fills idle time. Read it with
-        fetch and a stream reader: EventSource cannot send the Authorization header.
-        Before the stream begins, 403 answers an API token, task grants alone or no
-        project, 404 a subject the caller cannot see, 409 a server without an assistant,
-        and 429 a caller with 3 turns running or a server with 20. The conversation
-        is saved with its first answer; until then only its stream and GET reach it.'
+        the caller is a member of that Bora serves (bora on the project list). The
+        answer comes as Server-Sent Events, each an `event: <name>` with a JSON data
+        line: conversation {id} first on a new conversation; step {text} before each
+        tool call; say {text}, the line to read aloud, written as it is spoken, before
+        the answer''s first delta, or just before done when the model wrote none;
+        delta {text} as the answer is written; reset {} when the text so far, its
+        say included, led into a tool call, so the client drops it; then done {message,
+        title?} with the saved answer, title on a new conversation, error {status,
+        kind, message}, or stopped {} after a stop. A dropped connection does not
+        stop the turn, and a comment heartbeat fills idle time. Read it with fetch
+        and a stream reader: EventSource cannot send the Authorization header. Before
+        the stream begins, 403 answers an API token, task grants alone, a project
+        Bora does not serve or no project, 404 a subject the caller cannot see, 409
+        a server without an assistant, and 429 a caller with 3 turns running or a
+        server with 20. The conversation is saved with its first answer; until then
+        only its stream and GET reach it.'
       operationId: post-bora-conversations
       requestBody:
         content:
@@ -931,53 +933,6 @@ paths:
       summary: Get one of your images
       tags:
       - bora
-  /api/v1/code/repositories:
-    get:
-      description: Repositories Sourcebot indexes whose name contains query, at most
-        20, for a project's repositories. 409 when no Sourcebot is configured.
-      operationId: get-code-repositories
-      parameters:
-      - in: query
-        name: query
-        schema:
-          example: blogic
-          type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RepositoriesResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Unauthorized
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Forbidden
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Conflict
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Internal Server Error
-      security:
-      - bearerAuth: []
-      summary: Search indexed code repositories
-      tags:
-      - projects
   /api/v1/events/stream:
     get:
       description: 'Server-Sent Events carrying {} once on connect and after any successful
@@ -1125,10 +1080,12 @@ paths:
       - notifications
   /api/v1/projects:
     get:
-      description: Administrators see every project, others their memberships and
-        grants. my_role is the caller's role, per project and per task, where a grant
+      description: 'Administrators see every project, others their memberships and
+        grants. my_role is the caller''s role, per project and per task, where a grant
         can raise it; last_deploy is the newest deploy; bora is whether the caller
-        may ask Bora about the project.
+        may ask Bora about the project: a member may, and when the server reads code
+        through Sourcebot, only about a project Sourcebot has a search context for,
+        named after its slug.'
       operationId: get-projects
       responses:
         "200":
@@ -1307,8 +1264,7 @@ paths:
       - projects
     patch:
       description: registry_credential_id null detaches the credential, omitted leaves
-        it unchanged. Only admins may set repositories, the Sourcebot repositories
-        Bora reads. An empty default_image or default_env clears that form default.
+        it unchanged. An empty default_image or default_env clears that form default.
         Existing tasks and containers are never touched.
       operationId: patch-projects-project
       parameters:
@@ -2258,7 +2214,10 @@ paths:
         must be immutable, of the form repository@sha256:<64 hex digits>, so the artifact
         that was built is the one that runs. Pulls it and recreates the container,
         leaving a stopped task stopped. Deploying the image a task already runs changes
-        nothing, so callbacks are safe to retry.
+        nothing, so callbacks are safe to retry. repository and revision, sent together,
+        name the commit the image was built from (the repository as Sourcebot names
+        it, and a full commit hash), so Bora reads the code the task runs and what
+        changed since the deploy before.
       operationId: post-projects-project-tasks-name-deploy
       parameters:
       - in: path
@@ -3941,6 +3900,12 @@ components:
         image:
           example: ghcr.io/acme/web@sha256:0000000000000000000000000000000000000000000000000000000000000000
           type: string
+        repository:
+          example: github.com/acme/web
+          type: string
+        revision:
+          example: 4f2f39c2cece1503771938c3880b8a616b54f046
+          type: string
       required:
       - image
       type: object
@@ -3988,11 +3953,6 @@ components:
           type: string
         registry_credential_id:
           $ref: '#/components/schemas/UUID'
-        repositories:
-          items:
-            type: string
-          nullable: true
-          type: array
         slug:
           example: demo
           type: string
@@ -4011,7 +3971,6 @@ components:
       - default_image
       - default_port
       - default_env
-      - repositories
       - created_at
       - updated_at
       - my_role
@@ -4291,11 +4250,6 @@ components:
           type: string
         registry_credential_id:
           $ref: '#/components/schemas/UUID'
-        repositories:
-          items:
-            type: string
-          nullable: true
-          type: array
         slug:
           example: demo
           type: string
@@ -4309,7 +4263,6 @@ components:
       - default_image
       - default_port
       - default_env
-      - repositories
       - created_at
       - updated_at
       - my_role
@@ -4330,6 +4283,8 @@ components:
       type: string
     ProjectsResponse:
       properties:
+        code_search:
+          type: boolean
         projects:
           items:
             $ref: '#/components/schemas/FleetProject'
@@ -4340,6 +4295,7 @@ components:
       required:
       - projects
       - total
+      - code_search
       type: object
     PublicProject:
       properties:
@@ -4439,18 +4395,6 @@ components:
           type: string
       required:
       - state
-      type: object
-    RepositoriesResponse:
-      properties:
-        repositories:
-          example:
-          - github.com/acme/web
-          items:
-            type: string
-          nullable: true
-          type: array
-      required:
-      - repositories
       type: object
     Route:
       properties:
@@ -4707,11 +4651,6 @@ components:
           type: string
         registry_credential_id:
           $ref: '#/components/schemas/NullableUUID'
-        repositories:
-          items:
-            type: string
-          nullable: true
-          type: array
       type: object
     UpdateStateRequest:
       properties:

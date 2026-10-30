@@ -191,6 +191,7 @@ func (h *Handler) deleteCredential(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 	accesses, fleet, err := h.projects.Fleet(r.Context(), userFrom(r.Context()))
 	bora, images := h.projects.BoraEnabled(), h.projects.BoraImagesEnabled()
+	served := h.projects.BoraServes(r.Context(), accesses)
 	result := make([]fleetProjectDTO, len(accesses))
 	for i, acc := range accesses {
 		tasks := make([]fleetTaskDTO, len(fleet[acc.Project.ID]))
@@ -204,9 +205,9 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 				tasks[j].LastDeploy = &lastDeployDTO{Status: task.LastDeploy.Status, At: task.LastDeploy.CreatedAt}
 			}
 		}
-		result[i] = fleetProjectDTO{projectDTO: projectFromCore(acc.Project, acc.Role), Tasks: tasks, Bora: bora && acc.AllTasks, BoraImages: images && acc.AllTasks}
+		result[i] = fleetProjectDTO{projectDTO: projectFromCore(acc.Project, acc.Role), Tasks: tasks, Bora: bora && served[i], BoraImages: images && served[i]}
 	}
-	h.reply(w, http.StatusOK, projectsResponse{Projects: result, Total: len(result)}, err)
+	h.reply(w, http.StatusOK, projectsResponse{Projects: result, Total: len(result), CodeSearch: h.projects.CodeSearchEnabled()}, err)
 }
 
 func (h *Handler) publicProjects(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +244,7 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
 	dto := projectFromCore(acc.Project, acc.Role)
 	if !acc.AllTasks {
 		// Task form defaults may carry project secrets, so grantees do not receive them.
-		dto.DefaultEnv, dto.Repositories = map[string]string{}, []string{}
+		dto.DefaultEnv = map[string]string{}
 	}
 	writeJSON(w, http.StatusOK, projectResponse{Project: dto})
 }
@@ -253,13 +254,9 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Repositories != nil && !userFrom(r.Context()).IsAdmin() {
-		writeServiceError(w, h.logger, core.ErrForbidden)
-		return
-	}
 	in := service.UpdateProjectInput{
 		Name: req.Name, DefaultImage: req.DefaultImage,
-		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv, Repositories: req.Repositories,
+		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv,
 	}
 	if req.RegistryCredentialID.Set {
 		in.RegistryCredentialID = &req.RegistryCredentialID.Value
@@ -392,11 +389,6 @@ func (h *Handler) revokeGrant(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listFolders(w http.ResponseWriter, r *http.Request) {
 	folders, err := h.tasks.Folders(r.Context(), r.PathValue("project"))
 	h.reply(w, http.StatusOK, foldersResponse{Folders: folders, Total: len(folders)}, err)
-}
-
-func (h *Handler) searchRepositories(w http.ResponseWriter, r *http.Request) {
-	repos, err := h.projects.SearchRepositories(r.Context(), r.URL.Query().Get("query"))
-	h.reply(w, http.StatusOK, repositoriesResponse{Repositories: repos}, err)
 }
 
 func (h *Handler) startConversation(w http.ResponseWriter, r *http.Request) {
@@ -653,7 +645,8 @@ func (h *Handler) deployTask(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	task, err := h.tasks.Deploy(r.Context(), r.PathValue("project"), r.PathValue("name"), req.Image)
+	task, err := h.tasks.Deploy(r.Context(), r.PathValue("project"), r.PathValue("name"), req.Image,
+		core.Revision{Repo: req.Repository, Commit: req.Revision})
 	h.reply(w, http.StatusOK, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
 }
 

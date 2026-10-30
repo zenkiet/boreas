@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -491,43 +492,64 @@ func TestCredentialLifecycleAndValidation(t *testing.T) {
 	}
 }
 
-// fakeCode answers only from indexed repositories among those it is given, like Sourcebot.
-type fakeCode struct{ indexed []string }
-
-func (f fakeCode) Repos(context.Context) ([]string, error) { return f.indexed, nil }
-
-func (f fakeCode) Search(_ context.Context, repos []string, _ string) ([]core.CodeMatch, error) {
-	var matches []core.CodeMatch
-	for _, repo := range repos {
-		if slices.Contains(f.indexed, repo) {
-			matches = append(matches, core.CodeMatch{Repo: repo, Path: "src/fee.ts", Line: 7, Snippet: "fee = total * 0.02"})
-		}
-	}
-	return matches, nil
+// fakeCode is Sourcebot with a search context per listed project, each holding one repository; fail makes every call fail.
+type fakeCode struct {
+	contexts map[string]string
+	fail     error
 }
 
-func (f fakeCode) Read(_ context.Context, repos []string, repo, path string) (core.CodeFile, error) {
-	if !slices.Contains(repos, repo) || !slices.Contains(f.indexed, repo) {
-		return core.CodeFile{}, core.ErrNotFound
+func (f fakeCode) Has(_ context.Context, projects []string) []bool {
+	has := make([]bool, len(projects))
+	for i, project := range projects {
+		_, has[i] = f.contexts[project]
+	}
+	return has
+}
+
+func (f fakeCode) confine(project, repo string) error {
+	if f.fail != nil {
+		return f.fail
+	}
+	if f.contexts[project] != repo {
+		return fmt.Errorf("%w: %s is not part of %s's code", core.ErrNotFound, repo, project)
+	}
+	return nil
+}
+
+func (f fakeCode) Search(_ context.Context, project, _ string) ([]core.CodeMatch, error) {
+	if err := f.confine(project, f.contexts[project]); err != nil {
+		return nil, err
+	}
+	return []core.CodeMatch{{Repo: f.contexts[project], Path: "src/fee.ts", Line: 7, Snippet: "fee = total * 0.02"}}, nil
+}
+
+func (f fakeCode) Read(_ context.Context, project, repo, _, path string) (core.CodeFile, error) {
+	if err := f.confine(project, repo); err != nil {
+		return core.CodeFile{}, err
 	}
 	return core.CodeFile{Repo: repo, Path: path, Content: "fee = total * 0.02"}, nil
 }
 
-func TestProjectRepositoriesMustBeIndexed(t *testing.T) {
-	svc, _ := newProjects(t)
-	svc.Code = fakeCode{indexed: []string{"github.com/acme/web"}}
-	ctx := context.Background()
-	if _, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"}); err != nil {
-		t.Fatal(err)
+func (f fakeCode) Commits(_ context.Context, project, repo, ref, _, _ string) ([]core.Commit, int, error) {
+	if err := f.confine(project, repo); err != nil {
+		return nil, 0, err
 	}
-	for _, repos := range [][]string{{"acme/web"}, {"github.com/acme/other"}, {"github.com/acme/web", "github.com/acme/web"}} {
-		if _, err := svc.Update(ctx, "team", UpdateProjectInput{Repositories: &repos}); !errors.Is(err, core.ErrInvalidInput) {
-			t.Errorf("repositories %v: %v", repos, err)
-		}
+	return []core.Commit{{Hash: "c0ffee00c0ffee00c0ffee", Date: "2026-10-28T10:00:00+07:00", Author: "Dev", Subject: "feat(MYL-1): fee at " + ref}}, 31, nil
+}
+
+func (f fakeCode) Diff(_ context.Context, project, repo, _, _, _ string) ([]core.CodeChange, error) {
+	if err := f.confine(project, repo); err != nil {
+		return nil, err
 	}
-	repos := []string{"github.com/acme/web"}
-	project, err := svc.Update(ctx, "team", UpdateProjectInput{Repositories: &repos})
-	if err != nil || !slices.Equal(project.Repositories, repos) {
-		t.Fatalf("project %+v, err %v", project, err)
+	return []core.CodeChange{
+		{Path: "package-lock.json", Status: "M", Body: strings.Repeat("+lock\n", 5000), Added: 5000},
+		{Path: "src/fee.ts", Status: "M", Body: "@@ -1,1 +1,1 @@\n-fee = 1\n+fee = 2\n", Added: 1, Removed: 1},
+	}, nil
+}
+
+func (f fakeCode) Blame(_ context.Context, project, repo, _, _ string) ([]core.BlameRange, error) {
+	if err := f.confine(project, repo); err != nil {
+		return nil, err
 	}
+	return []core.BlameRange{{Start: 1, Lines: 3, Commit: core.Commit{Hash: "c0ffee00c0ffee00c0ffee", Date: "2026-10-28T10:00:00+07:00", Author: "Dev", Subject: "feat(MYL-1): fee"}}}, nil
 }
