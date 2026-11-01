@@ -1,16 +1,8 @@
-// The proxy makes this the first script of every page in a mobile project (internal/infra/proxy/registry.go).
+// The proxy makes this the first script of every page of a mobile task (internal/infra/proxy/registry.go).
 // On a desktop it swaps the page for the phone frame; inside that frame it makes the app believe it runs on an iPhone.
 (() => {
-	const base = location.pathname.split('/').slice(0, 3).join('/') + '/';
-
 	if (window.top === window) {
-		let off = false;
-		try {
-			off = sessionStorage.getItem('boreas-device-off:' + base) === '1';
-		} catch {
-			// Blocked storage only means this tab cannot opt out.
-		}
-		if (off || navigator.webdriver || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+		if (navigator.webdriver || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
 		// The app's scripts come after this one in the page, so stopping now means they never run up here.
 		window.stop();
 		const html = document.documentElement;
@@ -33,10 +25,9 @@
 	}
 	if (!device) return;
 
-	// The App URL opens in Safari on a phone; only the native app runs in WKWebView, whose agent has no Safari token.
-	// iOS 26 and later freeze the OS version in both.
-	const webkit = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko)';
-	const ua = device.bridge ? `${webkit} Mobile/15E148` : `${webkit} Version/27.0 Mobile/15E148 Safari/604.1`;
+	// Safari's agent: iOS 26 and later freeze the OS version in it.
+	const ua =
+		'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1';
 	const iphone = {
 		userAgent: ua,
 		appVersion: ua.slice('Mozilla/'.length),
@@ -107,40 +98,6 @@
 		if (!getComputedStyle(document.documentElement).getPropertyValue('--ion-safe-area-top').trim()) {
 			insets(0, 0);
 			device.reserve();
-		}
-	});
-
-	if (!device.bridge) return;
-
-	// Native emulation: what Capacitor's iOS runtime injects, answered by the frame instead of Swift.
-	const clone = (value) => (value === undefined ? value : JSON.parse(JSON.stringify(value)));
-	const headers = [];
-	const routed = (name) => ({
-		name,
-		methods: {
-			find: (matches) => (matches({ name: 'addListener' }) ? { name: 'addListener', rtype: 'callback' } : { rtype: 'promise' })
-		}
-	});
-	let register;
-	window.CapacitorCustomPlatform = { name: 'ios', plugins: {} };
-	window.Capacitor = {
-		PluginHeaders: headers,
-		nativePromise: (plugin, method, options) =>
-			Promise.resolve(device.call(plugin, method, clone(options))).then(clone, (error) => {
-				throw new (window.Capacitor.Exception ?? Error)(error.message, error.code);
-			}),
-		nativeCallback: (plugin, method, options, callback) =>
-			device.listen(plugin, clone(options)?.eventName, (data) => callback(clone(data)))
-	};
-	// Plugins the frame emulates, and those without a web build, go "native"; the rest keep their web build.
-	Object.defineProperty(window.Capacitor, 'registerPlugin', {
-		configurable: true,
-		set: (fn) => {
-			register = fn;
-		},
-		get: () => (name, implementations = {}) => {
-			if (device.plugins.includes(name) || !('web' in implementations)) headers.push(routed(name));
-			return register(name, implementations);
 		}
 	});
 })();

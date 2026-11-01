@@ -62,7 +62,7 @@ func ValidateDevStatus(status DevStatus) error {
 	return errors.Join(ErrInvalidInput, errors.New("dev status must be in_progress, blocked, or ready"))
 }
 
-// FormFactor is how a project's tasks are meant to be seen: a mobile app opens inside a phone frame on desktops.
+// FormFactor is how a task is meant to be seen: a mobile app opens inside a phone frame on desktops.
 type FormFactor string
 
 const (
@@ -262,7 +262,7 @@ type Project struct {
 	DefaultImage         string
 	DefaultPort          int
 	DefaultEnv           map[string]string
-	FormFactor           FormFactor
+	DefaultFormFactor    FormFactor
 	CreatedBy            *uuid.UUID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -310,6 +310,7 @@ type Task struct {
 	Image           string
 	Status          TaskStatus
 	DevStatus       DevStatus
+	FormFactor      FormFactor
 	Port            int
 	ContainerID     string
 	ContainerIP     string

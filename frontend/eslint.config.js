@@ -10,7 +10,6 @@ const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
-	{ ignores: ['static/_device/uqr.mjs'] },
 	js.configs.recommended,
 	ts.configs.recommended,
 	svelte.configs.recommended,

@@ -94,6 +94,37 @@ func TestCreateIgnoresProjectFormDefaults(t *testing.T) {
 	}
 }
 
+func TestTaskFormFactor(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	project := h.project
+	project.DefaultFormFactor = core.FormFactorMobile
+	if _, err := h.projects.Update(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	if task := h.create(t, CreateTaskInput{Name: "app", Image: "img"}); task.FormFactor != core.FormFactorMobile {
+		t.Fatalf("unset form factor = %q, want the project's mobile", task.FormFactor)
+	}
+	if task := h.create(t, CreateTaskInput{Name: "admin", Image: "img", FormFactor: core.FormFactorWeb}); task.FormFactor != core.FormFactorWeb {
+		t.Fatalf("sent form factor = %q, want web", task.FormFactor)
+	}
+	if _, err := h.svc.Create(ctx, "team", CreateTaskInput{Name: "x", Image: "img", FormFactor: "watch"}); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("unknown form factor: got %v, want ErrInvalidInput", err)
+	}
+
+	stops, recreates := len(h.runtime.stopped), len(h.runtime.recreated)
+	mobile, unknown := core.FormFactorMobile, core.FormFactor("watch")
+	if task, err := h.svc.Update(ctx, "team", "admin", UpdateTaskInput{FormFactor: &mobile}, true); err != nil || task.FormFactor != mobile {
+		t.Fatalf("update = %q, %v; want mobile", task.FormFactor, err)
+	}
+	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
+		t.Fatal("a form factor change touched the container")
+	}
+	if _, err := h.svc.Update(ctx, "team", "admin", UpdateTaskInput{FormFactor: &unknown}, true); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("unknown form factor update: got %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestUnknownAndInvalidNamesAreRejected(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

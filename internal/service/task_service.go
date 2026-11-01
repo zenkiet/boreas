@@ -61,6 +61,7 @@ type CreateTaskInput struct {
 	Note        string
 	Image       string
 	Port        int
+	FormFactor  core.FormFactor
 	Labels      map[string]string
 	Env         map[string]string
 	Volumes     map[string]string
@@ -131,6 +132,11 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 		return core.Task{}, err
 	}
 	port := cmp.Or(in.Port, 80)
+	// Unlike the form defaults, the project's form factor applies here too, so tasks CI creates get the frame.
+	formFactor := cmp.Or(in.FormFactor, project.DefaultFormFactor, core.FormFactorWeb)
+	if err := core.ValidateFormFactor(formFactor); err != nil {
+		return core.Task{}, err
+	}
 	spec := core.ContainerSpec{
 		Project: project.Slug, Name: in.Name, Image: strings.TrimSpace(in.Image), Port: port,
 		Labels: maps.Clone(in.Labels), Env: maps.Clone(in.Env), Volumes: maps.Clone(in.Volumes),
@@ -144,7 +150,7 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 
 	task, err := s.tasks.Create(ctx, core.Task{
 		ProjectID: project.ID, Name: in.Name, Description: in.Description, Note: in.Note, Image: spec.Image,
-		Status: core.StatusCreating, DevStatus: core.DevInProgress, Port: port,
+		Status: core.StatusCreating, DevStatus: core.DevInProgress, FormFactor: formFactor, Port: port,
 		Labels: spec.Labels, Env: spec.Env, Volumes: spec.Volumes,
 	})
 	if err != nil {
@@ -287,6 +293,7 @@ type UpdateTaskInput struct {
 	Description *string
 	Note        *string
 	DevStatus   *core.DevStatus
+	FormFactor  *core.FormFactor
 	Image       *string
 	Port        *int
 	Labels      *map[string]string
@@ -407,6 +414,11 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 			return core.Task{}, err
 		}
 	}
+	if in.FormFactor != nil {
+		if err := core.ValidateFormFactor(*in.FormFactor); err != nil {
+			return core.Task{}, err
+		}
+	}
 	routes := task.Routes
 	if in.Routes != nil {
 		if routes, err = core.CleanRoutes(*in.Routes); err != nil {
@@ -417,9 +429,10 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	descriptionChanged := in.Description != nil && *in.Description != task.Description
 	noteChanged := in.Note != nil && *in.Note != task.Note
 	devStatusChanged := in.DevStatus != nil && *in.DevStatus != task.DevStatus
+	formFactorChanged := in.FormFactor != nil && *in.FormFactor != task.FormFactor
 	containerChanged := (recreate && task.PendingRecreate) || spec.Image != task.Image || spec.Port != task.Port ||
 		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env) || !maps.Equal(spec.Volumes, task.Volumes)
-	if !descriptionChanged && !noteChanged && !devStatusChanged && !routesChanged && !containerChanged {
+	if !descriptionChanged && !noteChanged && !devStatusChanged && !formFactorChanged && !routesChanged && !containerChanged {
 		return task.Clone(), nil
 	}
 	task.Routes = routes
@@ -431,6 +444,9 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	}
 	if devStatusChanged {
 		task.DevStatus = *in.DevStatus
+	}
+	if formFactorChanged {
+		task.FormFactor = *in.FormFactor
 	}
 	if !containerChanged {
 		if task, err = s.tasks.Update(ctx, task); err != nil {

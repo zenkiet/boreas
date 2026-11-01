@@ -403,11 +403,12 @@ func TestCreateTaskPassesProject(t *testing.T) {
 		},
 	}, nil, nil)
 	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks",
-		strings.NewReader(`{"name":"web","image":"nginx","port":8080}`)))
+		strings.NewReader(`{"name":"web","image":"nginx","port":8080,"form_factor":"mobile"}`)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
 	}
-	if seen != "team" || input.Name != "web" || input.Image != "nginx" || input.Port != 8080 {
+	if seen != "team" || input.Name != "web" || input.Image != "nginx" || input.Port != 8080 ||
+		input.FormFactor != core.FormFactorMobile {
 		t.Fatalf("project=%q input=%+v", seen, input)
 	}
 }
@@ -644,7 +645,7 @@ func TestLogsDecodeSplitDockerFrame(t *testing.T) {
 
 // Only fields sent reach the service; {} is not omission; auto_restart defaults to true.
 func TestUpdateTaskForwardsOnlySuppliedFields(t *testing.T) {
-	desc, image, ready := "new", "nginx:alpine", core.DevReady
+	desc, image, ready, mobile := "new", "nginx:alpine", core.DevReady, core.FormFactorMobile
 	env, empty := map[string]string{"A": "B"}, map[string]string{}
 	for _, tc := range []struct {
 		body     string
@@ -653,6 +654,7 @@ func TestUpdateTaskForwardsOnlySuppliedFields(t *testing.T) {
 	}{
 		{`{"description":"new"}`, service.UpdateTaskInput{Description: &desc}, true},
 		{`{"dev_status":"ready"}`, service.UpdateTaskInput{DevStatus: &ready}, true},
+		{`{"form_factor":"mobile"}`, service.UpdateTaskInput{FormFactor: &mobile}, true},
 		{`{"env":{"A":"B"}}`, service.UpdateTaskInput{Env: &env}, true},
 		{`{"env":{}}`, service.UpdateTaskInput{Env: &empty}, true},
 		{`{"image":"nginx:alpine","auto_restart":false}`, service.UpdateTaskInput{Image: &image}, false},
@@ -750,7 +752,7 @@ func TestUpdateProjectForwardsOnlySuppliedFields(t *testing.T) {
 		`{"default_image":"nginx:alpine","default_port":8080,"default_env":{}}`: {
 			DefaultImage: &image, DefaultPort: &port, DefaultEnv: &empty,
 		},
-		`{"form_factor":"mobile"}`: {FormFactor: &mobile},
+		`{"default_form_factor":"mobile"}`: {DefaultFormFactor: &mobile},
 	} {
 		var got service.UpdateProjectInput
 		h := testHandler(stubTasks{}, nil, &stubProjects{update: func(_ context.Context, _ string, in service.UpdateProjectInput) (core.Project, error) {

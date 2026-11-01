@@ -112,6 +112,7 @@ type taskDTO struct {
 	Image           string            `json:"image" example:"nginx:alpine"`
 	Status          core.TaskStatus   `json:"status"`
 	DevStatus       core.DevStatus    `json:"dev_status"`
+	FormFactor      core.FormFactor   `json:"form_factor"`
 	Port            int               `json:"port" example:"80"`
 	ContainerID     string            `json:"container_id,omitempty"`
 	ContainerIP     string            `json:"container_ip,omitempty"`
@@ -140,7 +141,7 @@ func taskFromCore(t core.Task, role core.ProjectRole) taskDTO {
 	}
 	return taskDTO{
 		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description, Note: t.Note,
-		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, Port: t.Port,
+		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, FormFactor: t.FormFactor, Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Routes: t.Routes, Assignees: t.Assignees,
@@ -164,6 +165,7 @@ type createTaskRequest struct {
 	Note        string            `json:"note,omitempty"`
 	Image       string            `json:"image" example:"nginx:alpine"`
 	Port        int               `json:"port,omitempty" example:"80"`
+	FormFactor  core.FormFactor   `json:"form_factor,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 	Volumes     map[string]string `json:"volumes,omitempty" example:"{\"/app/certs\":\"certs\"}"`
@@ -184,6 +186,7 @@ type updateTaskRequest struct {
 	Description *string            `json:"description,omitempty"`
 	Note        *string            `json:"note,omitempty"`
 	DevStatus   *core.DevStatus    `json:"dev_status,omitempty"`
+	FormFactor  *core.FormFactor   `json:"form_factor,omitempty"`
 	Image       *string            `json:"image,omitempty" example:"nginx:1.27-alpine"`
 	Port        *int               `json:"port,omitempty" example:"80"`
 	Labels      *map[string]string `json:"labels,omitempty"`
@@ -276,7 +279,7 @@ type projectDTO struct {
 	DefaultImage         string            `json:"default_image" example:"nginx:alpine"`
 	DefaultPort          int               `json:"default_port" example:"80"`
 	DefaultEnv           map[string]string `json:"default_env"`
-	FormFactor           core.FormFactor   `json:"form_factor"`
+	DefaultFormFactor    core.FormFactor   `json:"default_form_factor"`
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
 	MyRole               core.ProjectRole  `json:"my_role"`
@@ -290,7 +293,7 @@ func projectFromCore(p core.Project, role core.ProjectRole) projectDTO {
 		ID: p.ID, Slug: p.Slug, Name: p.Name,
 		RegistryCredentialID: p.RegistryCredentialID,
 		DefaultImage:         p.DefaultImage, DefaultPort: p.DefaultPort, DefaultEnv: p.DefaultEnv,
-		FormFactor: p.FormFactor, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
+		DefaultFormFactor: p.DefaultFormFactor, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
 	}
 }
 
@@ -301,7 +304,7 @@ type createProjectRequest struct {
 	DefaultImage         string            `json:"default_image,omitempty" example:"nginx:alpine"`
 	DefaultPort          int               `json:"default_port,omitempty" example:"80"`
 	DefaultEnv           map[string]string `json:"default_env,omitempty"`
-	FormFactor           core.FormFactor   `json:"form_factor,omitempty"`
+	DefaultFormFactor    core.FormFactor   `json:"default_form_factor,omitempty"`
 }
 
 type updateProjectRequest struct {
@@ -311,7 +314,7 @@ type updateProjectRequest struct {
 	DefaultImage         *string            `json:"default_image,omitempty" example:"nginx:alpine"`
 	DefaultPort          *int               `json:"default_port,omitempty" example:"80"`
 	DefaultEnv           *map[string]string `json:"default_env,omitempty"`
-	FormFactor           *core.FormFactor   `json:"form_factor,omitempty"`
+	DefaultFormFactor    *core.FormFactor   `json:"default_form_factor,omitempty"`
 }
 
 type addMemberRequest struct {

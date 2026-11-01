@@ -147,7 +147,7 @@ type CreateProjectInput struct {
 	DefaultImage         string
 	DefaultPort          int
 	DefaultEnv           map[string]string
-	FormFactor           core.FormFactor
+	DefaultFormFactor    core.FormFactor
 }
 
 // Create makes the caller an owner so the project is never ownerless.
@@ -163,7 +163,7 @@ func (s *ProjectService) Create(ctx context.Context, actor core.User, in CreateP
 	if err := core.ValidateEnv(in.DefaultEnv); err != nil {
 		return core.Project{}, err
 	}
-	formFactor := cmp.Or(in.FormFactor, core.FormFactorWeb)
+	formFactor := cmp.Or(in.DefaultFormFactor, core.FormFactorWeb)
 	if err := core.ValidateFormFactor(formFactor); err != nil {
 		return core.Project{}, err
 	}
@@ -176,7 +176,7 @@ func (s *ProjectService) Create(ctx context.Context, actor core.User, in CreateP
 	project, err := s.projects.Create(ctx, core.Project{
 		Slug: in.Slug, Name: name, RegistryCredentialID: in.RegistryCredentialID,
 		DefaultImage: strings.TrimSpace(in.DefaultImage), DefaultPort: port,
-		DefaultEnv: maps.Clone(in.DefaultEnv), FormFactor: formFactor, CreatedBy: &actor.ID,
+		DefaultEnv: maps.Clone(in.DefaultEnv), DefaultFormFactor: formFactor, CreatedBy: &actor.ID,
 	})
 	if err != nil {
 		return core.Project{}, fmt.Errorf("create project: %w", err)
@@ -195,7 +195,7 @@ type UpdateProjectInput struct {
 	DefaultImage         *string
 	DefaultPort          *int
 	DefaultEnv           *map[string]string
-	FormFactor           *core.FormFactor
+	DefaultFormFactor    *core.FormFactor
 }
 
 func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProjectInput) (core.Project, error) {
@@ -224,11 +224,11 @@ func (s *ProjectService) Update(ctx context.Context, slug string, in UpdateProje
 		}
 		project.DefaultEnv = maps.Clone(*in.DefaultEnv)
 	}
-	if in.FormFactor != nil {
-		if err := core.ValidateFormFactor(*in.FormFactor); err != nil {
+	if in.DefaultFormFactor != nil {
+		if err := core.ValidateFormFactor(*in.DefaultFormFactor); err != nil {
 			return core.Project{}, err
 		}
-		project.FormFactor = *in.FormFactor
+		project.DefaultFormFactor = *in.DefaultFormFactor
 	}
 	if in.RegistryCredentialID != nil {
 		if err := s.checkCredential(ctx, *in.RegistryCredentialID); err != nil {

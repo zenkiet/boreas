@@ -101,9 +101,13 @@ func run(logger *slog.Logger) error {
 
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	routes.Fallback = web.Handler()
-	routes.Mobile = func(ctx context.Context, slug string) bool {
+	routes.Mobile = func(ctx context.Context, slug, name string) bool {
 		project, err := projectStore.GetBySlug(ctx, slug)
-		return err == nil && project.FormFactor == core.FormFactorMobile
+		if err != nil {
+			return false
+		}
+		task, err := taskStore.GetByName(ctx, project.ID, name)
+		return err == nil && task.FormFactor == core.FormFactorMobile
 	}
 	defer routes.CloseIdleConnections()
 

@@ -103,7 +103,8 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	}
 	if created.ID == uuid.Nil || created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() ||
 		created.Labels["tier"] != "front" || created.Env["KEY"] != "value" || created.Volumes["/app/certs"] != "certs" ||
-		created.Description != "front door" || created.Note != "## Setup\n`make db`" || created.Routes == nil {
+		created.Description != "front door" || created.Note != "## Setup\n`make db`" || created.Routes == nil ||
+		created.FormFactor != core.FormFactorWeb {
 		t.Fatalf("create round trip lost data: %+v", created)
 	}
 
@@ -120,7 +121,7 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 
 	// The trigger owns updated_at, so it must advance without the app setting it.
 	time.Sleep(5 * time.Millisecond)
-	fetched.Status, fetched.ContainerIP = core.StatusRunning, "10.0.0.5"
+	fetched.Status, fetched.ContainerIP, fetched.FormFactor = core.StatusRunning, "10.0.0.5", core.FormFactorMobile
 	fetched.Routes = []core.Route{{Path: "/api", URL: "https://10.0.0.9", AnyCert: true}}
 	fetched.Revision = core.Revision{Repo: "github.com/acme/web", Commit: strings.Repeat("a", 40), Previous: strings.Repeat("b", 40)}
 	updated, err := store.Update(ctx, fetched)
@@ -128,8 +129,13 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !updated.UpdatedAt.After(created.UpdatedAt) || !updated.CreatedAt.Equal(created.CreatedAt) || updated.Revision != fetched.Revision ||
-		updated.Description != "front door" || updated.Note != created.Note || !slices.Equal(updated.Routes, fetched.Routes) {
+		updated.Description != "front door" || updated.Note != created.Note || !slices.Equal(updated.Routes, fetched.Routes) ||
+		updated.FormFactor != core.FormFactorMobile {
 		t.Fatalf("update must advance only updated_at and keep the rest: %v -> %+v", created.UpdatedAt, updated)
+	}
+	updated.FormFactor = "tablet"
+	if _, err := store.Update(ctx, updated); err == nil {
+		t.Fatal("the database must reject an unknown form factor")
 	}
 
 	if err := store.Delete(ctx, created.ID); err != nil {
@@ -150,19 +156,19 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 
 	project := seedProject(t, pool)
 	if project.DefaultImage != "" || project.DefaultPort != 80 || len(project.DefaultEnv) != 0 ||
-		project.FormFactor != core.FormFactorWeb {
+		project.DefaultFormFactor != core.FormFactorWeb {
 		t.Fatalf("column defaults = %+v, want \"\", 80, empty, web", project)
 	}
 
 	project.DefaultImage, project.DefaultPort = "nginx:alpine", 8080
 	project.DefaultEnv = map[string]string{"APP_ENV": "dev"}
-	project.FormFactor = core.FormFactorMobile
+	project.DefaultFormFactor = core.FormFactorMobile
 	updated, err := store.Update(ctx, project)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.DefaultImage != "nginx:alpine" || updated.DefaultPort != 8080 || updated.DefaultEnv["APP_ENV"] != "dev" ||
-		updated.FormFactor != core.FormFactorMobile {
+		updated.DefaultFormFactor != core.FormFactorMobile {
 		t.Fatalf("update round trip = %+v", updated)
 	}
 
@@ -171,7 +177,7 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" ||
-		fetched.FormFactor != core.FormFactorMobile {
+		fetched.DefaultFormFactor != core.FormFactorMobile {
 		t.Fatalf("select round trip = %+v", fetched)
 	}
 
@@ -179,7 +185,7 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 	if _, err := store.Update(ctx, fetched); err == nil {
 		t.Fatal("the database must reject an out-of-range default port")
 	}
-	fetched.DefaultPort, fetched.FormFactor = 8080, "tablet"
+	fetched.DefaultPort, fetched.DefaultFormFactor = 8080, "tablet"
 	if _, err := store.Update(ctx, fetched); err == nil {
 		t.Fatal("the database must reject an unknown form factor")
 	}

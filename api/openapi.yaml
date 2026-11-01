@@ -1899,7 +1899,9 @@ paths:
     post:
       description: Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$.
         volumes maps a container path to one of the project's folders, writable and
-        shared by the project's tasks; the folder must exist.
+        shared by the project's tasks; the folder must exist. form_factor defaults
+        to the project's default_form_factor; desktops show a mobile task inside an
+        iPhone frame.
       operationId: post-projects-project-tasks
       parameters:
       - in: path
@@ -2068,11 +2070,12 @@ paths:
     patch:
       description: 'Only the fields sent are changed. image, port, labels, env and
         volumes need a new container: auto_restart applies it at once and defaults
-        to true, otherwise the next start or restart does. description and dev_status
-        leave a running container untouched. dev_status tracks the code, not the container:
-        in_progress on create, blocked is not fit for QA, ready is. routes replaces
-        the whole list and applies at once, container or not: <App URL><path>/… is
-        forwarded to url/…, so the browser never calls the address itself.'
+        to true, otherwise the next start or restart does. description, dev_status
+        and form_factor leave a running container untouched. dev_status tracks the
+        code, not the container: in_progress on create, blocked is not fit for QA,
+        ready is. routes replaces the whole list and applies at once, container or
+        not: <App URL><path>/… is forwarded to url/…, so the browser never calls the
+        address itself.'
       operationId: patch-projects-project-tasks-name
       parameters:
       - in: path
@@ -3862,14 +3865,14 @@ components:
           additionalProperties:
             type: string
           type: object
+        default_form_factor:
+          $ref: '#/components/schemas/FormFactor'
         default_image:
           example: nginx:alpine
           type: string
         default_port:
           example: 80
           type: integer
-        form_factor:
-          $ref: '#/components/schemas/FormFactor'
         name:
           example: Demo
           type: string
@@ -3894,6 +3897,8 @@ components:
           additionalProperties:
             type: string
           type: object
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
         image:
           example: nginx:alpine
           type: string
@@ -4020,14 +4025,14 @@ components:
             type: string
           nullable: true
           type: object
+        default_form_factor:
+          $ref: '#/components/schemas/FormFactor'
         default_image:
           example: nginx:alpine
           type: string
         default_port:
           example: 80
           type: integer
-        form_factor:
-          $ref: '#/components/schemas/FormFactor'
         id:
           $ref: '#/components/schemas/UUID'
         my_role:
@@ -4055,7 +4060,7 @@ components:
       - default_image
       - default_port
       - default_env
-      - form_factor
+      - default_form_factor
       - created_at
       - updated_at
       - my_role
@@ -4337,14 +4342,14 @@ components:
             type: string
           nullable: true
           type: object
+        default_form_factor:
+          $ref: '#/components/schemas/FormFactor'
         default_image:
           example: nginx:alpine
           type: string
         default_port:
           example: 80
           type: integer
-        form_factor:
-          $ref: '#/components/schemas/FormFactor'
         id:
           $ref: '#/components/schemas/UUID'
         my_role:
@@ -4367,7 +4372,7 @@ components:
       - default_image
       - default_port
       - default_env
-      - form_factor
+      - default_form_factor
       - created_at
       - updated_at
       - my_role
@@ -4628,6 +4633,8 @@ components:
           type: object
         error:
           type: string
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
         id:
           $ref: '#/components/schemas/UUID'
         image:
@@ -4675,6 +4682,7 @@ components:
       - image
       - status
       - dev_status
+      - form_factor
       - port
       - created_at
       - updated_at
@@ -4743,6 +4751,8 @@ components:
             type: string
           nullable: true
           type: object
+        default_form_factor:
+          $ref: '#/components/schemas/FormFactor'
         default_image:
           example: nginx:alpine
           nullable: true
@@ -4751,8 +4761,6 @@ components:
           example: 80
           nullable: true
           type: integer
-        form_factor:
-          $ref: '#/components/schemas/FormFactor'
         name:
           nullable: true
           type: string
@@ -4786,6 +4794,8 @@ components:
             type: string
           nullable: true
           type: object
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
         image:
           example: nginx:1.27-alpine
           nullable: true

@@ -173,7 +173,7 @@ func TestRegistryLeavesHTMLWithoutBaseAlone(t *testing.T) {
 	}
 }
 
-func TestRegistryInjectsTheDeviceShimForMobileProjects(t *testing.T) {
+func TestRegistryInjectsTheDeviceShimForMobileTasks(t *testing.T) {
 	const page = `<!doctype html><html><HEAD lang="en"><base href="/"><header>x</header></HEAD></html>`
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -183,9 +183,9 @@ func TestRegistryInjectsTheDeviceShimForMobileProjects(t *testing.T) {
 	host, port := serverAddress(t, upstream.URL)
 	registry := New(0, 0)
 	defer registry.CloseIdleConnections()
-	registry.Mobile = func(_ context.Context, project string) bool { return project == "shop" }
-	for _, project := range []string{"shop", "site"} {
-		if err := registry.Register(context.Background(), project, "t1", host, port); err != nil {
+	registry.Mobile = func(_ context.Context, project, task string) bool { return project == "shop" && task == "t1" }
+	for _, task := range []string{"t1", "t2"} {
+		if err := registry.Register(context.Background(), "shop", task, host, port); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -196,7 +196,7 @@ func TestRegistryInjectsTheDeviceShimForMobileProjects(t *testing.T) {
 		strings.Count(body, "shim.js") != 1 {
 		t.Fatalf("mobile HTML = %s", body)
 	}
-	if body := serve(registry, httptest.NewRequest(http.MethodGet, "/site/t1/", nil)).Body.String(); strings.Contains(body, "shim.js") {
+	if body := serve(registry, httptest.NewRequest(http.MethodGet, "/shop/t2/", nil)).Body.String(); strings.Contains(body, "shim.js") {
 		t.Fatalf("web HTML = %s", body)
 	}
 	if body := serve(registry, httptest.NewRequest(http.MethodGet, "/shop/t1/api", nil)).Body.String(); body != page {

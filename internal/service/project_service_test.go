@@ -117,25 +117,25 @@ func TestUpdateProjectTaskDefaults(t *testing.T) {
 	}
 }
 
-func TestProjectFormFactor(t *testing.T) {
+func TestProjectDefaultFormFactor(t *testing.T) {
 	svc, _ := newProjects(t)
 	ctx := context.Background()
 	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "site"})
-	if err != nil || project.FormFactor != core.FormFactorWeb {
-		t.Fatalf("unset form factor = %q, %v; want web", project.FormFactor, err)
+	if err != nil || project.DefaultFormFactor != core.FormFactorWeb {
+		t.Fatalf("unset form factor = %q, %v; want web", project.DefaultFormFactor, err)
 	}
-	if _, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "tablet", FormFactor: "tablet"}); !errors.Is(err, core.ErrInvalidInput) {
+	if _, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "tablet", DefaultFormFactor: "tablet"}); !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("unknown form factor: got %v, want ErrInvalidInput", err)
 	}
 
 	mobile, unknown, renamed := core.FormFactorMobile, core.FormFactor("watch"), "Site"
-	if project, err = svc.Update(ctx, "site", UpdateProjectInput{FormFactor: &mobile}); err != nil || project.FormFactor != mobile {
-		t.Fatalf("update = %q, %v; want mobile", project.FormFactor, err)
+	if project, err = svc.Update(ctx, "site", UpdateProjectInput{DefaultFormFactor: &mobile}); err != nil || project.DefaultFormFactor != mobile {
+		t.Fatalf("update = %q, %v; want mobile", project.DefaultFormFactor, err)
 	}
-	if project, err = svc.Update(ctx, "site", UpdateProjectInput{Name: &renamed}); err != nil || project.FormFactor != mobile {
-		t.Fatalf("an update without a form factor changed it to %q (%v)", project.FormFactor, err)
+	if project, err = svc.Update(ctx, "site", UpdateProjectInput{Name: &renamed}); err != nil || project.DefaultFormFactor != mobile {
+		t.Fatalf("an update without a form factor changed it to %q (%v)", project.DefaultFormFactor, err)
 	}
-	if _, err := svc.Update(ctx, "site", UpdateProjectInput{FormFactor: &unknown}); !errors.Is(err, core.ErrInvalidInput) {
+	if _, err := svc.Update(ctx, "site", UpdateProjectInput{DefaultFormFactor: &unknown}); !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("unknown form factor update: got %v, want ErrInvalidInput", err)
 	}
 }

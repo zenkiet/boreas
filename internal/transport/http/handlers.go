@@ -249,7 +249,7 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 	project, err := h.projects.Create(r.Context(), userFrom(r.Context()), service.CreateProjectInput{
 		Slug: req.Slug, Name: req.Name, RegistryCredentialID: req.RegistryCredentialID,
 		DefaultImage: req.DefaultImage, DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv,
-		FormFactor: req.FormFactor,
+		DefaultFormFactor: req.DefaultFormFactor,
 	})
 	h.reply(w, http.StatusCreated, projectResponse{Project: projectFromCore(project, core.ProjectRoleOwner)}, err)
 }
@@ -271,7 +271,7 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	in := service.UpdateProjectInput{
 		Name: req.Name, DefaultImage: req.DefaultImage,
-		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv, FormFactor: req.FormFactor,
+		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv, DefaultFormFactor: req.DefaultFormFactor,
 	}
 	if req.RegistryCredentialID.Set {
 		in.RegistryCredentialID = &req.RegistryCredentialID.Value
@@ -598,7 +598,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 	ctx, project, acc := r.Context(), r.PathValue("project"), accessFrom(r.Context())
 	task, err := h.tasks.Create(ctx, project, service.CreateTaskInput{
 		Name: req.Name, Description: req.Description, Note: req.Note, Image: req.Image,
-		Port: req.Port, Labels: req.Labels, Env: req.Env, Volumes: req.Volumes,
+		Port: req.Port, FormFactor: req.FormFactor, Labels: req.Labels, Env: req.Env, Volumes: req.Volumes,
 	})
 	// A container that failed still leaves its row, so the people picked land either way.
 	if task.ID != uuid.Nil && len(req.Assignees) > 0 {
@@ -639,8 +639,8 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	task, err := h.tasks.Update(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		service.UpdateTaskInput{
-			Description: req.Description, Note: req.Note, DevStatus: req.DevStatus, Image: req.Image, Port: req.Port,
-			Labels: req.Labels, Env: req.Env, Volumes: req.Volumes, Routes: req.Routes,
+			Description: req.Description, Note: req.Note, DevStatus: req.DevStatus, FormFactor: req.FormFactor,
+			Image: req.Image, Port: req.Port, Labels: req.Labels, Env: req.Env, Volumes: req.Volumes, Routes: req.Routes,
 		}, req.AutoRestart == nil || *req.AutoRestart)
 	h.reply(w, http.StatusOK, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
 }

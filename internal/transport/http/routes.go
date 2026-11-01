@@ -407,7 +407,8 @@ var routeTable = [...]route{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/tasks", access: accessMember, handler: (*Handler).createTask,
 		tag: "tasks", summary: "Create a task",
 		description: "Names are unique per project and must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$. " +
-			"volumes maps a container path to one of the project's folders, writable and shared by the project's tasks; the folder must exist.",
+			"volumes maps a container path to one of the project's folders, writable and shared by the project's tasks; the folder must exist. " +
+			"form_factor defaults to the project's default_form_factor; desktops show a mobile task inside an iPhone frame.",
 		req: new(createTaskRequest), resp: new(taskResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
@@ -421,7 +422,7 @@ var routeTable = [...]route{
 		tag: "tasks", summary: "Update a task",
 		description: "Only the fields sent are changed. image, port, labels, env and volumes need a new " +
 			"container: auto_restart applies it at once and defaults to true, otherwise the next " +
-			"start or restart does. description and dev_status leave a running container untouched. " +
+			"start or restart does. description, dev_status and form_factor leave a running container untouched. " +
 			"dev_status tracks the code, not the container: in_progress on create, blocked is not " +
 			"fit for QA, ready is. routes replaces the whole list and applies at once, container or not: " +
 			"<App URL><path>/… is forwarded to url/…, so the browser never calls the address itself.",
