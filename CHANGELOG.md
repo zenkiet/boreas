@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.26.0 - 2026-11-01
+#### 🚀 Features
+- (**projects**) ✨ open mobile projects in an iPhone frame on desktops - (178d83f) - *zenkiet*
+
+- - -
+
 ## v1.25.0 - 2026-10-30
 #### 🚀 Features
 - (**bora**) ✨ read code by sorucebot context, with history, diff and blame - (5ff318a) - *zenkiet*
