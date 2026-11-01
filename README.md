@@ -56,7 +56,7 @@ BOREAS_ADMIN_USERNAME=admin BOREAS_ADMIN_EMAIL=admin@localhost BOREAS_ADMIN_PASS
 
 ## Authenticate
 
-Every `/api/v1` route except `/health` and `/auth/login` requires a bearer
+Every `/api/v1` route except `/health`, `/auth/login` and `/auth/pairing/claim` requires a bearer
 token. Tokens are returned once at login and expire after 30 days.
 
 ```bash
@@ -175,6 +175,8 @@ All API routes are under `/api/v1`.
 | -------- | ---------------------------------------------- | ------------- | ----------------------------------------------- |
 | `GET`    | `/health`                                      | public        | Health check                                    |
 | `POST`   | `/auth/login`                                  | public        | Exchange credentials for a token                |
+| `POST`   | `/auth/pairing`                                | login session | Start signing in another device                 |
+| `POST`   | `/auth/pairing/claim`                          | public        | Exchange a pairing code for a token             |
 | `POST`   | `/auth/logout`                                 | user          | Revoke the current token                        |
 | `GET`    | `/auth/me`                                     | user          | Current user                                    |
 | `PUT`    | `/auth/me/avatar`                              | login session | Set your avatar                                 |
@@ -885,6 +887,38 @@ use relative URLs or a matching base path. Boreas passes the prefix to the
 container as `BASE_HREF` and rewrites `<base href>` in served HTML. Always
 retain the trailing slash, for example `/demo/web/`; requests without it are
 redirected.
+
+## Mobile projects
+
+A project whose tasks are mobile apps served as websites (Capacitor, Ionic)
+sets `form_factor` to `mobile`; the default is `web`.
+
+```bash
+curl -X PATCH -H "$AUTH" -H "$JSON" -d '{"form_factor":"mobile"}' \
+  http://localhost:8080/api/v1/projects/demo
+```
+
+Boreas then puts `/_device/shim.js` first in every HTML page of the project's
+tasks. A desktop browser opening an App URL gets the app inside an iPhone 18 Pro
+Max frame at the same URL. The app sees an iPhone: Safari's user agent, 62/34
+point safe-area insets read by Ionic, and touch answers to `matchMedia`. Phones,
+tablets, automated browsers (`navigator.webdriver`), and pages embedded
+elsewhere get the app unchanged. "Open without frame" turns the frame off for
+the rest of that tab.
+
+**Native emulation**, a switch in the frame, makes `Capacitor.getPlatform()`
+return `ios`. The frame then answers these plugins itself:
+
+- StatusBar and SystemBars: status bar style and visibility.
+- Haptics: shakes the phone.
+- App: a Home button fires `appStateChange`, `pause`, and `resume`.
+- PushNotifications: an iOS permission prompt, a fake token, and test pushes
+  that arrive as banners.
+- Preferences: stored separately for each task, where the web build shares
+  `CapacitorStorage.*` across every task on the origin.
+
+Plugins with a web build keep using it. Any other call fails with
+`UNIMPLEMENTED` and is listed in the frame's log.
 
 ## Development commands
 

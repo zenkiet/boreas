@@ -292,3 +292,32 @@ func TestSetAvatar(t *testing.T) {
 		t.Fatalf("after delete: %v, want ErrNotFound", err)
 	}
 }
+
+func TestPairingSignsInOnceWithinTTL(t *testing.T) {
+	auth, users, tokens := newAuth(t)
+	alice := newUser(t, auth, "alice")
+	ctx := context.Background()
+
+	code, _ := auth.StartPairing(alice)
+	token, user, err := auth.ClaimPairing(ctx, code)
+	if err != nil || user.ID != alice.ID || tokens.tokens[hashToken(token)].Kind != core.TokenKindSession {
+		t.Fatalf("claim = %+v, %v", user, err)
+	}
+	if _, _, err := auth.ClaimPairing(ctx, code); !errors.Is(err, core.ErrUnauthorized) {
+		t.Fatalf("a spent code = %v", err)
+	}
+
+	late, _ := auth.StartPairing(alice)
+	auth.pairings[hashToken(late)] = pairing{alice.ID, time.Now().Add(-time.Second)}
+	if _, _, err := auth.ClaimPairing(ctx, late); !errors.Is(err, core.ErrUnauthorized) {
+		t.Fatalf("an expired code = %v", err)
+	}
+
+	gone, _ := auth.StartPairing(alice)
+	disabled, now := users.users[alice.ID], time.Now()
+	disabled.DisabledAt = &now
+	users.users[alice.ID] = disabled
+	if _, _, err := auth.ClaimPairing(ctx, gone); !errors.Is(err, core.ErrUnauthorized) {
+		t.Fatalf("a disabled user's code = %v", err)
+	}
+}

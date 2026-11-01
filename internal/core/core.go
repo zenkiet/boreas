@@ -62,6 +62,24 @@ func ValidateDevStatus(status DevStatus) error {
 	return errors.Join(ErrInvalidInput, errors.New("dev status must be in_progress, blocked, or ready"))
 }
 
+// FormFactor is how a project's tasks are meant to be seen: a mobile app opens inside a phone frame on desktops.
+type FormFactor string
+
+const (
+	FormFactorWeb    FormFactor = "web"
+	FormFactorMobile FormFactor = "mobile"
+)
+
+func (FormFactor) Enum() []any { return []any{FormFactorWeb, FormFactorMobile} }
+
+func ValidateFormFactor(f FormFactor) error {
+	switch f {
+	case FormFactorWeb, FormFactorMobile:
+		return nil
+	}
+	return errors.Join(ErrInvalidInput, errors.New("form factor must be web or mobile"))
+}
+
 type UserRole string
 
 const (
@@ -244,6 +262,7 @@ type Project struct {
 	DefaultImage         string
 	DefaultPort          int
 	DefaultEnv           map[string]string
+	FormFactor           FormFactor
 	CreatedBy            *uuid.UUID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time

@@ -6,6 +6,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
@@ -118,6 +119,17 @@ type stubAuth struct {
 func (s *stubAuth) Login(c context.Context, username, password string) (string, core.User, error) {
 	if s.login != nil {
 		return s.login(c, username, password)
+	}
+	return testToken, s.user, nil
+}
+
+func (*stubAuth) StartPairing(core.User) (string, time.Time) {
+	return "pair-code", time.Now().Add(time.Minute)
+}
+
+func (s *stubAuth) ClaimPairing(_ context.Context, code string) (string, core.User, error) {
+	if code != "pair-code" {
+		return "", core.User{}, core.ErrUnauthorized
 	}
 	return testToken, s.user, nil
 }

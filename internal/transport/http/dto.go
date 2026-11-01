@@ -276,6 +276,7 @@ type projectDTO struct {
 	DefaultImage         string            `json:"default_image" example:"nginx:alpine"`
 	DefaultPort          int               `json:"default_port" example:"80"`
 	DefaultEnv           map[string]string `json:"default_env"`
+	FormFactor           core.FormFactor   `json:"form_factor"`
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
 	MyRole               core.ProjectRole  `json:"my_role"`
@@ -289,7 +290,7 @@ func projectFromCore(p core.Project, role core.ProjectRole) projectDTO {
 		ID: p.ID, Slug: p.Slug, Name: p.Name,
 		RegistryCredentialID: p.RegistryCredentialID,
 		DefaultImage:         p.DefaultImage, DefaultPort: p.DefaultPort, DefaultEnv: p.DefaultEnv,
-		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
+		FormFactor: p.FormFactor, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, MyRole: role,
 	}
 }
 
@@ -300,6 +301,7 @@ type createProjectRequest struct {
 	DefaultImage         string            `json:"default_image,omitempty" example:"nginx:alpine"`
 	DefaultPort          int               `json:"default_port,omitempty" example:"80"`
 	DefaultEnv           map[string]string `json:"default_env,omitempty"`
+	FormFactor           core.FormFactor   `json:"form_factor,omitempty"`
 }
 
 type updateProjectRequest struct {
@@ -309,6 +311,7 @@ type updateProjectRequest struct {
 	DefaultImage         *string            `json:"default_image,omitempty" example:"nginx:alpine"`
 	DefaultPort          *int               `json:"default_port,omitempty" example:"80"`
 	DefaultEnv           *map[string]string `json:"default_env,omitempty"`
+	FormFactor           *core.FormFactor   `json:"form_factor,omitempty"`
 }
 
 type addMemberRequest struct {
@@ -437,7 +440,7 @@ type conversationDTO struct {
 	About     core.BoraAbout     `json:"about"`
 	CreatedAt time.Time          `json:"created_at"`
 	UpdatedAt time.Time          `json:"updated_at"`
-	Answering *core.BoraPending  `json:"answering"`
+	Answering *core.BoraPending  `json:"answering,omitempty"`
 	Messages  []core.BoraMessage `json:"messages"`
 }
 
@@ -572,6 +575,15 @@ type updateUserRequest struct {
 type loginResponse struct {
 	Token string  `json:"token"`
 	User  userDTO `json:"user"`
+}
+
+type pairingResponse struct {
+	Code      string    `json:"code" format:"password"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type claimPairingRequest struct {
+	Code string `json:"code" format:"password" minLength:"1"`
 }
 
 type userResponse struct {

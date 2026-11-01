@@ -81,6 +81,21 @@ var routeTable = [...]route{
 		extraErrors: []int{http.StatusBadRequest, http.StatusUnauthorized},
 	},
 	{
+		method: http.MethodPost, path: "/api/v1/auth/pairing", access: accessSession, handler: (*Handler).startPairing,
+		tag: "auth", summary: "Start signing in another device",
+		description: "A code that signs you in on another device, once, within 2 minutes. " +
+			"Requires a login session, not an API token.",
+		resp: new(pairingResponse), status: http.StatusCreated, quiet: true,
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/auth/pairing/claim", access: accessPublic, handler: (*Handler).claimPairing,
+		tag: "auth", summary: "Exchange a pairing code for a token",
+		description: "The token is returned once and expires in 30 days. " +
+			"The code travels in the body so request logs never hold it.",
+		req: new(claimPairingRequest), resp: new(loginResponse),
+		extraErrors: []int{http.StatusBadRequest, http.StatusUnauthorized},
+	},
+	{
 		method: http.MethodPost, path: "/api/v1/auth/logout", access: accessAuthed, handler: (*Handler).logout,
 		tag: "auth", summary: "Revoke the current token",
 		resp: new(successResponse),

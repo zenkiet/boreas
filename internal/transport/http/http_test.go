@@ -43,9 +43,12 @@ func do(h http.Handler, r *http.Request) *httptest.ResponseRecorder {
 	return rr
 }
 
-// Only these three routes are public; every other one challenges a missing or bad token.
+// Only these four routes are public; every other one challenges a missing or bad token.
 func TestOnlyPublicRoutesSkipAuthentication(t *testing.T) {
-	public := map[string]bool{"GET /api/v1/health": true, "POST /api/v1/auth/login": true, "GET /api/v1/public/projects": true}
+	public := map[string]bool{
+		"GET /api/v1/health": true, "POST /api/v1/auth/login": true, "POST /api/v1/auth/pairing/claim": true,
+		"GET /api/v1/public/projects": true,
+	}
 	h := testHandler(stubTasks{}, nil, nil)
 	for _, route := range routeTable {
 		pattern, path := route.method+" "+route.path, strings.NewReplacer("{", "", "}", "").Replace(route.path)
@@ -72,6 +75,26 @@ func TestPasswordHashNeverReturned(t *testing.T) {
 		if !strings.Contains(body, "alice") || strings.Contains(body, "topsecrethash") || strings.Contains(body, "password_hash") {
 			t.Fatalf("user missing or hash leaked: %s", body)
 		}
+	}
+}
+
+// A session hands another device a one-time code; an API token cannot.
+func TestPairingSignsInAnotherDevice(t *testing.T) {
+	h := testHandler(stubTasks{}, nil, nil)
+	start := do(h, authed(http.MethodPost, "/api/v1/auth/pairing", nil))
+	if start.Code != http.StatusCreated || !strings.Contains(start.Body.String(), `"code":"pair-code"`) {
+		t.Fatalf("start = %d %s", start.Code, start.Body)
+	}
+	claim := do(h, httptest.NewRequest(http.MethodPost, "/api/v1/auth/pairing/claim", strings.NewReader(`{"code":"pair-code"}`)))
+	if claim.Code != http.StatusOK || !strings.Contains(claim.Body.String(), `"token":"`+testToken+`"`) {
+		t.Fatalf("claim = %d %s", claim.Code, claim.Body)
+	}
+	if bad := do(h, httptest.NewRequest(http.MethodPost, "/api/v1/auth/pairing/claim", strings.NewReader(`{"code":"nope"}`))); bad.Code != http.StatusUnauthorized {
+		t.Fatalf("a wrong code = %d", bad.Code)
+	}
+	api := testHandler(stubTasks{}, &stubAuth{user: testMember, kind: core.TokenKindAPI}, nil)
+	if rr := do(api, authed(http.MethodPost, "/api/v1/auth/pairing", nil)); rr.Code != http.StatusForbidden {
+		t.Fatalf("an API token started a pairing: %d", rr.Code)
 	}
 }
 
@@ -717,6 +740,7 @@ func TestApplicationHandlerRoutes(t *testing.T) {
 // registry_credential_id null detaches, a value attaches, omission leaves it; {} clears default_env.
 func TestUpdateProjectForwardsOnlySuppliedFields(t *testing.T) {
 	id, name, image, port, empty := uuid.New(), "Renamed", "nginx:alpine", 8080, map[string]string{}
+	mobile := core.FormFactorMobile
 	var detach *uuid.UUID
 	attach := &id
 	for body, want := range map[string]service.UpdateProjectInput{
@@ -726,6 +750,7 @@ func TestUpdateProjectForwardsOnlySuppliedFields(t *testing.T) {
 		`{"default_image":"nginx:alpine","default_port":8080,"default_env":{}}`: {
 			DefaultImage: &image, DefaultPort: &port, DefaultEnv: &empty,
 		},
+		`{"form_factor":"mobile"}`: {FormFactor: &mobile},
 	} {
 		var got service.UpdateProjectInput
 		h := testHandler(stubTasks{}, nil, &stubProjects{update: func(_ context.Context, _ string, in service.UpdateProjectInput) (core.Project, error) {

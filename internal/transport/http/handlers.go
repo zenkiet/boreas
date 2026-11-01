@@ -50,6 +50,20 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	h.reply(w, http.StatusOK, loginResponse{Token: token, User: userFromCore(user)}, err)
 }
 
+func (h *Handler) startPairing(w http.ResponseWriter, r *http.Request) {
+	code, expires := h.auth.StartPairing(userFrom(r.Context()))
+	h.reply(w, http.StatusCreated, pairingResponse{Code: code, ExpiresAt: expires}, nil)
+}
+
+func (h *Handler) claimPairing(w http.ResponseWriter, r *http.Request) {
+	var req claimPairingRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	token, user, err := h.auth.ClaimPairing(r.Context(), req.Code)
+	h.reply(w, http.StatusOK, loginResponse{Token: token, User: userFromCore(user)}, err)
+}
+
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	h.reply(w, http.StatusOK, succeeded, h.auth.Logout(r.Context(), bearerToken(r)))
 }
@@ -235,6 +249,7 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 	project, err := h.projects.Create(r.Context(), userFrom(r.Context()), service.CreateProjectInput{
 		Slug: req.Slug, Name: req.Name, RegistryCredentialID: req.RegistryCredentialID,
 		DefaultImage: req.DefaultImage, DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv,
+		FormFactor: req.FormFactor,
 	})
 	h.reply(w, http.StatusCreated, projectResponse{Project: projectFromCore(project, core.ProjectRoleOwner)}, err)
 }
@@ -256,7 +271,7 @@ func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	in := service.UpdateProjectInput{
 		Name: req.Name, DefaultImage: req.DefaultImage,
-		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv,
+		DefaultPort: req.DefaultPort, DefaultEnv: req.DefaultEnv, FormFactor: req.FormFactor,
 	}
 	if req.RegistryCredentialID.Set {
 		in.RegistryCredentialID = &req.RegistryCredentialID.Value

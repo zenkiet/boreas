@@ -149,17 +149,20 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 	store := NewProjectStore(pool)
 
 	project := seedProject(t, pool)
-	if project.DefaultImage != "" || project.DefaultPort != 80 || len(project.DefaultEnv) != 0 {
-		t.Fatalf("column defaults = %+v, want \"\", 80, empty", project)
+	if project.DefaultImage != "" || project.DefaultPort != 80 || len(project.DefaultEnv) != 0 ||
+		project.FormFactor != core.FormFactorWeb {
+		t.Fatalf("column defaults = %+v, want \"\", 80, empty, web", project)
 	}
 
 	project.DefaultImage, project.DefaultPort = "nginx:alpine", 8080
 	project.DefaultEnv = map[string]string{"APP_ENV": "dev"}
+	project.FormFactor = core.FormFactorMobile
 	updated, err := store.Update(ctx, project)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.DefaultImage != "nginx:alpine" || updated.DefaultPort != 8080 || updated.DefaultEnv["APP_ENV"] != "dev" {
+	if updated.DefaultImage != "nginx:alpine" || updated.DefaultPort != 8080 || updated.DefaultEnv["APP_ENV"] != "dev" ||
+		updated.FormFactor != core.FormFactorMobile {
 		t.Fatalf("update round trip = %+v", updated)
 	}
 
@@ -167,13 +170,18 @@ func TestProjectDefaultsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" {
+	if fetched.DefaultImage != "nginx:alpine" || fetched.DefaultPort != 8080 || fetched.DefaultEnv["APP_ENV"] != "dev" ||
+		fetched.FormFactor != core.FormFactorMobile {
 		t.Fatalf("select round trip = %+v", fetched)
 	}
 
 	fetched.DefaultPort = 70000
 	if _, err := store.Update(ctx, fetched); err == nil {
 		t.Fatal("the database must reject an out-of-range default port")
+	}
+	fetched.DefaultPort, fetched.FormFactor = 8080, "tablet"
+	if _, err := store.Update(ctx, fetched); err == nil {
+		t.Fatal("the database must reject an unknown form factor")
 	}
 	if _, err := store.Create(ctx, core.Project{Slug: "api", Name: "reserved", DefaultPort: 80}); err == nil {
 		t.Fatal("the database CHECK constraint must reject the reserved slug 'api'")

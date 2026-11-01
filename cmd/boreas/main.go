@@ -101,6 +101,10 @@ func run(logger *slog.Logger) error {
 
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	routes.Fallback = web.Handler()
+	routes.Mobile = func(ctx context.Context, slug string) bool {
+		project, err := projectStore.GetBySlug(ctx, slug)
+		return err == nil && project.FormFactor == core.FormFactorMobile
+	}
 	defer routes.CloseIdleConnections()
 
 	sender, err := fcm.New(cfg.FCM.Project, cfg.FCM.Keyfile, push.Tokens, push.DeleteTokens, logger)

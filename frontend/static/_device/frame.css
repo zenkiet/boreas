@@ -1,0 +1,436 @@
+/* The device is drawn at 1 CSS px per point, then scaled to fit: Apple's bezel is 1470×3000 px at 3×. */
+:root {
+	--bg: #eceef2;
+	--panel: #ffffff;
+	--text: #1d1d1f;
+	--muted: #6e6e73;
+	--line: #d9dbe1;
+	--accent: #4f46e5;
+	--scale: 1;
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0f1012;
+		--panel: #18191c;
+		--text: #f2f2f7;
+		--muted: #98989f;
+		--line: #2c2d31;
+		--accent: #818cf8;
+		color-scheme: dark;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	height: 100vh;
+	display: grid;
+	grid-template-columns: 1fr 300px;
+	background: var(--bg);
+	color: var(--text);
+	font:
+		14px/1.4 -apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		Roboto,
+		sans-serif;
+}
+
+.stage {
+	display: grid;
+	place-items: center;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.fit {
+	width: calc(490px * var(--scale));
+	height: calc(1000px * var(--scale));
+}
+
+.device {
+	position: relative;
+	width: 490px;
+	height: 1000px;
+	transform: scale(var(--scale));
+	transform-origin: 0 0;
+	--status: #000;
+	--indicator: #000;
+}
+
+.device.status-light {
+	--status: #fff;
+}
+
+.device.indicator-light {
+	--indicator: #fff;
+}
+
+.device.buzz {
+	animation: buzz 140ms linear;
+}
+
+@keyframes buzz {
+	25% {
+		translate: -1.5px 0;
+	}
+	75% {
+		translate: 1.5px 0;
+	}
+}
+
+.screen {
+	position: absolute;
+	left: 25px;
+	top: 22px;
+	width: 440px;
+	height: 956px;
+	overflow: hidden;
+	border-radius: 62px;
+	background: #fff;
+}
+
+.device.reserve.status-light .screen {
+	background: #000;
+}
+
+.screen iframe {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	border: 0;
+	background: #fff;
+}
+
+.device.reserve .screen iframe {
+	top: 62px;
+	height: calc(100% - 96px);
+}
+
+.bezel {
+	position: absolute;
+	inset: 0;
+	width: 490px;
+	height: 1000px;
+	pointer-events: none;
+	user-select: none;
+}
+
+/* The island sits 14.33–50.67 pt below the top of the screen and is 93.33 pt wide in Apple's bezel. */
+.statusbar {
+	position: absolute;
+	top: 14.33px;
+	left: 0;
+	right: 0;
+	height: 36.33px;
+	display: grid;
+	grid-template-columns: 1fr 93.33px 1fr;
+	align-items: center;
+	justify-items: center;
+	color: var(--status);
+	pointer-events: none;
+	transition: opacity 0.2s;
+	font:
+		600 17px/1 -apple-system,
+		'SF Pro Text',
+		BlinkMacSystemFont,
+		sans-serif;
+	letter-spacing: -0.4px;
+}
+
+.statusbar .icons {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	fill: currentColor;
+}
+
+.device.status-hidden .statusbar {
+	opacity: 0;
+}
+
+.indicator {
+	position: absolute;
+	bottom: 8px;
+	left: 50%;
+	width: 144px;
+	height: 5px;
+	margin-left: -72px;
+	border-radius: 3px;
+	background: var(--indicator);
+	pointer-events: none;
+}
+
+.device.indicator-hidden .indicator {
+	opacity: 0;
+}
+
+.home {
+	position: absolute;
+	inset: 0;
+	padding: 90px 28px;
+	background: linear-gradient(160deg, #6d83f2, #b06ab3 55%, #f0a17a);
+}
+
+.home .app {
+	display: grid;
+	justify-items: center;
+	gap: 6px;
+	width: 76px;
+	border: 0;
+	background: none;
+	color: #fff;
+	font: 12px -apple-system, sans-serif;
+	overflow-wrap: anywhere;
+}
+
+.home .app span,
+.banner .badge {
+	display: grid;
+	place-items: center;
+	width: 64px;
+	height: 64px;
+	border-radius: 15px;
+	background: #fff;
+	color: #4f46e5;
+	font: 700 28px -apple-system, sans-serif;
+}
+
+.banner {
+	position: absolute;
+	top: 58px;
+	left: 10px;
+	right: 10px;
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	padding: 12px 14px;
+	border: 0;
+	border-radius: 24px;
+	background: rgb(245 245 247 / 0.9);
+	backdrop-filter: blur(24px);
+	box-shadow: 0 8px 30px rgb(0 0 0 / 0.18);
+	color: #000;
+	text-align: left;
+	font: 15px/1.3 -apple-system, sans-serif;
+	transform: translateY(calc(-100% - 64px));
+	visibility: hidden;
+	transition:
+		transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+		visibility 0s 0.35s;
+}
+
+.banner.shown {
+	transform: none;
+	visibility: visible;
+	transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.banner .badge {
+	flex: none;
+	width: 38px;
+	height: 38px;
+	border-radius: 9px;
+	background: #4f46e5;
+	color: #fff;
+	font-size: 18px;
+}
+
+.banner strong {
+	display: block;
+}
+
+.alert {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	background: rgb(0 0 0 / 0.3);
+}
+
+.alert[hidden],
+.home[hidden],
+.notice[hidden],
+.native[hidden] {
+	display: none;
+}
+
+.alert .sheet {
+	width: 270px;
+	overflow: hidden;
+	border-radius: 14px;
+	background: rgb(242 242 247 / 0.94);
+	backdrop-filter: blur(24px);
+	color: #000;
+	text-align: center;
+	font-family: -apple-system, sans-serif;
+}
+
+.alert h3 {
+	margin: 18px 16px 4px;
+	font-size: 17px;
+}
+
+.alert p {
+	margin: 0 16px 18px;
+	font-size: 13px;
+}
+
+.alert .actions {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	border-top: 1px solid rgb(60 60 67 / 0.29);
+}
+
+.alert .actions button {
+	padding: 11px;
+	border: 0;
+	background: none;
+	color: #007aff;
+	font: 17px -apple-system, sans-serif;
+}
+
+.alert .actions button + button {
+	border-left: 1px solid rgb(60 60 67 / 0.29);
+	font-weight: 600;
+}
+
+.notice {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-content: center;
+	gap: 12px;
+	padding: 40px;
+	background: #f2f2f7;
+	color: #1d1d1f;
+	text-align: center;
+}
+
+.panel {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding: 20px;
+	overflow-y: auto;
+	border-left: 1px solid var(--line);
+	background: var(--panel);
+}
+
+.panel header {
+	display: grid;
+}
+
+.panel header span,
+.hint,
+.qr figcaption {
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.hint {
+	margin: -8px 0 0;
+}
+
+.finishes {
+	display: flex;
+	gap: 10px;
+}
+
+.panel .finishes button {
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 2px solid var(--panel);
+	border-radius: 50%;
+	background: var(--swatch);
+	box-shadow: 0 0 0 1px var(--line);
+}
+
+.panel .finishes button[aria-checked='true'] {
+	box-shadow: 0 0 0 2px var(--accent);
+}
+
+.switch {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	font-weight: 600;
+}
+
+.native,
+.native form {
+	display: grid;
+	gap: 8px;
+}
+
+.panel input:not([type]),
+.panel button {
+	padding: 7px 10px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--bg);
+	color: inherit;
+	font: inherit;
+}
+
+.panel button {
+	cursor: pointer;
+}
+
+.panel button:hover {
+	border-color: var(--accent);
+}
+
+.log {
+	max-height: 220px;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	list-style: none;
+	font: 11px/1.5 ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+.log li {
+	padding: 3px 0;
+	border-bottom: 1px solid var(--line);
+	overflow-wrap: anywhere;
+}
+
+.log li.missing {
+	color: #dc2626;
+}
+
+.qr {
+	margin: 0;
+	display: grid;
+	gap: 6px;
+	justify-items: center;
+}
+
+.qr div {
+	width: 132px;
+	height: 132px;
+}
+
+.qr svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+@media (max-width: 860px) {
+	body {
+		grid-template-columns: 1fr;
+	}
+
+	.panel {
+		display: none;
+	}
+}

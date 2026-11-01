@@ -32,12 +32,13 @@ const checkTimeout = 3 * time.Second
 
 // hop is one way through the proxy: a task's container, or one of its routes when path is set.
 type hop struct {
-	project string
-	task    string
-	path    string
-	public  string
-	target  *url.URL
-	proxy   *httputil.ReverseProxy
+	project  string
+	task     string
+	path     string
+	public   string
+	target   *url.URL
+	proxy    *httputil.ReverseProxy
+	registry *Registry
 }
 
 // site outlives the container: routes keep answering while the task is stopped.
@@ -53,6 +54,8 @@ type Registry struct {
 	transport *http.Transport
 	insecure  *http.Transport
 	Fallback  http.Handler
+	// Mobile is asked on every HTML page rather than cached, so flipping a project's flag applies to its next page.
+	Mobile func(ctx context.Context, project string) bool
 }
 
 func (r *Registry) miss(w http.ResponseWriter, request *http.Request) {
@@ -187,7 +190,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 func under(path, prefix string) bool { return path == prefix || strings.HasPrefix(path, prefix+"/") }
 
 func (r *Registry) newHop(project, task, path string, target *url.URL, anyCert bool) *hop {
-	h := &hop{project: project, task: task, path: path, public: "/" + project + "/" + task + path, target: target}
+	h := &hop{project: project, task: task, path: path, public: "/" + project + "/" + task + path, target: target, registry: r}
 	h.proxy = &httputil.ReverseProxy{
 		Transport:      r.transportFor(anyCert),
 		Rewrite:        h.rewrite,
@@ -235,6 +238,13 @@ func (h *hop) modifyResponse(response *http.Response) error {
 	}
 	// Only a <base> the app declared moves under the task: adding one would re-aim a page's own relative URLs.
 	body = baseTagPattern.ReplaceAllFunc(body, h.base)
+	if mobile := h.registry.Mobile; mobile != nil && mobile(response.Request.Context(), h.project) {
+		// ponytail: a page without <head> stays unframed, and no task sends a CSP nonce or X-Frame-Options DENY
+		// yet; carry the nonce over or relax the header once one does.
+		if at := headTagPattern.FindIndex(body); at != nil {
+			body = slices.Concat(body[:at[1]], []byte(deviceShim), body[at[1]:])
+		}
+	}
 	response.Body = io.NopCloser(bytes.NewReader(body))
 	response.ContentLength = int64(len(body))
 	response.Header.Set("Content-Length", fmt.Sprint(len(body)))
@@ -327,7 +337,12 @@ func kind(err error) string {
 var (
 	baseTagPattern  = regexp.MustCompile(`(?is)<base\b[^>]*>`)
 	baseHrefPattern = regexp.MustCompile(`(?is)\bhref\s*=\s*["']([^"']*)["']`)
+	headTagPattern  = regexp.MustCompile(`(?is)<head\b[^>]*>`)
 )
+
+// deviceShim must be the page's first script: what an app sees at boot (user agent, safe area) is only changed
+// before the app's own scripts run. It does nothing unless a desktop opened the page or the phone frame embeds it.
+const deviceShim = `<script src="/_device/shim.js"></script>`
 
 // base maps the app's <base> under the task as rewriteLocation maps its redirects: the path it is served at stays
 // (/client/ becomes /team/task/client/); one already under the task stays as it is; any other the task root.

@@ -1,4 +1,4 @@
-openapi: 3.2.0
+openapi: 3.0.3
 info:
   description: Per-task staging environments. Tasks belong to projects and are served
     at /{project}/{task}/. Proxied task traffic is public; this API is not.
@@ -146,6 +146,79 @@ paths:
       security:
       - bearerAuth: []
       summary: Set your avatar
+      tags:
+      - auth
+  /api/v1/auth/pairing:
+    post:
+      description: A code that signs you in on another device, once, within 2 minutes.
+        Requires a login session, not an API token.
+      operationId: post-auth-pairing
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingResponse'
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Start signing in another device
+      tags:
+      - auth
+  /api/v1/auth/pairing/claim:
+    post:
+      description: The token is returned once and expires in 30 days. The code travels
+        in the body so request logs never hold it.
+      operationId: post-auth-pairing-claim
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimPairingRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      summary: Exchange a pairing code for a token
       tags:
       - auth
   /api/v1/auth/tokens:
@@ -3647,6 +3720,15 @@ components:
       required:
       - url
       type: object
+    ClaimPairingRequest:
+      properties:
+        code:
+          format: password
+          minLength: 1
+          type: string
+      required:
+      - code
+      type: object
     CodeSource:
       properties:
         path:
@@ -3686,7 +3768,6 @@ components:
       - about
       - created_at
       - updated_at
-      - answering
       - messages
       type: object
     ConversationItem:
@@ -3787,6 +3868,8 @@ components:
         default_port:
           example: 80
           type: integer
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
         name:
           example: Demo
           type: string
@@ -3914,7 +3997,6 @@ components:
       - in_progress
       - blocked
       - ready
-      nullable: true
       type: string
     ErrorResponse:
       properties:
@@ -3944,6 +4026,8 @@ components:
         default_port:
           example: 80
           type: integer
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
         id:
           $ref: '#/components/schemas/UUID'
         my_role:
@@ -3971,6 +4055,7 @@ components:
       - default_image
       - default_port
       - default_env
+      - form_factor
       - created_at
       - updated_at
       - my_role
@@ -4025,6 +4110,11 @@ components:
       - folders
       - total
       type: object
+    FormFactor:
+      enum:
+      - web
+      - mobile
+      type: string
     Grant:
       properties:
         created_at:
@@ -4225,6 +4315,18 @@ components:
       format: uuid
       nullable: true
       type: string
+    PairingResponse:
+      properties:
+        code:
+          format: password
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+      required:
+      - code
+      - expires_at
+      type: object
     Project:
       properties:
         created_at:
@@ -4241,6 +4343,8 @@ components:
         default_port:
           example: 80
           type: integer
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
         id:
           $ref: '#/components/schemas/UUID'
         my_role:
@@ -4263,6 +4367,7 @@ components:
       - default_image
       - default_port
       - default_env
+      - form_factor
       - created_at
       - updated_at
       - my_role
@@ -4646,6 +4751,8 @@ components:
           example: 80
           nullable: true
           type: integer
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
         name:
           nullable: true
           type: string
@@ -4767,7 +4874,6 @@ components:
       enum:
       - admin
       - user
-      nullable: true
       type: string
     UsersResponse:
       properties:

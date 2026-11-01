@@ -8,8 +8,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -22,16 +24,25 @@ const (
 	tokenTTL          = 30 * 24 * time.Hour
 	maxAPITokenTTL    = 90 * 24 * time.Hour
 	minPasswordLength = 8
+	pairingTTL        = 2 * time.Minute
 )
 
 type AuthService struct {
 	users   core.UserStore
 	tokens  core.TokenStore
 	Avatars core.ObjectStore
+
+	mu       sync.Mutex
+	pairings map[string]pairing
+}
+
+type pairing struct {
+	userID  uuid.UUID
+	expires time.Time
 }
 
 func NewAuthService(users core.UserStore, tokens core.TokenStore) *AuthService {
-	return &AuthService{users: users, tokens: tokens}
+	return &AuthService{users: users, tokens: tokens, pairings: map[string]pairing{}}
 }
 
 func wrap(operation string, err error) error {
@@ -64,18 +75,57 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 		return "", core.User{}, core.ErrUnauthorized
 	}
 
+	token, err := s.session(ctx, user.ID)
+	return token, user, err
+}
+
+func (s *AuthService) session(ctx context.Context, userID uuid.UUID) (string, error) {
 	token := rand.Text()
 	now := time.Now().UTC()
 	if _, err := s.tokens.Create(ctx, core.AuthToken{
-		UserID:    user.ID,
+		UserID:    userID,
 		Kind:      core.TokenKindSession,
 		TokenHash: hashToken(token),
 		ValidFrom: now,
 		ExpiresAt: now.Add(tokenTTL),
 	}); err != nil {
-		return "", core.User{}, fmt.Errorf("persist token: %w", err)
+		return "", fmt.Errorf("persist token: %w", err)
 	}
-	return token, user, nil
+	return token, nil
+}
+
+// StartPairing returns a code that signs its user in on another device, once, within pairingTTL.
+// ponytail: in memory, one instance; a table if Boreas ever runs replicas.
+func (s *AuthService) StartPairing(user core.User) (string, time.Time) {
+	code, now := rand.Text(), time.Now().UTC()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	maps.DeleteFunc(s.pairings, func(_ string, p pairing) bool { return now.After(p.expires) })
+	s.pairings[hashToken(code)] = pairing{user.ID, now.Add(pairingTTL)}
+	return code, now.Add(pairingTTL)
+}
+
+// ClaimPairing spends a code from StartPairing on a new login session.
+func (s *AuthService) ClaimPairing(ctx context.Context, code string) (string, core.User, error) {
+	s.mu.Lock()
+	p, ok := s.pairings[hashToken(code)]
+	delete(s.pairings, hashToken(code))
+	s.mu.Unlock()
+	if !ok || time.Now().After(p.expires) {
+		return "", core.User{}, core.ErrUnauthorized
+	}
+	user, err := s.users.Get(ctx, p.userID)
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			return "", core.User{}, core.ErrUnauthorized
+		}
+		return "", core.User{}, fmt.Errorf("lookup pairing user: %w", err)
+	}
+	if user.Disabled() {
+		return "", core.User{}, core.ErrUnauthorized
+	}
+	token, err := s.session(ctx, user.ID)
+	return token, user, err
 }
 
 func (s *AuthService) Authenticate(ctx context.Context, token string) (core.User, core.TokenKind, error) {

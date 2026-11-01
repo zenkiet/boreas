@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
@@ -32,6 +33,8 @@ type TaskService interface {
 
 type AuthService interface {
 	Login(ctx context.Context, username, password string) (string, core.User, error)
+	StartPairing(user core.User) (string, time.Time)
+	ClaimPairing(ctx context.Context, code string) (string, core.User, error)
 	Authenticate(ctx context.Context, token string) (core.User, core.TokenKind, error)
 	Logout(ctx context.Context, token string) error
 	CreateAPIToken(ctx context.Context, userID uuid.UUID, in service.CreateAPITokenInput) (string, core.AuthToken, error)

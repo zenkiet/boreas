@@ -117,6 +117,29 @@ func TestUpdateProjectTaskDefaults(t *testing.T) {
 	}
 }
 
+func TestProjectFormFactor(t *testing.T) {
+	svc, _ := newProjects(t)
+	ctx := context.Background()
+	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "site"})
+	if err != nil || project.FormFactor != core.FormFactorWeb {
+		t.Fatalf("unset form factor = %q, %v; want web", project.FormFactor, err)
+	}
+	if _, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "tablet", FormFactor: "tablet"}); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("unknown form factor: got %v, want ErrInvalidInput", err)
+	}
+
+	mobile, unknown, renamed := core.FormFactorMobile, core.FormFactor("watch"), "Site"
+	if project, err = svc.Update(ctx, "site", UpdateProjectInput{FormFactor: &mobile}); err != nil || project.FormFactor != mobile {
+		t.Fatalf("update = %q, %v; want mobile", project.FormFactor, err)
+	}
+	if project, err = svc.Update(ctx, "site", UpdateProjectInput{Name: &renamed}); err != nil || project.FormFactor != mobile {
+		t.Fatalf("an update without a form factor changed it to %q (%v)", project.FormFactor, err)
+	}
+	if _, err := svc.Update(ctx, "site", UpdateProjectInput{FormFactor: &unknown}); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("unknown form factor update: got %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestAccessRules(t *testing.T) {
 	svc, _ := newProjects(t)
 	owner := member()

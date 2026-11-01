@@ -30,3 +30,20 @@ func TestHandlerServesThePrerenderedPolicy(t *testing.T) {
 		t.Fatalf("status=%d, want the prerendered policy, not the shell (run 'make frontend')", rr.Code)
 	}
 }
+
+func TestHandlerRevalidatesFilesByETag(t *testing.T) {
+	h := Handler()
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/robots.txt", nil))
+	etag := rr.Header().Get("ETag")
+	if etag == "" || rr.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("headers = %v, want an ETag and no-cache (run 'make frontend')", rr.Header())
+	}
+	request := httptest.NewRequest(http.MethodGet, "/robots.txt", nil)
+	request.Header.Set("If-None-Match", etag)
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, request)
+	if rr.Code != http.StatusNotModified {
+		t.Fatalf("status = %d, want 304 for an unchanged file", rr.Code)
+	}
+}

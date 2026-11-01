@@ -18,7 +18,8 @@ const bearerScheme = "bearerAuth"
 // OpenAPISpec rejects unmatched path parameters so the generated contract cannot drift from routing.
 func OpenAPISpec() (*openapi3.Spec, error) {
 	reflector := openapi3.NewReflector()
-	reflector.Spec = &openapi3.Spec{Openapi: "3.2.0"}
+	// The reflector writes OpenAPI 3.0 (`nullable`), so the document says so.
+	reflector.Spec = &openapi3.Spec{Openapi: "3.0.3"}
 	spec := reflector.SpecEns()
 	spec.Info.
 		WithTitle("Boreas API").
@@ -42,6 +43,12 @@ func OpenAPISpec() (*openapi3.Spec, error) {
 	for _, r := range routeTable {
 		if err := addOperation(reflector, r); err != nil {
 			return nil, fmt.Errorf("%s %s: %w", r.method, r.path, err)
+		}
+	}
+	// A pointer in a PATCH body makes its shared enum nullable; the values themselves never are.
+	for _, s := range spec.Components.Schemas.MapOfSchemaOrRefValues {
+		if s.Schema != nil && len(s.Schema.Enum) > 0 {
+			s.Schema.Nullable = nil
 		}
 	}
 	return spec, nil

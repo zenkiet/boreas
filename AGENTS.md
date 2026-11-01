@@ -83,6 +83,9 @@ make openapi-check  # fail if the committed file is stale (runs on pre-push)
 Any change to routes, request/response DTOs, or their field tags requires
 regenerating and committing `api/openapi.yaml` in the same commit.
 
+The client generates its wire types from this file (`pnpm api` in boreas-client),
+so a field the spec gets wrong is wrong there too: fix it here, at the source.
+
 ## Architecture and conventions
 
 Clean-architecture boundaries, enforced by the `internal/` layout:

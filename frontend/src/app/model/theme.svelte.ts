@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 const KEY = 'boreas-theme';
 const MODES = ['system', 'light', 'dark'] as const;
