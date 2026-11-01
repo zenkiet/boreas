@@ -909,9 +909,11 @@ curl -X PATCH -H "$AUTH" -H "$JSON" -d '{"default_form_factor":"mobile"}' \
 Boreas then puts `/_device/shim.js` first in every HTML page of a mobile task.
 A desktop browser opening its App URL gets the app inside an iPhone 18 Pro
 Max frame at the same URL. The app sees an iPhone: Safari's user agent, 62/34
-point safe-area insets read by Ionic, and touch answers to `matchMedia`. Phones,
-tablets, automated browsers (`navigator.webdriver`), and pages embedded
-elsewhere get the app unchanged. To see the page without the frame on a
+point safe-area insets read by Ionic, and touch answers to hover and pointer
+media queries, in scripts and stylesheets alike. The mouse acts as a finger: a
+drag scrolls and glides on, and nothing hovers until pressed. Phones, tablets,
+automated browsers (`navigator.webdriver`), and pages embedded elsewhere get
+the app unchanged. To see the page without the frame on a
 desktop, turn on touch emulation in the browser's developer tools.
 
 ## Development commands
