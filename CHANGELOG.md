@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.26.1 - 2026-11-01
+#### ♻️ Code Refactoring
+- (**projects**) ♻️ show only the phone in the mobile frame - (29e4c7a) - *zenkiet*
+
+- - -
+
 ## v1.26.0 - 2026-11-01
 #### 🚀 Features
 - (**projects**) ✨ open mobile projects in an iPhone frame on desktops - (178d83f) - *zenkiet*
