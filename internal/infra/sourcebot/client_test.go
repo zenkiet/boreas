@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -186,5 +187,68 @@ func TestErrorsCarrySourcebotsReason(t *testing.T) {
 	}
 	if _, err := client.call(context.Background(), http.MethodGet, "/api/source", nil, nil, nil); err == nil || errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("a bare 404 means a wrong URL, not a missing file: %v", err)
+	}
+}
+
+func TestAskRunsConnectorsInOneChat(t *testing.T) {
+	var mu sync.Mutex
+	chats := 0
+	streams := map[string]string{
+		"What is BVIEW-12?": `{"type":"start","messageId":"m"}
+{"type":"text-delta","id":"t0","delta":"Let me look."}
+{"type":"tool-approval-request","approvalId":"a","toolCallId":"c","isAutomatic":true}
+{"type":"tool-output-available","toolCallId":"c","output":"` + strings.Repeat("x", 100<<10) + `"}
+{"type":"text-delta","id":"t1","delta":"<!--answer-->\nBVIEW-12 is "}
+{"type":"text-delta","id":"t1","delta":"To Do."}`,
+		"fail":    `{"type":"error","errorText":"model overloaded"}`,
+		"approve": `{"type":"tool-approval-request","approvalId":"a","toolCallId":"c"}`,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Header.Get("X-Sourcebot-Api-Key") != "key" {
+			t.Errorf("missing api key on %s", r.URL.Path)
+		}
+		if r.URL.Path == "/api/chat/blocking" {
+			chats++
+			_ = json.NewEncoder(w).Encode(map[string]any{"answer": "OK", "chatId": fmt.Sprint("chat-", chats), "languageModel": map[string]string{"provider": "anthropic", "model": "m"}})
+			return
+		}
+		var body struct {
+			ID                   string
+			LanguageModel        struct{ Model string }
+			DisabledMcpServerIds []string
+			SelectedSearchScopes []struct{ Type, Value string }
+			Messages             []struct{ Parts []struct{ Text string } }
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.ID == "chat-1" { // its model was taken out of Sourcebot's config
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"statusCode":400,"errorCode":"INVALID_REQUEST_BODY","message":"Language model m is not configured."}`))
+			return
+		}
+		if body.LanguageModel.Model != "m" || body.DisabledMcpServerIds == nil || len(body.DisabledMcpServerIds) > 0 || fmt.Sprint(body.SelectedSearchScopes) != "[{reposet shop}]" {
+			t.Errorf("every connector, over the project's context only: %+v", body)
+		}
+		for line := range strings.Lines(streams[body.Messages[0].Parts[0].Text] + "\n[DONE]") {
+			_, _ = fmt.Fprintf(w, "data: %s\n", line)
+		}
+	}))
+	defer server.Close()
+	client, ctx := New(server.URL, "key"), context.Background()
+
+	if reply, err := client.Ask(ctx, "shop", "What is BVIEW-12?"); err != nil || reply != "BVIEW-12 is To Do." {
+		t.Fatalf("reply %q, err %v", reply, err)
+	}
+	if _, err := client.Ask(ctx, "shop", "fail"); err == nil || !strings.Contains(err.Error(), "model overloaded") {
+		t.Errorf("an error event: %v", err)
+	}
+	if _, err := client.Ask(ctx, "shop", "approve"); err == nil || !strings.Contains(err.Error(), "needs approval") {
+		t.Errorf("a tool waiting for approval: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if chats != 2 {
+		t.Errorf("made %d chats, want one, and one more after Sourcebot turned the first down", chats)
 	}
 }

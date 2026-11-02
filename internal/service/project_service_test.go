@@ -576,3 +576,10 @@ func (f fakeCode) Blame(_ context.Context, project, repo, _, _ string) ([]core.B
 	}
 	return []core.BlameRange{{Start: 1, Lines: 3, Commit: core.Commit{Hash: "c0ffee00c0ffee00c0ffee", Date: "2026-10-28T10:00:00+07:00", Author: "Dev", Subject: "feat(MYL-1): fee"}}}, nil
 }
+
+func (f fakeCode) Ask(_ context.Context, project, question string) (string, error) {
+	if err := f.confine(project, f.contexts[project]); err != nil {
+		return "", err
+	}
+	return project + " was asked: " + question, nil
+}
