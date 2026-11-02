@@ -147,7 +147,10 @@ func (b *bora) tools(first bool) []core.Tool {
 			}), b.codeDiff),
 			tool("blame", "Show who last changed each range of lines of one file: lines, commit, date, author and subject.", object(map[string]any{
 				"project": code, "repo": repo, "path": text("file path"), "ref": ref,
-			}), b.blame))
+			}), b.blame),
+			tool("ask_sourcebot", "Ask Sourcebot's agent, which answers from the project's code and from every app connected to Sourcebot, such as Jira. "+
+				"Slow: use it for what those apps hold, such as the ticket a link or key names, or when your code tools fall short.",
+				object(map[string]any{"project": code, "query": text("the whole question, with any link or key it names")}), b.askSourcebot))
 	}
 	if first {
 		tools = append(tools, tool("set_title", "Name this new conversation in the user's list, in their language, in at most 60 characters.",
@@ -607,6 +610,23 @@ func (b *bora) blame(ctx context.Context, in args) (string, error) {
 		fmt.Fprintf(&out, "lines %d-%d: %.12s %.10s %s: %s\n", r.Start, r.Start+r.Lines-1, r.Commit.Hash, r.Commit.Date, r.Commit.Author, r.Commit.Subject)
 	}
 	return cmp.Or(out.String(), "no lines"), nil
+}
+
+func (b *bora) askSourcebot(ctx context.Context, in args) (string, error) {
+	b.tainted = true
+	slug, err := b.code(in.Project)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(in.Query) == "" {
+		return "", errors.New("error: query is empty")
+	}
+	b.step("Asking Sourcebot…")
+	reply, err := b.s.Code.Ask(ctx, slug, in.Query)
+	if err != nil {
+		return "", codeError(err)
+	}
+	return cmp.Or(reply, "no answer"), nil
 }
 
 // commitList writes a commit a line, newest first, and how many older ones it leaves out.

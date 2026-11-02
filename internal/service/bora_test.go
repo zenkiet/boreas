@@ -377,6 +377,9 @@ func TestBoraCode(t *testing.T) {
 		{"code_history", `{"project":"shop","repo":"","ref":"","path":"","query":""}`, "name the repository"},
 		{"code_diff", `{` + web + `,"base":"` + before + `","head":"` + head + `","path":""}`, "31 commits:"},
 		{"blame", `{` + web + `,"path":"src/fee.ts","ref":""}`, "lines 1-3: c0ffee00c0ff 2026-10-28 Dev: feat(MYL-1): fee"},
+		{"ask_sourcebot", `{"project":"shop","query":"What is BVIEW-12?"}`, "shop was asked: What is BVIEW-12?"},
+		{"ask_sourcebot", `{"project":"vault","query":"What is BVIEW-12?"}`, "not a member of a project named vault"},
+		{"ask_sourcebot", `{"project":"shop","query":" "}`, "query is empty"},
 		{"task_details", `{"project":"shop","task":"web"}`, "runs commit " + head + " of github.com/acme/web; the deploy before ran " + before},
 	} {
 		if got := run(fleet, tc.name, tc.args); !strings.Contains(got, tc.want) {

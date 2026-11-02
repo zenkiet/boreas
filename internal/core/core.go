@@ -558,7 +558,7 @@ type TaskMetric struct {
 	ObservedAt     time.Time `json:"observed_at"`
 }
 
-// CodeIndex reads indexed source code. A project's code is the search context named after it, and every call is
+// CodeIndex reads indexed source code. A project's code is the search context named after it, and every call but Ask is
 // confined to that context. A ref is a branch, tag or commit, and empty for the default branch.
 type CodeIndex interface {
 	Has(ctx context.Context, projects []string) []bool
@@ -569,6 +569,8 @@ type CodeIndex interface {
 	Commits(ctx context.Context, project, repo, ref, path, query string) ([]Commit, int, error)
 	Diff(ctx context.Context, project, repo, base, head, path string) ([]CodeChange, error)
 	Blame(ctx context.Context, project, repo, ref, path string) ([]BlameRange, error)
+	// Ask has Sourcebot's agent answer, unconfined: it reads whatever its API key's user can, code and connected apps such as Jira.
+	Ask(ctx context.Context, project, question string) (string, error)
 }
 
 type CodeMatch struct {

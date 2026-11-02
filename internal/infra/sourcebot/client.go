@@ -1,10 +1,12 @@
-// Package sourcebot reads code indexed by a self-hosted Sourcebot through its free REST API.
+// Package sourcebot reads code indexed by a self-hosted Sourcebot through its free REST API, and asks its paid Ask agent.
 package sourcebot
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +35,10 @@ const (
 	contextTTL = 5 * time.Minute
 	// The project list waits on Has, so a slow Sourcebot holds it at most this long.
 	probeTimeout = 3 * time.Second
+	// Ask waits out a whole agent run.
+	askTimeout = 3 * time.Minute
+	// The agent's answer follows this; before it comes what it said while working.
+	answerMarker = "<!--answer-->"
 )
 
 // ponytail: a secret hardcoded in ordinary source still reaches the client; extend this list as such files turn up.
@@ -51,11 +57,18 @@ type Client struct {
 	http     *http.Client
 	mu       sync.Mutex
 	seen     map[string]answer // whether a project has a context, or a context a repository
+	chatMu   sync.Mutex
+	chat     askChat
 }
 
 type answer struct {
 	yes bool
 	at  time.Time
+}
+
+type askChat struct {
+	ID    string          `json:"chatId"`
+	Model json.RawMessage `json:"languageModel"`
 }
 
 type treeNode struct {
@@ -359,6 +372,85 @@ func (c *Client) Blame(ctx context.Context, project, repo, ref, file string) ([]
 	return ranges, nil
 }
 
+// Ask has Sourcebot's agent answer with every app its API key's user connected, such as Jira, and any code that user can
+// read: the project's context only starts its searches, so it is not confined like Search and Read.
+// ponytail: the web app's chat route, the only one that runs connectors; a Sourcebot release may change it.
+func (c *Client) Ask(ctx context.Context, project, question string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, askTimeout)
+	defer cancel()
+	resp, err := c.open(ctx, project, question)
+	if err != nil { // a deleted chat, or one whose model left Sourcebot's config
+		resp, err = c.open(ctx, project, question)
+	}
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var text strings.Builder
+	events := bufio.NewScanner(resp.Body)
+	events.Buffer(nil, responseLimit)
+	for events.Scan() {
+		var event struct {
+			Type, Delta, ErrorText string
+			IsAutomatic            bool
+		}
+		if data, ok := strings.CutPrefix(events.Text(), "data: "); !ok || json.Unmarshal([]byte(data), &event) != nil {
+			continue
+		}
+		switch {
+		case event.Type == "text-delta":
+			text.WriteString(event.Delta)
+		case event.Type == "error":
+			return "", errors.New("sourcebot ask: " + event.ErrorText)
+		case event.Type == "tool-approval-request" && !event.IsAutomatic:
+			return "", errors.New("sourcebot ask: a connector tool needs approval; set it to Allowed or Blocked in Sourcebot")
+		}
+	}
+	if err := events.Err(); err != nil {
+		return "", fmt.Errorf("read sourcebot ask: %w", err)
+	}
+	reply := text.String()
+	if i := strings.LastIndex(reply, answerMarker); i >= 0 {
+		reply = reply[i+len(answerMarker):]
+	}
+	return strings.TrimSpace(reply), nil
+}
+
+// open forgets the shared chat when Sourcebot turns the request down, so a retry starts a fresh one.
+// ponytail: one chat for every question, so concurrent ones overwrite its history; a chat per conversation if anyone reads them.
+func (c *Client) open(ctx context.Context, project, question string) (*http.Response, error) {
+	chat, err := c.askChat(ctx)
+	if err != nil {
+		return nil, err
+	}
+	message := map[string]any{"id": rand.Text(), "role": "user", "parts": []any{map[string]any{"type": "text", "text": question}}}
+	body := map[string]any{
+		"id": chat.ID, "languageModel": chat.Model, "messages": []any{message}, "disabledMcpServerIds": []string{},
+		"selectedSearchScopes": []any{map[string]any{"type": "reposet", "value": project, "name": project, "repoCount": 0}},
+	}
+	resp, err := c.send(ctx, http.DefaultClient, http.MethodPost, "/api/ee/chat", nil, body)
+	if err != nil {
+		c.chatMu.Lock()
+		c.chat = askChat{}
+		c.chatMu.Unlock()
+	}
+	return resp, err
+}
+
+// askChat makes the shared chat on first use: the chat route answers only inside one, and only the blocking API makes one.
+func (c *Client) askChat(ctx context.Context) (askChat, error) {
+	c.chatMu.Lock()
+	defer c.chatMu.Unlock()
+	if c.chat.ID == "" {
+		var chat askChat
+		if _, err := c.call(ctx, http.MethodPost, "/api/chat/blocking", nil, map[string]any{"query": "Reply with OK. Use no tools."}, &chat); err != nil {
+			return askChat{}, err
+		}
+		c.chat = chat
+	}
+	return c.chat, nil
+}
+
 func deref(s *string) string {
 	if s == nil {
 		return ""
@@ -385,6 +477,19 @@ func allowedPath(file string) (string, bool) {
 }
 
 func (c *Client) call(ctx context.Context, method, endpoint string, query url.Values, body, out any) (http.Header, error) {
+	resp, err := c.send(ctx, c.http, method, endpoint, query, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(io.LimitReader(resp.Body, responseLimit)).Decode(out); err != nil {
+		return nil, fmt.Errorf("decode sourcebot %s, at most %d MiB: %w", endpoint, responseLimit>>20, err)
+	}
+	return resp.Header, nil
+}
+
+// send's client sets the timeout: seconds for a read, minutes for Ask's stream.
+func (c *Client) send(ctx context.Context, client *http.Client, method, endpoint string, query url.Values, body any) (*http.Response, error) {
 	var payload io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -403,12 +508,12 @@ func (c *Client) call(ctx context.Context, method, endpoint string, query url.Va
 	}
 	req.Header.Set("X-Sourcebot-Api-Key", c.key)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("call sourcebot %s: %w", endpoint, err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusMultipleChoices {
+		defer resp.Body.Close()
 		var failure struct{ ErrorCode, Message string }
 		_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&failure)
 		// Only Sourcebot's own not-found is one; a bare 404 means a wrong BOREAS_SOURCEBOT_URL.
@@ -417,8 +522,5 @@ func (c *Client) call(ctx context.Context, method, endpoint string, query url.Va
 		}
 		return nil, fmt.Errorf("sourcebot %s: %s", endpoint, strings.TrimSpace(resp.Status+" "+failure.ErrorCode+" "+failure.Message))
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, responseLimit)).Decode(out); err != nil {
-		return nil, fmt.Errorf("decode sourcebot %s, at most %d MiB: %w", endpoint, responseLimit>>20, err)
-	}
-	return resp.Header, nil
+	return resp, nil
 }

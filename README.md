@@ -468,9 +468,17 @@ Sourcebot's config:
   (`reindexIntervalMs`, an hour by default), so a commit pushed moments ago may
   not be there yet.
 - It lists the files it read under its answer.
+- With Ask Sourcebot (a paid plan), Bora can also hand a question to
+  Sourcebot's own agent and every connector (Jira, Slack…) the API key's user
+  has connected. Unlike Bora's code tools, that agent is not confined to the
+  project: it reads any repository and app that user can, whoever asks. Set
+  connector tools that write to Blocked and those that read to Allowed, as
+  nobody can approve one mid-answer. Boreas reaches the agent through the chat
+  route of Sourcebot's web app, the only one that runs connectors, so a
+  Sourcebot upgrade may break it; one chat in Sourcebot holds these questions.
 - A turn that can read code gets a 96 KiB tool budget instead of 48 KiB.
-- Code has many authors, so once Bora has read code in a turn, it proposes
-  nothing but start, stop and restart.
+- Code has many authors, so once Bora has read code or an answer from
+  Sourcebot's agent in a turn, it proposes nothing but start, stop and restart.
 - Files that usually hold secrets (`*.config`, `appsettings*.json`, env files,
   keys, certificates, cloud and Terraform credentials) are never read, nor
   shown in a comparison or a folder.
