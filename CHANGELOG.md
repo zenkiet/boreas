@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.27.0 - 2026-11-02
+#### 🚀 Features
+- (**bora**) ✨ support ask agent & connector - (dae3b1e) - *zenkiet*
+
+- - -
+
 ## v1.26.2 - 2026-11-01
 #### ♻️ Code Refactoring
 - (**shim**) ♻️ improve pointer for mobile experience - (17ea13b) - *zenkiet*
