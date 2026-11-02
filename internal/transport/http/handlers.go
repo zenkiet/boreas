@@ -56,12 +56,27 @@ func (h *Handler) startPairing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) claimPairing(w http.ResponseWriter, r *http.Request) {
-	var req claimPairingRequest
+	var req pairingCodeRequest
 	if !decode(w, r, &req) {
 		return
 	}
 	token, user, err := h.auth.ClaimPairing(r.Context(), req.Code)
 	h.reply(w, http.StatusOK, loginResponse{Token: token, User: userFromCore(user)}, err)
+}
+
+func (h *Handler) watchPairing(w http.ResponseWriter, r *http.Request) {
+	var req pairingCodeRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	claimed, expires, err := h.auth.WatchPairing(userFrom(r.Context()), req.Code)
+	if err != nil {
+		writeServiceError(w, h.logger, err)
+		return
+	}
+	ctx, cancel := context.WithDeadline(r.Context(), expires)
+	defer cancel()
+	sse(w, r.WithContext(ctx), claimed, func(struct{}) (string, any) { return "claimed", struct{}{} })
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {

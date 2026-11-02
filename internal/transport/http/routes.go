@@ -92,8 +92,17 @@ var routeTable = [...]route{
 		tag: "auth", summary: "Exchange a pairing code for a token",
 		description: "The token is returned once and expires in 30 days. " +
 			"The code travels in the body so request logs never hold it.",
-		req: new(claimPairingRequest), resp: new(loginResponse),
+		req: new(pairingCodeRequest), resp: new(loginResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusUnauthorized},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/auth/pairing/stream", access: accessSession, handler: (*Handler).watchPairing,
+		tag: "auth", summary: "Wait for a pairing code to sign a device in",
+		description: "Server-Sent Events: claimed {} once a device signs in with your code, then the stream ends; " +
+			"it also ends when the code expires, and a comment heartbeat fills idle time. " +
+			"404 when the code is spent, expired or not yours. The code travels in the body so request logs never hold it. " + readSSE,
+		req: new(pairingCodeRequest), resp: new(string), contentType: "text/event-stream",
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound}, quiet: true,
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/auth/logout", access: accessAuthed, handler: (*Handler).logout,

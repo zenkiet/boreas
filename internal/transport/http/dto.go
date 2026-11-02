@@ -585,7 +585,7 @@ type pairingResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-type claimPairingRequest struct {
+type pairingCodeRequest struct {
 	Code string `json:"code" format:"password" minLength:"1"`
 }
 

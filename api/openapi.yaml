@@ -192,7 +192,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ClaimPairingRequest'
+              $ref: '#/components/schemas/PairingCodeRequest'
       responses:
         "200":
           content:
@@ -219,6 +219,61 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Internal Server Error
       summary: Exchange a pairing code for a token
+      tags:
+      - auth
+  /api/v1/auth/pairing/stream:
+    post:
+      description: 'Server-Sent Events: claimed {} once a device signs in with your
+        code, then the stream ends; it also ends when the code expires, and a comment
+        heartbeat fills idle time. 404 when the code is spent, expired or not yours.
+        The code travels in the body so request logs never hold it. Read it with fetch
+        and a stream reader: EventSource cannot send the Authorization header.'
+      operationId: post-auth-pairing-stream
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PairingCodeRequest'
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Wait for a pairing code to sign a device in
       tags:
       - auth
   /api/v1/auth/tokens:
@@ -3723,15 +3778,6 @@ components:
       required:
       - url
       type: object
-    ClaimPairingRequest:
-      properties:
-        code:
-          format: password
-          minLength: 1
-          type: string
-      required:
-      - code
-      type: object
     CodeSource:
       properties:
         path:
@@ -4320,6 +4366,15 @@ components:
       format: uuid
       nullable: true
       type: string
+    PairingCodeRequest:
+      properties:
+        code:
+          format: password
+          minLength: 1
+          type: string
+      required:
+      - code
+      type: object
     PairingResponse:
       properties:
         code:

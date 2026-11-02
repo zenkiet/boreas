@@ -308,7 +308,7 @@ func TestPairingSignsInOnceWithinTTL(t *testing.T) {
 	}
 
 	late, _ := auth.StartPairing(alice)
-	auth.pairings[hashToken(late)] = pairing{alice.ID, time.Now().Add(-time.Second)}
+	auth.pairings[hashToken(late)] = pairing{userID: alice.ID, expires: time.Now().Add(-time.Second)}
 	if _, _, err := auth.ClaimPairing(ctx, late); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("an expired code = %v", err)
 	}
@@ -319,5 +319,30 @@ func TestPairingSignsInOnceWithinTTL(t *testing.T) {
 	users.users[alice.ID] = disabled
 	if _, _, err := auth.ClaimPairing(ctx, gone); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("a disabled user's code = %v", err)
+	}
+}
+
+func TestWatchPairingHearsItsClaimOnce(t *testing.T) {
+	auth, _, _ := newAuth(t)
+	alice, bob := newUser(t, auth, "alice"), newUser(t, auth, "bob")
+	code, _ := auth.StartPairing(alice)
+	if _, _, err := auth.WatchPairing(bob, code); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("bob watched alice's code: %v", err)
+	}
+	claimed, _, err := auth.WatchPairing(alice, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := auth.ClaimPairing(context.Background(), code); err != nil {
+		t.Fatal(err)
+	}
+	if _, heard := <-claimed; !heard {
+		t.Fatal("the claim was not heard")
+	}
+	if _, open := <-claimed; open {
+		t.Fatal("the watch stayed open")
+	}
+	if _, _, err := auth.WatchPairing(alice, code); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("a spent code = %v", err)
 	}
 }

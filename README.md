@@ -177,6 +177,7 @@ All API routes are under `/api/v1`.
 | `POST`   | `/auth/login`                                  | public        | Exchange credentials for a token                |
 | `POST`   | `/auth/pairing`                                | login session | Start signing in another device                 |
 | `POST`   | `/auth/pairing/claim`                          | public        | Exchange a pairing code for a token             |
+| `POST`   | `/auth/pairing/stream`                         | login session | Wait for a pairing code to sign a device in     |
 | `POST`   | `/auth/logout`                                 | user          | Revoke the current token                        |
 | `GET`    | `/auth/me`                                     | user          | Current user                                    |
 | `PUT`    | `/auth/me/avatar`                              | login session | Set your avatar                                 |

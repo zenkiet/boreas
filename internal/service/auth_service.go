@@ -39,6 +39,7 @@ type AuthService struct {
 type pairing struct {
 	userID  uuid.UUID
 	expires time.Time
+	claimed chan struct{} // one value, then closed, once the code signs a device in
 }
 
 func NewAuthService(users core.UserStore, tokens core.TokenStore) *AuthService {
@@ -101,8 +102,19 @@ func (s *AuthService) StartPairing(user core.User) (string, time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	maps.DeleteFunc(s.pairings, func(_ string, p pairing) bool { return now.After(p.expires) })
-	s.pairings[hashToken(code)] = pairing{user.ID, now.Add(pairingTTL)}
+	s.pairings[hashToken(code)] = pairing{user.ID, now.Add(pairingTTL), make(chan struct{}, 1)}
 	return code, now.Add(pairingTTL)
+}
+
+// WatchPairing hears the user's own code sign a device in; ErrNotFound once it is spent or expired.
+func (s *AuthService) WatchPairing(user core.User, code string) (<-chan struct{}, time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.pairings[hashToken(code)]
+	if !ok || p.userID != user.ID || time.Now().After(p.expires) {
+		return nil, time.Time{}, core.ErrNotFound
+	}
+	return p.claimed, p.expires, nil
 }
 
 // ClaimPairing spends a code from StartPairing on a new login session.
@@ -125,6 +137,10 @@ func (s *AuthService) ClaimPairing(ctx context.Context, code string) (string, co
 		return "", core.User{}, core.ErrUnauthorized
 	}
 	token, err := s.session(ctx, user.ID)
+	if err == nil {
+		p.claimed <- struct{}{}
+		close(p.claimed)
+	}
 	return token, user, err
 }
 

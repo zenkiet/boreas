@@ -134,6 +134,16 @@ func (s *stubAuth) ClaimPairing(_ context.Context, code string) (string, core.Us
 	return testToken, s.user, nil
 }
 
+func (*stubAuth) WatchPairing(_ core.User, code string) (<-chan struct{}, time.Time, error) {
+	if code != "pair-code" {
+		return nil, time.Time{}, core.ErrNotFound
+	}
+	claimed := make(chan struct{}, 1)
+	claimed <- struct{}{}
+	close(claimed)
+	return claimed, time.Now().Add(time.Minute), nil
+}
+
 func (s *stubAuth) Authenticate(_ context.Context, token string) (core.User, core.TokenKind, error) {
 	if token != testToken {
 		return core.User{}, "", core.ErrUnauthorized

@@ -78,7 +78,7 @@ func TestPasswordHashNeverReturned(t *testing.T) {
 	}
 }
 
-// A session hands another device a one-time code; an API token cannot.
+// A session hands another device a one-time code and hears it used; an API token cannot.
 func TestPairingSignsInAnotherDevice(t *testing.T) {
 	h := testHandler(stubTasks{}, nil, nil)
 	start := do(h, authed(http.MethodPost, "/api/v1/auth/pairing", nil))
@@ -91,6 +91,13 @@ func TestPairingSignsInAnotherDevice(t *testing.T) {
 	}
 	if bad := do(h, httptest.NewRequest(http.MethodPost, "/api/v1/auth/pairing/claim", strings.NewReader(`{"code":"nope"}`))); bad.Code != http.StatusUnauthorized {
 		t.Fatalf("a wrong code = %d", bad.Code)
+	}
+	watch := do(h, authed(http.MethodPost, "/api/v1/auth/pairing/stream", strings.NewReader(`{"code":"pair-code"}`)))
+	if watch.Code != http.StatusOK || !strings.Contains(watch.Body.String(), "event: claimed\ndata: {}\n\n") {
+		t.Fatalf("watch = %d %s", watch.Code, watch.Body)
+	}
+	if rr := do(h, authed(http.MethodPost, "/api/v1/auth/pairing/stream", strings.NewReader(`{"code":"nope"}`))); rr.Code != http.StatusNotFound {
+		t.Fatalf("watching a wrong code = %d", rr.Code)
 	}
 	api := testHandler(stubTasks{}, &stubAuth{user: testMember, kind: core.TokenKindAPI}, nil)
 	if rr := do(api, authed(http.MethodPost, "/api/v1/auth/pairing", nil)); rr.Code != http.StatusForbidden {
