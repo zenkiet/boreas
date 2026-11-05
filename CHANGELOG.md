@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.29.0 - 2026-11-05
+#### 🚀 Features
+- (**tasks**) ✨ lock a task's App URL behind a password - (7fb2083) - *zenkiet*
+
+- - -
+
 ## v1.28.0 - 2026-11-02
 #### 🚀 Features
 - (**auth**) ✨ stream a pairing code's claim to the device showing it - (4892a26) - *zenkiet*
