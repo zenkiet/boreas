@@ -113,6 +113,7 @@ type taskDTO struct {
 	Status          core.TaskStatus   `json:"status"`
 	DevStatus       core.DevStatus    `json:"dev_status"`
 	FormFactor      core.FormFactor   `json:"form_factor"`
+	HasPassword     bool              `json:"has_password"`
 	Port            int               `json:"port" example:"80"`
 	ContainerID     string            `json:"container_id,omitempty"`
 	ContainerIP     string            `json:"container_ip,omitempty"`
@@ -141,7 +142,8 @@ func taskFromCore(t core.Task, role core.ProjectRole) taskDTO {
 	}
 	return taskDTO{
 		ID: t.ID, ProjectID: t.ProjectID, Name: t.Name, Description: t.Description, Note: t.Note,
-		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, FormFactor: t.FormFactor, Port: t.Port,
+		Image: t.Image, Status: t.Status, DevStatus: t.DevStatus, FormFactor: t.FormFactor,
+		HasPassword: t.PasswordHash != "", Port: t.Port,
 		ContainerID: t.ContainerID, ContainerIP: t.ContainerIP,
 		CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 		Labels: t.Labels, Env: t.Env, Volumes: t.Volumes, Routes: t.Routes, Assignees: t.Assignees,
@@ -187,6 +189,7 @@ type updateTaskRequest struct {
 	Note        *string            `json:"note,omitempty"`
 	DevStatus   *core.DevStatus    `json:"dev_status,omitempty"`
 	FormFactor  *core.FormFactor   `json:"form_factor,omitempty"`
+	Password    *string            `json:"password,omitempty" example:"correct horse battery"`
 	Image       *string            `json:"image,omitempty" example:"nginx:1.27-alpine"`
 	Port        *int               `json:"port,omitempty" example:"80"`
 	Labels      *map[string]string `json:"labels,omitempty"`

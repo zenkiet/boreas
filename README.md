@@ -86,7 +86,8 @@ The task is available at:
 http://localhost:8080/demo/web/
 ```
 
-Proxied task traffic is public; only the API requires a token.
+Proxied task traffic is public unless the task has a password (see
+[Password-protected tasks](#password-protected-tasks)); the API always requires a token.
 
 Project slugs and task names must match:
 
@@ -220,7 +221,7 @@ All API routes are under `/api/v1`.
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
-| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, volumes, description, note, or dev status |
+| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, volumes, description, note, dev status, or password |
 | `POST`   | `/projects/{project}/tasks/{name}/deploy`      | operator      | Deploy an image built elsewhere                 |
 | `PUT`    | `/projects/{project}/tasks/{name}/state`       | operator      | Start, stop, or restart                         |
 | `PUT`    | `/projects/{project}/tasks/{name}/build`       | operator      | Report CI build progress                        |
@@ -924,6 +925,34 @@ drag scrolls and glides on, and nothing hovers until pressed. Phones, tablets,
 automated browsers (`navigator.webdriver`), and pages embedded elsewhere get
 the app unchanged. To see the page without the frame on a
 desktop, turn on touch emulation in the browser's developer tools.
+
+## Password-protected tasks
+
+A task with a `password` answers everything under its App URL, routes included,
+with a lock page until the visitor enters it. The browser then stays in for 24
+hours through an HttpOnly cookie scoped to the task's path. Everyone enters it,
+members included:
+
+```bash
+curl -X PATCH -H "$AUTH" -H "$JSON" -d '{"password":"correct horse battery"}' \
+  http://localhost:8080/api/v1/projects/demo/tasks/web
+```
+
+- A password is 8 to 72 characters and kept as a bcrypt hash, so it can be
+  replaced but never read back. `has_password` says whether one is set, `""`
+  removes it, and neither touches the container.
+- The hash also signs the cookie, so setting a password again, even the same
+  one, signs every browser out.
+- After 10 tries in a row the form takes one every 30 seconds, from anyone: a
+  flood stalls new unlocks of that task, never the browsers already in. Pick a
+  passphrase, not a dictionary word.
+- The cookie never reaches the app or a route's backend, and the public
+  directory leaves a locked task's note out.
+
+It keeps outsiders out, not other tasks: every task shares one origin, so a
+task's scripts can reach another that the same browser unlocked. Webhooks, CORS
+calls and cross-site POST callbacks (SAML, OIDC `form_post`) to a locked task
+get 401, and a service worker may go on serving what it cached after the day is up.
 
 ## Development commands
 

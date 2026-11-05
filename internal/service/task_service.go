@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Config struct {
@@ -275,6 +276,7 @@ func (s *TaskService) Delete(ctx context.Context, slug, name string) error {
 	}
 	_ = s.routes.Unregister(ctx, project.Slug, name)
 	s.routes.SetRoutes(project.Slug, name, nil)
+	s.routes.SetLock(project.Slug, name, "")
 	if task.ContainerID != "" {
 		state, inspectErr := s.runtime.Inspect(ctx, task.ContainerID)
 		if inspectErr == nil && state.Exists && state.Status == core.StatusRunning {
@@ -294,6 +296,7 @@ type UpdateTaskInput struct {
 	Note        *string
 	DevStatus   *core.DevStatus
 	FormFactor  *core.FormFactor
+	Password    *string
 	Image       *string
 	Port        *int
 	Labels      *map[string]string
@@ -316,6 +319,9 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 	// A failed container change still returns the row it saved, routes included.
 	if updated.ID != uuid.Nil && !slices.Equal(updated.Routes, task.Routes) {
 		s.routes.SetRoutes(project.Slug, name, updated.Routes)
+	}
+	if updated.ID != uuid.Nil && updated.PasswordHash != task.PasswordHash {
+		s.routes.SetLock(project.Slug, name, updated.PasswordHash)
 	}
 	if err == nil && updated.DevStatus != task.DevStatus {
 		s.cfg.Notify(ctx, notification(project, name, core.NotificationStatusChanged, "🔄 Status Changed",
@@ -425,17 +431,25 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 			return core.Task{}, err
 		}
 	}
+	hash := task.PasswordHash
+	if in.Password != nil {
+		if hash, err = passwordHash(*in.Password); err != nil {
+			return core.Task{}, err
+		}
+	}
 	routesChanged := !slices.Equal(routes, task.Routes)
 	descriptionChanged := in.Description != nil && *in.Description != task.Description
 	noteChanged := in.Note != nil && *in.Note != task.Note
 	devStatusChanged := in.DevStatus != nil && *in.DevStatus != task.DevStatus
 	formFactorChanged := in.FormFactor != nil && *in.FormFactor != task.FormFactor
+	passwordChanged := hash != task.PasswordHash
 	containerChanged := (recreate && task.PendingRecreate) || spec.Image != task.Image || spec.Port != task.Port ||
 		!maps.Equal(spec.Labels, task.Labels) || !maps.Equal(spec.Env, task.Env) || !maps.Equal(spec.Volumes, task.Volumes)
-	if !descriptionChanged && !noteChanged && !devStatusChanged && !formFactorChanged && !routesChanged && !containerChanged {
+	if !descriptionChanged && !noteChanged && !devStatusChanged && !formFactorChanged && !passwordChanged &&
+		!routesChanged && !containerChanged {
 		return task.Clone(), nil
 	}
-	task.Routes = routes
+	task.Routes, task.PasswordHash = routes, hash
 	if descriptionChanged {
 		task.Description = *in.Description
 	}
@@ -499,6 +513,17 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 		return s.failTask(ctx, task, fmt.Errorf("start recreated container: %w", err))
 	}
 	return s.finishStart(ctx, task, project.Slug)
+}
+
+func passwordHash(password string) (string, error) {
+	if password == "" {
+		return "", nil
+	}
+	if len(password) < minPasswordLength || len(password) > 72 {
+		return "", errors.Join(core.ErrInvalidInput, fmt.Errorf("password must be %d to 72 characters", minPasswordLength))
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(hash), err
 }
 
 // CheckRoute sends one request the way a route would, so an address can be tried before it is saved.
@@ -761,6 +786,7 @@ func (s *TaskService) Reconcile(ctx context.Context) error {
 			continue
 		}
 		s.routes.SetRoutes(slug, task.Name, task.Routes)
+		s.routes.SetLock(slug, task.Name, task.PasswordHash)
 		state, inspectErr := s.runtime.Inspect(ctx, task.ContainerID)
 		if inspectErr != nil || !state.Exists {
 			task.Status, task.ContainerIP = core.StatusUnknown, ""

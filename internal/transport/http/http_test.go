@@ -652,7 +652,7 @@ func TestLogsDecodeSplitDockerFrame(t *testing.T) {
 
 // Only fields sent reach the service; {} is not omission; auto_restart defaults to true.
 func TestUpdateTaskForwardsOnlySuppliedFields(t *testing.T) {
-	desc, image, ready, mobile := "new", "nginx:alpine", core.DevReady, core.FormFactorMobile
+	desc, image, ready, mobile, password := "new", "nginx:alpine", core.DevReady, core.FormFactorMobile, "correct horse"
 	env, empty := map[string]string{"A": "B"}, map[string]string{}
 	for _, tc := range []struct {
 		body     string
@@ -662,6 +662,7 @@ func TestUpdateTaskForwardsOnlySuppliedFields(t *testing.T) {
 		{`{"description":"new"}`, service.UpdateTaskInput{Description: &desc}, true},
 		{`{"dev_status":"ready"}`, service.UpdateTaskInput{DevStatus: &ready}, true},
 		{`{"form_factor":"mobile"}`, service.UpdateTaskInput{FormFactor: &mobile}, true},
+		{`{"password":"correct horse"}`, service.UpdateTaskInput{Password: &password}, true},
 		{`{"env":{"A":"B"}}`, service.UpdateTaskInput{Env: &env}, true},
 		{`{"env":{}}`, service.UpdateTaskInput{Env: &empty}, true},
 		{`{"image":"nginx:alpine","auto_restart":false}`, service.UpdateTaskInput{Image: &image}, false},

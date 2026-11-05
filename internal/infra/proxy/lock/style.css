@@ -1,0 +1,346 @@
+:root {
+  --canvas: #f4f6fa;
+  --surface: #fff;
+  --text: #0f172a;
+  --muted: #475569;
+  --field: #7b8794;
+  --accent: #4f46e5;
+  --accent-hover: #5b52ec;
+  --action: #4338ca;
+  --ring: rgba(79, 70, 229, 0.35);
+  --danger: #be123c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #000;
+    --surface: #1c1c1e;
+    --text: #fff;
+    --muted: rgba(235, 235, 245, 0.75);
+    --field: #8e8e93;
+    --action: #a5b4fc;
+    --ring: rgba(165, 180, 252, 0.5);
+    --danger: #fb7185;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--canvas);
+  color: var(--text);
+  font:
+    16px/1.5 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.lock {
+  width: 100%;
+  max-width: 22.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+small {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 28px;
+  text-wrap: balance;
+}
+header p {
+  margin: 0;
+  color: var(--muted);
+  text-wrap: balance;
+}
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+label {
+  font-size: 15px;
+  font-weight: 600;
+}
+.field {
+  position: relative;
+}
+input {
+  width: 100%;
+  height: 48px;
+  padding: 0 76px 0 14px;
+  border: 1px solid var(--field);
+  border-radius: 12px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+input:focus {
+  outline: 3px solid var(--ring);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+button {
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+button:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+.show {
+  position: absolute;
+  inset: 4px 4px 4px auto;
+  min-width: 60px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--action);
+  font-size: 15px;
+}
+.unlock {
+  height: 48px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  transition:
+    transform 0.12s cubic-bezier(0.23, 1, 0.32, 1),
+    background-color 0.12s;
+}
+.unlock:hover {
+  background: var(--accent-hover);
+}
+.unlock:active {
+  transform: scale(0.97);
+}
+.unlock:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+[role="alert"] {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: var(--danger);
+}
+[role="alert"]:empty {
+  display: none;
+}
+
+.bora {
+  display: block;
+  width: 136px;
+  height: 136px;
+  margin: 0 auto;
+}
+.body,
+.curl,
+.eyes,
+.o,
+.halo,
+.hand {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.body {
+  transform-origin: 50% 100%;
+  animation: breathe 4.2s ease-in-out infinite;
+}
+.curl {
+  transform-origin: 25% 92%;
+  animation: sway 4.2s ease-in-out infinite;
+}
+.eyes {
+  animation: blink 5.4s infinite;
+}
+.face,
+.cheeks,
+.glints,
+.sheen,
+.curl {
+  transition:
+    transform 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 0.3s;
+}
+.face,
+.cheeks,
+.glints,
+.sheen {
+  transform: translate(calc(var(--lx, 0) * var(--k) * 1px), calc(var(--ly, 0) * var(--k) * 1px));
+}
+.face {
+  --k: 1;
+}
+.cheeks {
+  --k: 0.7;
+}
+.glints {
+  --k: -0.3;
+}
+.sheen {
+  --k: -0.4;
+}
+.mouth,
+.brow,
+.halo {
+  transition: opacity 0.15s;
+}
+.o {
+  transform: scale(0.62);
+}
+.hand {
+  transition:
+    transform 0.24s cubic-bezier(0.4, 0, 1, 1),
+    opacity 0.18s;
+}
+.hand.left {
+  transform: translate(-14px, 22px) rotate(-30deg) scale(0.6);
+}
+.hand.right {
+  transform: translate(14px, 22px) rotate(30deg) scale(0.6);
+}
+
+.wrong .smile,
+.wait .smile {
+  opacity: 0;
+}
+.wrong .level,
+.wait .soft {
+  opacity: 1;
+}
+.wrong .bob {
+  animation: shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+.wait .eyes {
+  transform: scaleY(0.35);
+  animation: none;
+}
+.thinking .face {
+  transform: translate(2.4px, -2.3px);
+}
+.thinking .curl {
+  transform: rotate(-16deg);
+  animation: none;
+}
+.thinking .mouth {
+  opacity: 0;
+}
+.thinking .o,
+.thinking .brow {
+  opacity: 1;
+}
+.thinking .halo {
+  opacity: 1;
+  animation: spin 1.6s linear infinite;
+}
+.ready:focus-within:not(.thinking) .hand {
+  opacity: 1;
+  transition:
+    transform 0.42s cubic-bezier(0.34, 1.36, 0.64, 1),
+    opacity 0.12s;
+}
+.ready:focus-within:not(.thinking) .hand.left {
+  transform: rotate(8deg);
+}
+.ready:focus-within:not(.thinking) .hand.right {
+  transform: rotate(-8deg);
+}
+.ready.peek:focus-within:not(.thinking) .hand.right {
+  transform: translate(3px, 12px) rotate(16deg);
+}
+.ready:focus-within:not(.thinking) .cheeks {
+  opacity: 0.95;
+}
+.ready:focus-within:not(.thinking) .mouth {
+  opacity: 0;
+}
+.ready:focus-within:not(.thinking) .soft {
+  opacity: 1;
+}
+
+@keyframes breathe {
+  50% {
+    transform: scale(1.012, 0.988);
+  }
+}
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.1);
+  }
+}
+@keyframes shake {
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(1.5px);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .body,
+  .curl,
+  .eyes,
+  .halo,
+  .wrong .bob {
+    animation: none !important;
+  }
+  .face,
+  .cheeks,
+  .glints,
+  .sheen,
+  .curl {
+    transition: opacity 0.15s;
+  }
+  .hand {
+    transform: none !important;
+  }
+  .ready.peek:focus-within:not(.thinking) .hand.right {
+    opacity: 0;
+  }
+}
