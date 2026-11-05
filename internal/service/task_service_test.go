@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type harness struct {
@@ -122,6 +123,38 @@ func TestTaskFormFactor(t *testing.T) {
 	}
 	if _, err := h.svc.Update(ctx, "team", "admin", UpdateTaskInput{FormFactor: &unknown}, true); !errors.Is(err, core.ErrInvalidInput) {
 		t.Fatalf("unknown form factor update: got %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestTaskPassword(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.create(t, CreateTaskInput{Name: "app", Image: "img"})
+	short, password, open := "1234567", "correct horse", ""
+	if _, err := h.svc.Update(ctx, "team", "app", UpdateTaskInput{Password: &short}, true); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("short password: got %v, want ErrInvalidInput", err)
+	}
+
+	stops, recreates := len(h.runtime.stopped), len(h.runtime.recreated)
+	task, err := h.svc.Update(ctx, "team", "app", UpdateTaskInput{Password: &password}, true)
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(task.PasswordHash), []byte(password)) != nil ||
+		h.routes.locks["team/app"] != task.PasswordHash {
+		t.Fatalf("set password: %v, hash %q, lock %q", err, task.PasswordHash, h.routes.locks["team/app"])
+	}
+	if len(h.runtime.stopped) != stops || len(h.runtime.recreated) != recreates {
+		t.Fatal("a password change touched the container")
+	}
+	if again, _ := h.svc.Update(ctx, "team", "app", UpdateTaskInput{Password: &password}, true); again.PasswordHash == task.PasswordHash {
+		t.Fatal("setting the same password again must sign every browser out")
+	}
+	if task, _ = h.svc.Update(ctx, "team", "app", UpdateTaskInput{Password: &open}, true); task.PasswordHash != "" ||
+		h.routes.locks["team/app"] != "" {
+		t.Fatalf(`"" must open the task: hash %q, lock %q`, task.PasswordHash, h.routes.locks["team/app"])
+	}
+
+	h.svc.Update(ctx, "team", "app", UpdateTaskInput{Password: &password}, true)
+	if err := h.svc.Delete(ctx, "team", "app"); err != nil || h.routes.locks["team/app"] != "" {
+		t.Fatalf("delete: %v; a task created later under this name must not inherit lock %q", err, h.routes.locks["team/app"])
 	}
 }
 

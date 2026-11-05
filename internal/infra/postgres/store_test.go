@@ -122,6 +122,7 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	// The trigger owns updated_at, so it must advance without the app setting it.
 	time.Sleep(5 * time.Millisecond)
 	fetched.Status, fetched.ContainerIP, fetched.FormFactor = core.StatusRunning, "10.0.0.5", core.FormFactorMobile
+	fetched.PasswordHash = "$2a$10$hash"
 	fetched.Routes = []core.Route{{Path: "/api", URL: "https://10.0.0.9", AnyCert: true}}
 	fetched.Revision = core.Revision{Repo: "github.com/acme/web", Commit: strings.Repeat("a", 40), Previous: strings.Repeat("b", 40)}
 	updated, err := store.Update(ctx, fetched)
@@ -130,7 +131,7 @@ func TestTaskStoreRoundTrip(t *testing.T) {
 	}
 	if !updated.UpdatedAt.After(created.UpdatedAt) || !updated.CreatedAt.Equal(created.CreatedAt) || updated.Revision != fetched.Revision ||
 		updated.Description != "front door" || updated.Note != created.Note || !slices.Equal(updated.Routes, fetched.Routes) ||
-		updated.FormFactor != core.FormFactorMobile {
+		updated.FormFactor != core.FormFactorMobile || updated.PasswordHash != fetched.PasswordHash || created.PasswordHash != "" {
 		t.Fatalf("update must advance only updated_at and keep the rest: %v -> %+v", created.UpdatedAt, updated)
 	}
 	updated.FormFactor = "tablet"

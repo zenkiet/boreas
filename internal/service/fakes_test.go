@@ -570,14 +570,19 @@ func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (<-chan cor
 type fakeRoutes struct {
 	registered map[string]string
 	routes     map[string][]core.Route
+	locks      map[string]string
 }
 
 func newFakeRoutes() *fakeRoutes {
-	return &fakeRoutes{registered: map[string]string{}, routes: map[string][]core.Route{}}
+	return &fakeRoutes{registered: map[string]string{}, routes: map[string][]core.Route{}, locks: map[string]string{}}
 }
 
 func (f *fakeRoutes) SetRoutes(project, task string, routes []core.Route) {
 	f.routes[project+"/"+task] = routes
+}
+
+func (f *fakeRoutes) SetLock(project, task, hash string) {
+	f.locks[project+"/"+task] = hash
 }
 
 func (f *fakeRoutes) Check(context.Context, core.Route) core.RouteCheck {

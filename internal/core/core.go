@@ -311,6 +311,7 @@ type Task struct {
 	Status          TaskStatus
 	DevStatus       DevStatus
 	FormFactor      FormFactor
+	PasswordHash    string
 	Port            int
 	ContainerID     string
 	ContainerIP     string
@@ -878,5 +879,6 @@ type RouteRegistry interface {
 	Register(ctx context.Context, project, task, host string, port int) error
 	Unregister(ctx context.Context, project, task string) error
 	SetRoutes(project, task string, routes []Route)
+	SetLock(project, task, hash string)
 	Check(context.Context, Route) RouteCheck
 }

@@ -243,6 +243,9 @@ func (h *Handler) publicProjects(w http.ResponseWriter, r *http.Request) {
 	projects, tasks, err := h.projects.Directory(r.Context())
 	grouped := make(map[uuid.UUID][]publicTaskDTO, len(projects))
 	for _, task := range tasks {
+		if task.PasswordHash != "" {
+			task.Note = ""
+		}
 		grouped[task.ProjectID] = append(grouped[task.ProjectID], publicTaskDTO{
 			Name: task.Name, Description: task.Description, Note: task.Note,
 			Status: task.Status, DevStatus: task.DevStatus, UpdatedAt: task.UpdatedAt,
@@ -655,7 +658,8 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.tasks.Update(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		service.UpdateTaskInput{
 			Description: req.Description, Note: req.Note, DevStatus: req.DevStatus, FormFactor: req.FormFactor,
-			Image: req.Image, Port: req.Port, Labels: req.Labels, Env: req.Env, Volumes: req.Volumes, Routes: req.Routes,
+			Password: req.Password, Image: req.Image, Port: req.Port, Labels: req.Labels, Env: req.Env,
+			Volumes: req.Volumes, Routes: req.Routes,
 		}, req.AutoRestart == nil || *req.AutoRestart)
 	h.reply(w, http.StatusOK, taskResponse{Task: taskFromCore(task, accessFrom(r.Context()).Role)}, err)
 }

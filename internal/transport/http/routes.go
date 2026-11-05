@@ -431,7 +431,9 @@ var routeTable = [...]route{
 		tag: "tasks", summary: "Update a task",
 		description: "Only the fields sent are changed. image, port, labels, env and volumes need a new " +
 			"container: auto_restart applies it at once and defaults to true, otherwise the next " +
-			"start or restart does. description, dev_status and form_factor leave a running container untouched. " +
+			"start or restart does. description, dev_status, form_factor and password leave a running container untouched. " +
+			"password (8 to 72 characters) puts everything under the App URL behind a lock page for a day per browser, " +
+			"and setting one again signs every browser out; \"\" removes it. It is never returned: has_password says whether one is set. " +
 			"dev_status tracks the code, not the container: in_progress on create, blocked is not " +
 			"fit for QA, ready is. routes replaces the whole list and applies at once, container or not: " +
 			"<App URL><path>/… is forwarded to url/…, so the browser never calls the address itself.",

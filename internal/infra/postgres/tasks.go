@@ -15,7 +15,7 @@ type TaskStore struct{ pool *pgxpool.Pool }
 func NewTaskStore(pool *pgxpool.Pool) *TaskStore { return &TaskStore{pool: pool} }
 
 // tasks.id, not id: inside the assignee subselect a bare id binds to users.
-const taskColumns = `id, project_id, name, description, note, image, status, dev_status, form_factor, port,
+const taskColumns = `id, project_id, name, description, note, image, status, dev_status, form_factor, password_hash, port,
 	container_id, container_ip, labels, env, volumes, routes, build, revision, pending_recreate, error, created_at, updated_at,
 	COALESCE((SELECT json_agg(json_build_object('user_id', g.user_id, 'username', u.username, 'avatar_at', u.avatar_at)
 		ORDER BY u.username) FROM task_grants g JOIN users u ON u.id = g.user_id WHERE g.task_id = tasks.id), '[]')`
@@ -56,14 +56,15 @@ func (s *TaskStore) Update(ctx context.Context, task core.Task) (core.Task, erro
 	return one(ctx, s.pool, scanTask, "update task", `
 		UPDATE tasks SET description = $2, note = $3, image = $4, status = $5, dev_status = $6, port = $7,
 			container_id = $8, container_ip = $9, labels = $10, env = $11,
-			volumes = $12, routes = $13, pending_recreate = $14, error = $15, revision = $16, form_factor = $17
+			volumes = $12, routes = $13, pending_recreate = $14, error = $15, revision = $16, form_factor = $17,
+			password_hash = $18
 		WHERE id = $1
 		RETURNING `+taskColumns,
 		task.ID, task.Description, task.Note, task.Image, task.Status,
 		cmp.Or(task.DevStatus, core.DevInProgress), task.Port,
 		task.ContainerID, task.ContainerIP, nonNilMap(task.Labels), nonNilMap(task.Env),
 		nonNilMap(task.Volumes), nonNilRoutes(task.Routes), task.PendingRecreate, task.Error, task.Revision,
-		cmp.Or(task.FormFactor, core.FormFactorWeb))
+		cmp.Or(task.FormFactor, core.FormFactorWeb), task.PasswordHash)
 }
 
 // SetBuild writes only build: Update rewrites the row from a copy read earlier, so it must never carry it.
@@ -77,7 +78,8 @@ func (s *TaskStore) Delete(ctx context.Context, id uuid.UUID) error {
 
 func scanTask(row pgx.CollectableRow) (core.Task, error) {
 	var t core.Task
-	err := row.Scan(&t.ID, &t.ProjectID, &t.Name, &t.Description, &t.Note, &t.Image, &t.Status, &t.DevStatus, &t.FormFactor, &t.Port,
+	err := row.Scan(&t.ID, &t.ProjectID, &t.Name, &t.Description, &t.Note, &t.Image, &t.Status, &t.DevStatus, &t.FormFactor,
+		&t.PasswordHash, &t.Port,
 		&t.ContainerID, &t.ContainerIP, &t.Labels, &t.Env, &t.Volumes, &t.Routes, &t.Build, &t.Revision, &t.PendingRecreate, &t.Error,
 		&t.CreatedAt, &t.UpdatedAt, &t.Assignees)
 	t.Labels, t.Env, t.Volumes, t.Routes = nonNilMap(t.Labels), nonNilMap(t.Env), nonNilMap(t.Volumes), nonNilRoutes(t.Routes)

@@ -1,0 +1,227 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  class="bora"
+  viewBox="0 0 120 120"
+  aria-hidden="true"
+  focusable="false"
+>
+  <defs>
+    <path
+      id="shape"
+      d="M50 38C70 38 84.5 52.5 84.5 71C84.5 86 72 94 50 94C28 94 15.5 86 15.5 71C15.5 52.5 30 38 50 38Z"
+    />
+    <clipPath id="glass"><use href="#shape" /></clipPath>
+    <radialGradient id="shell" gradientUnits="userSpaceOnUse" cx="38.96" cy="50.32" r="60">
+      <stop offset="0" stop-color="#b3e2ff" />
+      <stop offset=".26" stop-color="#5bb6ff" />
+      <stop offset=".58" stop-color="#1e8cff" />
+      <stop offset=".82" stop-color="#1670f5" />
+      <stop offset="1" stop-color="#2b52de" />
+    </radialGradient>
+    <radialGradient id="low">
+      <stop offset=".2" stop-color="#7fd3ff" stop-opacity=".4" />
+      <stop offset="1" stop-color="#7fd3ff" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="side">
+      <stop offset="0" stop-color="#49c6ff" stop-opacity=".6" />
+      <stop offset="1" stop-color="#49c6ff" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="deep">
+      <stop offset="0" stop-color="#062a8c" stop-opacity=".6" />
+      <stop offset="1" stop-color="#062a8c" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="socket">
+      <stop offset="0" stop-color="#062a8c" stop-opacity=".3" />
+      <stop offset="1" stop-color="#062a8c" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="shine">
+      <stop offset="0" stop-color="#fff" stop-opacity=".8" />
+      <stop offset="1" stop-color="#fff" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="blush">
+      <stop offset="0" stop-color="#ff8cc6" stop-opacity=".9" />
+      <stop offset="1" stop-color="#ff8cc6" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="rim" gradientUnits="userSpaceOnUse" x1="22.4" y1="52" x2="81.05" y2="82.8">
+      <stop offset=".5" stop-color="#c6f6ff" stop-opacity="0" />
+      <stop offset="1" stop-color="#c6f6ff" stop-opacity=".95" />
+    </linearGradient>
+    <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="50" y1="38" x2="50" y2="94">
+      <stop offset=".3" stop-color="#1a84f5" />
+      <stop offset="1" stop-color="#0a6fe0" />
+    </linearGradient>
+    <linearGradient id="tuft" gradientUnits="userSpaceOnUse" x1="47.2" y1="43.5" x2="61.7" y2="21.7">
+      <stop offset="0" stop-color="#3399ff" />
+      <stop offset="1" stop-color="#8fd3ff" />
+    </linearGradient>
+    <linearGradient id="ring" gradientUnits="userSpaceOnUse" x1="11" y1="26" x2="89" y2="104">
+      <stop offset="0" stop-color="#22d3ee" />
+      <stop offset=".5" stop-color="#5ab6ff" />
+      <stop offset="1" stop-color="#a78bfa" />
+    </linearGradient>
+    <radialGradient id="eye-l" gradientUnits="userSpaceOnUse" cx="40" cy="70.3" r="7.2">
+      <stop offset="0" stop-color="#4b8cf5" />
+      <stop offset=".5" stop-color="#173a8a" />
+      <stop offset="1" stop-color="#07122c" />
+    </radialGradient>
+    <radialGradient id="eye-r" gradientUnits="userSpaceOnUse" cx="60" cy="70.3" r="7.2">
+      <stop offset="0" stop-color="#4b8cf5" />
+      <stop offset=".5" stop-color="#173a8a" />
+      <stop offset="1" stop-color="#07122c" />
+    </radialGradient>
+    <radialGradient id="glove" cx=".38" cy=".3" r=".85">
+      <stop offset="0" stop-color="#d6f1ff" />
+      <stop offset=".35" stop-color="#7cc8ff" />
+      <stop offset=".8" stop-color="#2a95ff" />
+      <stop offset="1" stop-color="#1a7cf5" />
+    </radialGradient>
+    <g id="mitt">
+      <ellipse cx="0" cy="3" rx="9.6" ry="9.4" fill="#062a8c" fill-opacity=".18" />
+      <ellipse
+        cx="7.7"
+        cy="2.4"
+        rx="2.8"
+        ry="4.2"
+        transform="rotate(30 7.7 2.4)"
+        fill="url(#glove)"
+        stroke="#0f6fe8"
+        stroke-width="1"
+      />
+      <path
+        d="M-7.6 7.2C-8.8 3.4-9-1.6-8-5.2C-7.4-7.6-6.4-9.2-4.9-9.2C-3.3-9.2-2.6-7.8-2.5-6.4C-2.3-9.2-1.2-10.6 0-10.6S2.3-9.2 2.5-6.4C2.6-7.8 3.3-9.2 4.9-9.2C6.4-9.2 7.4-7.6 8-5.2C9-1.6 8.8 3.4 7.6 7.2C6.4 10.2 3.4 11 0 11S-6.4 10.2-7.6 7.2Z"
+        fill="url(#glove)"
+        stroke="#0f6fe8"
+        stroke-width="1.1"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M-2.5-6.4V-3.2M2.5-6.4V-3.2"
+        stroke="#0f6fe8"
+        stroke-opacity=".65"
+        stroke-width="1"
+        stroke-linecap="round"
+      />
+      <ellipse
+        cx="-4.6"
+        cy="-3.6"
+        rx="2.1"
+        ry="1.1"
+        transform="rotate(-35 -4.6 -3.6)"
+        fill="#fff"
+        fill-opacity=".85"
+      />
+    </g>
+  </defs>
+  <g transform="translate(60 62) scale(1.1) translate(-50 -55)">
+    <g class="bob">
+      <g class="body">
+        <circle
+          class="halo"
+          cx="50"
+          cy="65"
+          r="39"
+          fill="none"
+          stroke="url(#ring)"
+          stroke-width="2.8"
+          stroke-linecap="round"
+          stroke-dasharray="52 30 34 50"
+          opacity="0"
+        />
+        <g class="curl">
+          <path
+            d="M45.5 43.8C43.2 33.5 47.8 20.5 60 20.5C68.2 20.5 74.1 29.3 68.2 36C63.7 40.4 56.9 36.5 58.2 30.7C58.4 29.9 60.9 30.2 60.8 31.3C60.1 34.2 63.4 34.5 64.9 32.9C68 29.5 63.1 26.5 60 26.5C52.3 26.5 51.3 36.7 52.5 42.2Z"
+            fill="#1a7cf5"
+            stroke="#0f6fe8"
+            stroke-width="2"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M46.9 43.5C44.8 34.1 48.7 21.7 60 21.7C67.3 21.7 71.9 28.9 66.7 34.7C63.3 38.2 57.6 35.8 58.7 30.8C58.8 30.4 59.9 30.5 59.8 31.1C59 34.6 63.5 35.6 65.6 33.6C68.9 29.8 64.3 24.2 60 24.2C49.9 24.2 48.7 35 50.4 42.7Z"
+            fill="url(#tuft)"
+          />
+          <path
+            d="M47.3 37.8C47.3 33.9 48.4 30 50.8 27C53 24.3 56.2 22.7 59.7 22.6"
+            fill="none"
+            stroke="#fff"
+            stroke-opacity=".75"
+            stroke-width="1.1"
+            stroke-linecap="round"
+          />
+        </g>
+        <use href="#shape" fill="url(#shell)" />
+        <g clip-path="url(#glass)">
+          <ellipse cx="50" cy="101" rx="38" ry="12" fill="url(#low)" />
+          <ellipse cx="60" cy="80" rx="21" ry="12" fill="url(#side)" />
+          <ellipse cx="48.8" cy="39" rx="4.2" ry="1.9" fill="url(#deep)" />
+          <use href="#shape" fill="none" stroke="url(#rim)" stroke-width="7.2" />
+          <use href="#shape" fill="none" stroke="url(#edge)" stroke-width="4.4" />
+          <g class="sheen">
+            <path
+              d="M27.1 49.5C31.4 46 36.8 43.2 42.5 41.5"
+              fill="none"
+              stroke="#fff"
+              stroke-opacity=".7"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <ellipse
+              cx="39.6"
+              cy="51.5"
+              rx="15"
+              ry="8"
+              transform="rotate(-35 39.6 51.5)"
+              fill="url(#shine)"
+            />
+            <ellipse
+              cx="37.7"
+              cy="48.6"
+              rx="2.7"
+              ry="1.5"
+              transform="rotate(-35 37.7 48.6)"
+              fill="#fff"
+            />
+          </g>
+        </g>
+        <g class="cheeks" opacity=".62">
+          <ellipse cx="29.5" cy="76.5" rx="6.6" ry="3.9" fill="url(#blush)" />
+          <ellipse cx="70.5" cy="76.5" rx="6.6" ry="3.9" fill="url(#blush)" />
+          <ellipse cx="27.6" cy="75" rx="2.2" ry="1.2" fill="url(#shine)" />
+          <ellipse cx="68.6" cy="75" rx="2.2" ry="1.2" fill="url(#shine)" />
+        </g>
+        <g class="face">
+          <ellipse cx="40.7" cy="68.3" rx="6.6" ry="8" fill="url(#socket)" />
+          <ellipse cx="60.7" cy="68.3" rx="6.6" ry="8" fill="url(#socket)" />
+          <g class="eyes">
+            <ellipse cx="40" cy="67" rx="4.5" ry="5.9" fill="url(#eye-l)" />
+            <ellipse cx="60" cy="67" rx="4.5" ry="5.9" fill="url(#eye-r)" />
+            <g class="glints" fill="#fff">
+              <circle cx="38.5" cy="64.3" r="1.6" />
+              <circle cx="58.5" cy="64.3" r="1.6" />
+            </g>
+            <circle cx="41.7" cy="70.3" r=".75" fill="#fff" fill-opacity=".8" />
+            <circle cx="61.7" cy="70.3" r=".75" fill="#fff" fill-opacity=".8" />
+          </g>
+          <g fill="none" stroke="#0b1b3a" stroke-width="2.4" stroke-linecap="round">
+            <path class="brow" d="M56.2 56.4Q60.4 53.4 64.6 55.4" opacity="0" />
+            <path class="mouth smile" d="M45.6 75.6Q50 79.6 54.4 75.6" />
+            <path class="mouth soft" d="M47.2 76.4Q50 78.4 52.8 76.4" opacity="0" />
+            <path class="mouth level" d="M46.6 77.2H53.4" opacity="0" />
+          </g>
+          <ellipse
+            class="mouth o"
+            cx="50"
+            cy="77.4"
+            rx="2.7"
+            ry="3.1"
+            fill="#0b1b3a"
+            opacity="0"
+          />
+        </g>
+      </g>
+    </g>
+    <g class="hand left" opacity="0"><use href="#mitt" transform="translate(40 68)" /></g>
+    <g class="hand right" opacity="0">
+      <use href="#mitt" transform="translate(60 68) scale(-1 1)" />
+    </g>
+  </g>
+</svg>

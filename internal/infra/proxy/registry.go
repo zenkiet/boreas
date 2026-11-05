@@ -45,6 +45,7 @@ type hop struct {
 type site struct {
 	task   *hop
 	routes []*hop // longest path first
+	lock   *lock
 }
 
 // Registry is concurrency-safe and keys sites by project because task names are only locally unique.
@@ -118,7 +119,7 @@ func (r *Registry) update(project, task string, change func(*site)) {
 	defer r.mu.Unlock()
 	s := r.sites[key]
 	change(&s)
-	if s.task == nil && len(s.routes) == 0 {
+	if s.task == nil && len(s.routes) == 0 && s.lock == nil {
 		delete(r.sites, key)
 		return
 	}
@@ -163,6 +164,9 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	r.mu.RLock()
 	s := r.sites[routeKey(parts[0], parts[1])]
 	r.mu.RUnlock()
+	if s.lock != nil && len(parts) == 3 && !s.lock.admits(w, request) {
+		return
+	}
 	if i := slices.IndexFunc(s.routes, func(h *hop) bool { return under(request.URL.Path, h.public) }); i >= 0 {
 		if request.Header.Get(loopHeader) != "" {
 			http.Error(w, "this route points back at Boreas", http.StatusLoopDetected)
@@ -206,6 +210,7 @@ func (h *hop) rewrite(pr *httputil.ProxyRequest) {
 	out.Path = h.target.Path + strings.TrimPrefix(pr.In.URL.Path, h.public)
 	out.RawPath = h.target.EscapedPath() + strings.TrimPrefix(pr.In.URL.EscapedPath(), h.public)
 	pr.Out.Host = ""
+	dropLockCookie(pr.Out.Header)
 	// Behind a TLS proxy only the proxy knows the browser's address and that it used https.
 	pr.Out.Header["X-Forwarded-For"] = pr.In.Header["X-Forwarded-For"]
 	pr.SetXForwarded()
