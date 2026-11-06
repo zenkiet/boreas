@@ -326,6 +326,25 @@ func TestRegistryRoutes(t *testing.T) {
 	}
 }
 
+func TestRegistryTaskNameIgnoresCase(t *testing.T) {
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, r.URL.RequestURI())
+	}))
+	defer app.Close()
+	registry := New(0, 0)
+	defer registry.CloseIdleConnections()
+	host, port := serverAddress(t, app.URL)
+	registry.Register(context.Background(), "p", "bweb", host, port)
+
+	rr := serve(registry, httptest.NewRequest(http.MethodGet, "/p/BWEB/a%20b?x=1", nil))
+	if rr.Code != http.StatusTemporaryRedirect || rr.Header().Get("Location") != "/p/bweb/a%20b?x=1" {
+		t.Fatalf("BWEB: %d to %q, want 307 to the task's own name", rr.Code, rr.Header().Get("Location"))
+	}
+	if body := serve(registry, httptest.NewRequest(http.MethodGet, "/p/bweb/a", nil)).Body.String(); body != "/a" {
+		t.Fatalf("bweb reached %q", body)
+	}
+}
+
 func TestRegistryUnreachableRoute(t *testing.T) {
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closed.Close()

@@ -389,6 +389,11 @@ func TestTaskNameUniquePerProject(t *testing.T) {
 			t.Fatalf("the same task name must be allowed in another project: %v", err)
 		}
 	}
+	if _, err := store.Create(ctx, core.Task{
+		ProjectID: first.ID, Name: "SHARED", Image: "img", Status: core.StatusUnknown, Port: 80,
+	}); !errors.Is(err, core.ErrAlreadyExists) {
+		t.Fatalf("a name that differs only in case must clash: got %v, want ErrAlreadyExists", err)
+	}
 
 	tasks, err := store.List(ctx, first.ID, uuid.Nil, true)
 	if err != nil {

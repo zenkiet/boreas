@@ -43,6 +43,7 @@ type hop struct {
 
 // site outlives the container: routes keep answering while the task is stopped.
 type site struct {
+	name   string
 	task   *hop
 	routes []*hop // longest path first
 	lock   *lock
@@ -67,7 +68,7 @@ func (r *Registry) miss(w http.ResponseWriter, request *http.Request) {
 	http.NotFound(w, request)
 }
 
-func routeKey(project, task string) string { return project + "/" + task }
+func routeKey(project, task string) string { return project + "/" + strings.ToLower(task) }
 
 func New(dialTimeout, responseHeaderTimeout time.Duration) *Registry {
 	dialer := &net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}
@@ -123,6 +124,7 @@ func (r *Registry) update(project, task string, change func(*site)) {
 		delete(r.sites, key)
 		return
 	}
+	s.name = task
 	r.sites[key] = s
 }
 
@@ -164,6 +166,12 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	r.mu.RLock()
 	s := r.sites[routeKey(parts[0], parts[1])]
 	r.mu.RUnlock()
+	if s.name != "" && s.name != parts[1] {
+		parts[1] = s.name
+		target := url.URL{Path: "/" + strings.Join(parts, "/"), RawQuery: request.URL.RawQuery}
+		http.Redirect(w, request, target.String(), http.StatusTemporaryRedirect)
+		return
+	}
 	if s.lock != nil && len(parts) == 3 && !s.lock.admits(w, request) {
 		return
 	}

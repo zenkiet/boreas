@@ -98,7 +98,9 @@ Project slugs and task names must match:
 In other words, 1–63 characters, starting with an ASCII letter or digit and
 containing only letters, digits, `.`, `_`, or `-`. Because project slugs
 occupy the first path segment, `api`, `health`, and `static` are reserved.
-Task names are unique per project, so two projects may each have a `web`.
+Task names are unique per project whatever their case, so `BWEB` clashes with
+`bweb` while two projects may each have a `web`. The App URL takes a task's
+name in any case and redirects to the name it was created with.
 
 ## Access control
 
