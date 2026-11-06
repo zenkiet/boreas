@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.30.0 - 2026-11-06
+#### 🚀 Features
+- (**task**) ✨ implement regardless of case - (a4f6a8f) - *zenkiet*
+
+- - -
+
 ## v1.29.0 - 2026-11-05
 #### 🚀 Features
 - (**tasks**) ✨ lock a task's App URL behind a password - (7fb2083) - *zenkiet*
