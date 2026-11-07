@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.32.0 - 2026-11-07
+#### 🚀 Features
+- (**directory**) ✨ redesign the public directory around tasks - (a72b870) - *zenkiet*
+
+- - -
+
 ## v1.31.0 - 2026-11-06
 #### 🚀 Features
 - (**bora**) ✨ draw small Mermaid diagrams for flows - (9f1ddc2) - *zenkiet*
