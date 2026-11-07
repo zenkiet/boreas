@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PrivacyPage } from '@/pages/privacy';
+	import { PrivacyPage } from '#pages/privacy';
 </script>
 
 <PrivacyPage />

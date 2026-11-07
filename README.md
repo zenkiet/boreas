@@ -189,6 +189,8 @@ All API routes are under `/api/v1`.
 | `DELETE` | `/auth/tokens/{id}`                            | login session | Revoke one of your API tokens                   |
 | `GET`    | `/stats`                                       | user          | Service statistics                              |
 | `GET`    | `/events/stream`                               | login session | Signal changes over SSE, so clients refetch     |
+| `GET`    | `/public/projects`                             | public        | Public environment directory                    |
+| `GET`    | `/public/events/stream`                        | public        | Signal changes over SSE, without a token        |
 | `GET`    | `/users`                                       | admin         | List users                                      |
 | `POST`   | `/users`                                       | admin         | Create a user                                   |
 | `PATCH`  | `/users/{id}`                                  | admin         | Update a user                                   |
@@ -675,6 +677,11 @@ deploy as the task's status moves, and when a notification is recorded. It never
 refetch what the screen shows, such as `GET /api/v1/projects`. A burst of changes arrives as one event. A proxy
 in front of Boreas must pass streams through unbuffered; Boreas sends
 `X-Accel-Buffering: no` for nginx.
+
+The public directory has its own stream, `GET /api/v1/public/events/stream`.
+It needs no token, so a browser reads it with `EventSource`, and it carries the
+same signals: refetch `GET /api/v1/public/projects` on each one. Boreas holds at
+most 256 public streams at once and answers `503` to the next.
 
 ## Resource metrics
 

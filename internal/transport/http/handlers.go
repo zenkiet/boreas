@@ -17,13 +17,14 @@ import (
 )
 
 type Handler struct {
-	tasks    TaskService
-	auth     AuthService
-	projects ProjectService
-	push     PushStore
-	events   *Hub
-	version  string
-	logger   *slog.Logger
+	tasks         TaskService
+	auth          AuthService
+	projects      ProjectService
+	push          PushStore
+	events        *Hub
+	publicStreams chan struct{}
+	version       string
+	logger        *slog.Logger
 }
 
 var succeeded = successResponse{Success: true}
@@ -243,13 +244,7 @@ func (h *Handler) publicProjects(w http.ResponseWriter, r *http.Request) {
 	projects, tasks, err := h.projects.Directory(r.Context())
 	grouped := make(map[uuid.UUID][]publicTaskDTO, len(projects))
 	for _, task := range tasks {
-		if task.PasswordHash != "" {
-			task.Note = ""
-		}
-		grouped[task.ProjectID] = append(grouped[task.ProjectID], publicTaskDTO{
-			Name: task.Name, Description: task.Description, Note: task.Note,
-			Status: task.Status, DevStatus: task.DevStatus, UpdatedAt: task.UpdatedAt,
-		})
+		grouped[task.ProjectID] = append(grouped[task.ProjectID], publicTask(task))
 	}
 	result := make([]publicProjectDTO, len(projects))
 	for i, project := range projects {

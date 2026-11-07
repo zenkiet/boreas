@@ -58,3 +58,13 @@ func (h *Handler) streamEvents(w http.ResponseWriter, r *http.Request) {
 	defer unsubscribe()
 	sse(w, r, events, func(struct{}) (string, any) { return "", struct{}{} })
 }
+
+func (h *Handler) streamPublicEvents(w http.ResponseWriter, r *http.Request) {
+	select {
+	case h.publicStreams <- struct{}{}:
+		defer func() { <-h.publicStreams }()
+		h.streamEvents(w, r)
+	default:
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "too many open streams"})
+	}
+}

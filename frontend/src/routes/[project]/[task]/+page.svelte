@@ -1,7 +1,5 @@
 <script lang="ts">
-	import { TaskStatusPage } from '@/pages/task-status';
-
-	let { data } = $props();
+	import { EnvStatusPage } from '#pages/env-status';
 </script>
 
-<TaskStatusPage slug={data.slug} task={data.task} status={data.status} />
+<EnvStatusPage />

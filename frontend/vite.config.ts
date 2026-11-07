@@ -12,12 +12,14 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			alias: { '@/*': 'src/*' },
 			adapter: adapter({
 				pages: '../internal/web/public',
 				assets: '../internal/web/public',
 				fallback: '200.html'
 			})
 		})
-	]
+	],
+	server: {
+		proxy: { '/api': process.env.BOREAS_API ?? 'http://localhost:8080' }
+	}
 });

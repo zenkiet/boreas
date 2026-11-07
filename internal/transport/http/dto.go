@@ -344,12 +344,54 @@ type projectResponse struct {
 }
 
 type publicTaskDTO struct {
-	Name        string          `json:"name" example:"myl-2019"`
-	Description string          `json:"description,omitempty"`
-	Note        string          `json:"note,omitempty" example:"## Context\nNeeds the staging DB seeded."`
-	Status      core.TaskStatus `json:"status"`
-	DevStatus   core.DevStatus  `json:"dev_status"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	Name        string             `json:"name" example:"myl-2019"`
+	Description string             `json:"description,omitempty"`
+	Note        string             `json:"note,omitempty" example:"## Context\nNeeds the staging DB seeded."`
+	Status      core.TaskStatus    `json:"status"`
+	DevStatus   core.DevStatus     `json:"dev_status"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+	Assignees   []string           `json:"assignees,omitempty"`
+	Build       publicBuildDTO     `json:"build,omitzero"`
+	LastDeploy  *lastDeployDTO     `json:"last_deploy,omitempty"`
+	Revision    *publicRevisionDTO `json:"revision,omitempty"`
+	FormFactor  core.FormFactor    `json:"form_factor"`
+	HasPassword bool               `json:"has_password"`
+}
+
+type publicBuildDTO struct {
+	State    core.BuildState `json:"state"`
+	Stage    string          `json:"stage,omitempty"`
+	Progress int             `json:"progress,omitempty"`
+	At       time.Time       `json:"at"`
+}
+
+type publicRevisionDTO struct {
+	Commit   string `json:"commit"`
+	Previous string `json:"previous,omitempty"`
+}
+
+func publicTask(t core.FleetTask) publicTaskDTO {
+	dto := publicTaskDTO{
+		Name: t.Name, Description: t.Description, Status: t.Status, DevStatus: t.DevStatus, UpdatedAt: t.UpdatedAt,
+		FormFactor: t.FormFactor, HasPassword: t.PasswordHash != "",
+		Build: publicBuildDTO{State: t.Build.State, Stage: t.Build.Stage, Progress: t.Build.Progress, At: t.Build.At},
+	}
+	if t.LastDeploy != nil {
+		dto.LastDeploy = &lastDeployDTO{Status: t.LastDeploy.Status, At: t.LastDeploy.CreatedAt}
+	}
+	if t.Revision.Commit != "" {
+		dto.Revision = &publicRevisionDTO{Commit: t.Revision.Commit, Previous: t.Revision.Previous}
+	}
+	if dto.HasPassword {
+		return dto
+	}
+	dto.Note = t.Note
+	for _, a := range t.Assignees {
+		if a.Role == core.ProjectRoleMember {
+			dto.Assignees = append(dto.Assignees, a.Username)
+		}
+	}
+	return dto
 }
 
 type publicProjectDTO struct {

@@ -2,6 +2,7 @@
 	"extends": "$app/tsconfig",
 	"compilerOptions": {
 		"rewriteRelativeImportExtensions": true,
+		"erasableSyntaxOnly": true,
 		"allowJs": true,
 		"checkJs": true,
 		"esModuleInterop": true,

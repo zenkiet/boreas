@@ -2931,10 +2931,43 @@ paths:
       summary: Start, stop, or restart a task
       tags:
       - tasks
+  /api/v1/public/events/stream:
+    get:
+      description: 'Server-Sent Events carrying {} once on connect and after every
+        change GET /api/v1/events/stream signals, with nothing about what changed:
+        refetch GET /api/v1/public/projects. Bursts arrive as one event, and a comment
+        heartbeat fills idle time. It needs no token, so EventSource reads it. 503
+        when 256 public streams are already open.'
+      operationId: get-public-events-stream
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Service Unavailable
+      summary: Stream public change signals
+      tags:
+      - system
   /api/v1/public/projects:
     get:
       description: Every project with its tasks, reduced to what the public directory
-        pages show. Image, port, environment and container identifiers are never included.
+        pages show. Image, port, environment, container identifiers, the build's CI
+        link and the revision's repository are never included. assignees are the usernames
+        of the task's member grants; a task with a password carries neither note nor
+        assignees.
       operationId: get-public-projects
       responses:
         "200":
@@ -3543,6 +3576,8 @@ components:
           format: date-time
           nullable: true
           type: string
+        role:
+          $ref: '#/components/schemas/ProjectRole'
         user_id:
           $ref: '#/components/schemas/UUID'
         username:
@@ -3550,6 +3585,7 @@ components:
       required:
       - user_id
       - username
+      - role
       type: object
     AssigneesRequest:
       properties:
@@ -4465,6 +4501,21 @@ components:
       - total
       - code_search
       type: object
+    PublicBuild:
+      properties:
+        at:
+          format: date-time
+          type: string
+        progress:
+          type: integer
+        stage:
+          type: string
+        state:
+          $ref: '#/components/schemas/BuildState'
+      required:
+      - state
+      - at
+      type: object
     PublicProject:
       properties:
         name:
@@ -4496,12 +4547,33 @@ components:
       - projects
       - total
       type: object
+    PublicRevision:
+      properties:
+        commit:
+          type: string
+        previous:
+          type: string
+      required:
+      - commit
+      type: object
     PublicTask:
       properties:
+        assignees:
+          items:
+            type: string
+          type: array
+        build:
+          $ref: '#/components/schemas/PublicBuild'
         description:
           type: string
         dev_status:
           $ref: '#/components/schemas/DevStatus'
+        form_factor:
+          $ref: '#/components/schemas/FormFactor'
+        has_password:
+          type: boolean
+        last_deploy:
+          $ref: '#/components/schemas/LastDeploy'
         name:
           example: myl-2019
           type: string
@@ -4510,6 +4582,8 @@ components:
             ## Context
             Needs the staging DB seeded.
           type: string
+        revision:
+          $ref: '#/components/schemas/PublicRevision'
         status:
           $ref: '#/components/schemas/TaskStatus'
         updated_at:
@@ -4520,6 +4594,8 @@ components:
       - status
       - dev_status
       - updated_at
+      - form_factor
+      - has_password
       type: object
     PushSubscriptionRequest:
       properties:

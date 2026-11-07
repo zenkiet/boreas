@@ -43,17 +43,19 @@ func do(h http.Handler, r *http.Request) *httptest.ResponseRecorder {
 	return rr
 }
 
-// Only these four routes are public; every other one challenges a missing or bad token.
+// Only these five routes are public; every other one challenges a missing or bad token.
 func TestOnlyPublicRoutesSkipAuthentication(t *testing.T) {
 	public := map[string]bool{
 		"GET /api/v1/health": true, "POST /api/v1/auth/login": true, "POST /api/v1/auth/pairing/claim": true,
-		"GET /api/v1/public/projects": true,
+		"GET /api/v1/public/projects": true, "GET /api/v1/public/events/stream": true,
 	}
 	h := testHandler(stubTasks{}, nil, nil)
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
 	for _, route := range routeTable {
 		pattern, path := route.method+" "+route.path, strings.NewReplacer("{", "", "}", "").Replace(route.path)
 		for _, header := range []string{"", "Bearer wrong"} {
-			r := httptest.NewRequest(route.method, path, nil)
+			r := httptest.NewRequestWithContext(gone, route.method, path, nil)
 			r.Header.Set("Authorization", header)
 			rr := do(h, r)
 			if challenged := rr.Code == http.StatusUnauthorized && rr.Header().Get("WWW-Authenticate") != ""; challenged == public[pattern] {
@@ -296,6 +298,40 @@ func TestProjectListIsTheFleet(t *testing.T) {
 	}
 }
 
+func TestPublicDirectoryShowsProgressButNotLockedPeople(t *testing.T) {
+	project := core.Project{ID: uuid.New(), Slug: "qrcode-dinein", Name: "QRCode DineIn"}
+	at := time.Date(2026, 11, 7, 14, 28, 0, 0, time.UTC)
+	open := core.FleetTask{
+		Task: core.Task{
+			ProjectID: project.ID, Name: "wo-715", Description: "Improve Menu Scheduler logic", Note: "seeded",
+			Status: core.StatusRunning, DevStatus: core.DevInProgress, FormFactor: core.FormFactorWeb, UpdatedAt: at,
+			Assignees: []core.Assignee{
+				{Username: "kiet.le", Role: core.ProjectRoleViewer},
+				{Username: "phuong.nam", Role: core.ProjectRoleMember},
+			},
+			Build:    core.Build{State: core.BuildRunning, Stage: "Lint", Progress: 20, URL: "https://ci.example.com/1", At: at},
+			Revision: core.Revision{Repo: "github.com/org/dinein", Commit: "c81f0d6", Previous: "9b31e07"},
+		},
+		LastDeploy: &core.Notification{Status: core.NotificationSuccess, CreatedAt: at},
+	}
+	locked := open
+	locked.Name, locked.FormFactor, locked.PasswordHash = "wo-718", core.FormFactorMobile, "$2a$10$topsecrethash"
+	projects := &stubProjects{directory: func(context.Context) ([]core.Project, []core.FleetTask, error) {
+		return []core.Project{project}, []core.FleetTask{open, locked}, nil
+	}}
+	body := do(testHandler(stubTasks{}, nil, projects), httptest.NewRequest(http.MethodGet, "/api/v1/public/projects", nil)).Body.String()
+	progress := `"build":{"state":"running","stage":"Lint","progress":20,"at":"2026-11-07T14:28:00Z"},` +
+		`"last_deploy":{"status":"success","at":"2026-11-07T14:28:00Z"},"revision":{"commit":"c81f0d6","previous":"9b31e07"}`
+	want := `{"projects":[{"slug":"qrcode-dinein","name":"QRCode DineIn","tasks":[` +
+		`{"name":"wo-715","description":"Improve Menu Scheduler logic","note":"seeded","status":"running","dev_status":"in_progress","updated_at":"2026-11-07T14:28:00Z",` +
+		`"assignees":["phuong.nam"],` + progress + `,"form_factor":"web","has_password":false},` +
+		`{"name":"wo-718","description":"Improve Menu Scheduler logic","status":"running","dev_status":"in_progress","updated_at":"2026-11-07T14:28:00Z",` +
+		progress + `,"form_factor":"mobile","has_password":true}]}],"total":1}` + "\n"
+	if body != want {
+		t.Fatalf("public directory =\n%s\nwant\n%s", body, want)
+	}
+}
+
 // Handlers use what the middleware resolved: its identity scope, and my_role raised by the caller's grants.
 func TestMyRoleFollowsResolvedAccess(t *testing.T) {
 	web, db := core.Task{ID: uuid.New(), Name: "web"}, core.Task{ID: uuid.New(), Name: "db"}
@@ -450,13 +486,13 @@ func TestAssigneesReplaceAndReturnTheTask(t *testing.T) {
 		return nil
 	}}
 	h := testHandler(stubTasks{get: func(context.Context, string, string) (core.Task, error) {
-		return core.Task{Name: "web", Assignees: []core.Assignee{{UserID: nam, Username: "nam"}}}, nil
+		return core.Task{Name: "web", Assignees: []core.Assignee{{UserID: nam, Username: "nam", Role: core.ProjectRoleMember}}}, nil
 	}}, nil, projects)
 	path := "/api/v1/projects/team/tasks/web/assignees"
 
 	rr := do(h, authed(http.MethodPut, path, strings.NewReader(`{"user_ids":["`+nam.String()+`"]}`)))
 	if rr.Code != http.StatusOK || !slices.Equal(assigned, []uuid.UUID{nam}) ||
-		!strings.Contains(rr.Body.String(), `"assignees":[{"user_id":"`+nam.String()+`","username":"nam"}]`) {
+		!strings.Contains(rr.Body.String(), `"assignees":[{"user_id":"`+nam.String()+`","username":"nam","role":"member"}]`) {
 		t.Fatalf("status = %d, assigned %v, body %s", rr.Code, assigned, rr.Body.String())
 	}
 	// Leaving the list out must never read as "unassign everyone".
@@ -862,6 +898,28 @@ func TestEventsStream(t *testing.T) {
 	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
 	if rr := do(h, authed(http.MethodGet, "/api/v1/events/stream", nil)); rr.Body.String() != "data: {}\n\n" {
 		t.Fatalf("stream after close = %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestPublicStreamRefusesWhenEverySlotIsTaken(t *testing.T) {
+	h := &Handler{publicStreams: make(chan struct{})}
+	rr := httptest.NewRecorder()
+	h.streamPublicEvents(rr, httptest.NewRequest(http.MethodGet, "/api/v1/public/events/stream", nil))
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), `"error":`) {
+		t.Fatalf("a full public stream pool = %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestFinishedPublicStreamFreesItsSlot(t *testing.T) {
+	h := &Handler{events: NewHub(), publicStreams: make(chan struct{}, 1)}
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+	for i := range 2 {
+		rr := httptest.NewRecorder()
+		h.streamPublicEvents(rr, httptest.NewRequestWithContext(gone, http.MethodGet, "/api/v1/public/events/stream", nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("stream %d through a one-slot pool = %d", i+1, rr.Code)
+		}
 	}
 }
 

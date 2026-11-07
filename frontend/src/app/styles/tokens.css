@@ -5,100 +5,155 @@
 	--font-mono: var(--app-font-mono);
 
 	--color-canvas: var(--app-canvas);
-	--color-base: var(--tui-background-base);
-	--color-neutral: var(--tui-background-neutral-1);
-	--color-border: var(--tui-border-normal);
+	--color-surface: var(--app-surface);
+	--color-surface-2: var(--app-surface-2);
+	--color-fill-1: var(--app-fill-1);
+	--color-fill-2: var(--app-fill-2);
+	--color-fill-3: var(--app-fill-3);
+	--color-sep: var(--app-sep);
+	--color-line: var(--app-line);
+	--color-scrim: var(--app-scrim);
 
-	--color-primary: var(--tui-text-primary);
-	--color-secondary: var(--tui-text-secondary);
-	--color-tertiary: var(--tui-text-tertiary);
-	--color-action: var(--tui-text-action);
+	--color-label: var(--app-label);
+	--color-label-2: var(--app-label-2);
+	--color-label-3: var(--app-label-3);
 
-	--radius-md: var(--tui-radius-m);
-	--radius-lg: var(--tui-radius-l);
+	--color-accent: var(--app-accent);
+	--color-accent-hover: var(--app-accent-hover);
+	--color-accent-text: var(--app-accent-text);
+	--color-accent-soft: var(--app-accent-soft);
+	--color-on-accent: var(--app-on-accent);
+
+	--color-blocked: var(--app-blocked);
+	--color-blocked-soft: var(--app-blocked-soft);
+	--color-progress: var(--app-progress);
+	--color-progress-text: var(--app-progress-text);
+	--color-progress-soft: var(--app-progress-soft);
+	--color-ready: var(--app-ready);
+	--color-ready-soft: var(--app-ready-soft);
+	--color-info: var(--app-info);
+	--color-info-soft: var(--app-info-soft);
+	--color-neutral: var(--app-neutral);
+	--color-neutral-soft: var(--app-neutral-soft);
+	--color-mark: var(--app-mark);
+
+	--color-av-0: var(--app-av-0);
+	--color-av-1: var(--app-av-1);
+	--color-av-2: var(--app-av-2);
+	--color-av-3: var(--app-av-3);
+	--color-av-4: var(--app-av-4);
+	--color-av-5: var(--app-av-5);
+	--color-av-6: var(--app-av-6);
+
+	--shadow-1: var(--app-shadow-1);
+	--shadow-2: var(--app-shadow-2);
+}
+
+@theme {
+	--breakpoint-sm: 45rem;
+
+	--text-large: 2.125rem;
+	--text-large--line-height: 2.5625rem;
+	--text-large--font-weight: 700;
+	--text-large--letter-spacing: -0.022em;
+	--text-title1: 1.75rem;
+	--text-title1--line-height: 2.125rem;
+	--text-title1--font-weight: 700;
+	--text-title1--letter-spacing: -0.02em;
+	--text-mono-title: 1.375rem;
+	--text-mono-title--line-height: 1.75rem;
+	--text-mono-title--font-weight: 700;
+	--text-mono-title--letter-spacing: -0.01em;
+	--text-title3: 1.25rem;
+	--text-title3--line-height: 1.5625rem;
+	--text-title3--font-weight: 600;
+	--text-title3--letter-spacing: -0.012em;
+	--text-headline: 1.0625rem;
+	--text-headline--line-height: 1.375rem;
+	--text-headline--font-weight: 600;
+	--text-body: 1.0625rem;
+	--text-body--line-height: 1.375rem;
+	--text-callout: 1rem;
+	--text-callout--line-height: 1.3125rem;
+	--text-subhead: 0.9375rem;
+	--text-subhead--line-height: 1.25rem;
+	--text-footnote: 0.8125rem;
+	--text-footnote--line-height: 1.125rem;
+	--text-caption: 0.75rem;
+	--text-caption--line-height: 1rem;
+	--text-caption--font-weight: 600;
+	--text-caption2: 0.6875rem;
+	--text-caption2--line-height: 0.8125rem;
+	--text-caption2--font-weight: 600;
+
+	--radius-label: 0.375rem;
+	--radius-nest: 0.625rem;
+	--radius-box: 1rem;
+
+	--ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 :root {
-	--app-font-text: -apple-system, system-ui, ui-sans-serif, 'Segoe UI', sans-serif;
-	--app-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+	color-scheme: light;
 
-	--tui-radius-m: 0.625rem;
-	--tui-radius-l: 1rem;
-	--tui-duration: 0.22s;
+	--app-font-text:
+		-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto,
+		'Helvetica Neue', sans-serif;
+	--app-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-	--tui-background-base: #ffffff;
-	--tui-background-neutral-1: rgba(15, 23, 42, 0.045);
-	--tui-background-neutral-1-hover: rgba(15, 23, 42, 0.075);
-	--tui-background-neutral-2: rgba(15, 23, 42, 0.09);
-	--tui-background-accent-1: #4f46e5;
-	--tui-background-accent-1-hover: #5b52ec;
+	--app-canvas: light-dark(#f2f2f7, #000000);
+	--app-surface: light-dark(#ffffff, #1c1c1e);
+	--app-surface-2: light-dark(#f8f8fb, #232326);
+	--app-fill-1: light-dark(rgba(15, 23, 42, 0.045), rgba(235, 235, 245, 0.06));
+	--app-fill-2: light-dark(rgba(15, 23, 42, 0.08), rgba(235, 235, 245, 0.1));
+	--app-fill-3: light-dark(rgba(15, 23, 42, 0.13), rgba(235, 235, 245, 0.16));
+	--app-sep: light-dark(rgba(15, 23, 42, 0.09), rgba(235, 235, 245, 0.12));
+	--app-line: light-dark(rgba(15, 23, 42, 0.18), rgba(235, 235, 245, 0.26));
+	--app-scrim: light-dark(rgba(15, 23, 42, 0.3), rgba(0, 0, 0, 0.6));
 
-	--tui-text-primary: #0f172a;
-	--tui-text-secondary: #475569;
-	--tui-text-tertiary: #64748b;
-	--tui-text-on-accent: #ffffff;
-	--tui-text-action: #4338ca;
+	--app-label: light-dark(#0f172a, #ffffff);
+	--app-label-2: light-dark(#475569, rgba(235, 235, 245, 0.75));
+	--app-label-3: light-dark(#5c6678, rgba(235, 235, 245, 0.6));
 
-	--tui-border-normal: rgba(15, 23, 42, 0.085);
-	--tui-border-focus: #4f46e5;
+	--app-accent: light-dark(#4f46e5, #818cf8);
+	--app-accent-hover: light-dark(#4338ca, #a5b4fc);
+	--app-accent-text: light-dark(#4338ca, #a5b4fc);
+	--app-accent-soft: light-dark(rgba(79, 70, 229, 0.1), rgba(129, 140, 248, 0.16));
+	--app-on-accent: light-dark(#ffffff, #0b0b1a);
 
-	--tui-status-positive: #047857;
-	--tui-status-negative: #be123c;
-	--tui-status-negative-pale: rgba(190, 18, 60, 0.09);
-	--tui-status-warning: #b45309;
-	--tui-status-warning-pale: rgba(180, 83, 9, 0.1);
-	--tui-status-neutral: #64748b;
-	--tui-status-neutral-pale: rgba(100, 116, 139, 0.1);
+	--app-blocked: light-dark(#be123c, #fb7185);
+	--app-blocked-soft: light-dark(rgba(190, 18, 60, 0.09), rgba(251, 113, 133, 0.14));
+	--app-progress: light-dark(#b45309, #fbbf24);
+	--app-progress-text: light-dark(#92400e, #fbbf24);
+	--app-progress-soft: light-dark(rgba(180, 83, 9, 0.1), rgba(251, 191, 36, 0.14));
+	--app-ready: light-dark(#047857, #34d399);
+	--app-ready-soft: light-dark(rgba(4, 120, 87, 0.1), rgba(52, 211, 153, 0.14));
+	--app-info: light-dark(#1d4ed8, #60a5fa);
+	--app-info-soft: light-dark(rgba(29, 78, 216, 0.09), rgba(96, 165, 250, 0.14));
+	--app-neutral: light-dark(#64748b, #98989f);
+	--app-neutral-soft: light-dark(rgba(100, 116, 139, 0.12), rgba(152, 152, 159, 0.16));
+	--app-mark: light-dark(#ffffff, #000000);
 
-	--app-canvas: #f4f6fa;
-	--app-scrollbar-thumb: rgba(15, 23, 42, 0.18);
+	--app-av-0: #c55029;
+	--app-av-1: #b65d00;
+	--app-av-2: #8562c2;
+	--app-av-3: #518204;
+	--app-av-4: #048475;
+	--app-av-5: #2079c0;
+	--app-av-6: #bd4f73;
 
-	--app-glass-fill: rgba(15, 23, 42, 0.035);
-	--app-glass-bevel: rgba(255, 255, 255, 0.9);
-	--app-glass-glow: rgba(255, 255, 255, 0.5);
-
-	--app-chrome-bg: rgba(255, 255, 255, 0.7);
-	--app-chrome-glow: rgba(255, 255, 255, 1);
-	--app-chrome-filter: blur(0.25rem) saturate(6) brightness(1.05);
-	--app-segment-thumb: rgba(255, 255, 255, 0.92);
-	--app-segment-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.06);
+	--app-thumb: light-dark(#ffffff, rgba(235, 235, 245, 0.2));
+	--app-thumb-shadow:
+		0 1px 3px light-dark(rgba(15, 23, 42, 0.14), transparent),
+		0 0 0 0.5px light-dark(rgba(15, 23, 42, 0.06), transparent);
+	--app-shadow-1: 0 0 0 0.5px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.05);
+	--app-shadow-2: 0 0 0 0.5px rgba(15, 23, 42, 0.1), 0 24px 56px -12px rgba(15, 23, 42, 0.28);
+	--app-scrollbar-thumb: light-dark(rgba(15, 23, 42, 0.18), rgba(120, 120, 128, 0.4));
 }
 
 [data-theme='dark'] {
-	--tui-background-base: #1c1c1e;
-	--tui-background-neutral-1: rgba(120, 120, 128, 0.18);
-	--tui-background-neutral-1-hover: rgba(120, 120, 128, 0.24);
-	--tui-background-neutral-2: rgba(120, 120, 128, 0.32);
-	--tui-background-accent-1: #6366f1;
-	--tui-background-accent-1-hover: #7c7ff5;
+	color-scheme: dark;
 
-	--tui-text-primary: #ffffff;
-	/* iOS label ramp; Apple's own tertiary is 2.4:1, this holds AA. */
-	--tui-text-secondary: rgba(235, 235, 245, 0.75);
-	--tui-text-tertiary: rgba(235, 235, 245, 0.55);
-	--tui-text-action: #a5b4fc;
-
-	--tui-border-normal: rgba(84, 84, 88, 0.65);
-	--tui-border-focus: #818cf8;
-
-	--tui-status-positive: #34d399;
-	--tui-status-negative: #fb7185;
-	--tui-status-negative-pale: rgba(251, 113, 133, 0.14);
-	--tui-status-warning: #fbbf24;
-	--tui-status-warning-pale: rgba(251, 191, 36, 0.14);
-	--tui-status-neutral: #98989f;
-	--tui-status-neutral-pale: rgba(152, 152, 159, 0.14);
-
-	--app-canvas: #000000;
-	--app-scrollbar-thumb: rgba(120, 120, 128, 0.4);
-
-	--app-glass-fill: rgba(255, 255, 255, 0.055);
-	--app-glass-bevel: rgba(255, 255, 255, 0.1);
-	--app-glass-glow: rgba(255, 255, 255, 0.045);
-
-	--app-chrome-bg: rgba(88, 88, 88, 0.31);
-	--app-chrome-glow: rgba(31, 31, 31, 0.8);
-	--app-chrome-filter: blur(0.25rem) saturate(4);
-	--app-segment-thumb: rgba(255, 255, 255, 0.16);
-	--app-segment-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+	--app-shadow-1: 0 0 0 0.5px rgba(235, 235, 245, 0.1);
+	--app-shadow-2: 0 0 0 0.5px rgba(235, 235, 245, 0.16), 0 28px 64px -12px rgba(0, 0, 0, 0.8);
 }

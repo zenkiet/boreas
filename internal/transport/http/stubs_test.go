@@ -213,6 +213,7 @@ type stubProjects struct {
 	notifications   func(context.Context, core.User, *uuid.UUID, *uuid.UUID, int) ([]core.Notification, error)
 	markSeen        func(context.Context, core.User, []uuid.UUID) error
 	fleet           func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
+	directory       func(context.Context) ([]core.Project, []core.FleetTask, error)
 	grantedRoles    map[uuid.UUID]core.ProjectRole
 	assign          func(core.ProjectAccess, string, []uuid.UUID) error
 	turn            []service.BoraEvent
@@ -336,7 +337,10 @@ func (s *stubProjects) ListCredentials(c context.Context) ([]core.RegistryCreden
 	return nil, nil
 }
 
-func (*stubProjects) Directory(context.Context) ([]core.Project, []core.Task, error) {
+func (s *stubProjects) Directory(c context.Context) ([]core.Project, []core.FleetTask, error) {
+	if s.directory != nil {
+		return s.directory(c)
+	}
 	return nil, nil, nil
 }
 

@@ -1,0 +1,171 @@
+.markdown {
+	color: var(--app-label-2);
+	font-size: 15px;
+	line-height: 22px;
+}
+
+.markdown > :first-child {
+	margin-top: 0;
+}
+
+.markdown > :last-child {
+	margin-bottom: 0;
+}
+
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+	margin: 14px 0 6px;
+	color: var(--app-label);
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.markdown p {
+	margin: 0 0 8px;
+}
+
+.markdown :is(ul, ol) {
+	display: grid;
+	gap: 4px;
+	margin: 0 0 8px;
+	padding-left: 20px;
+}
+
+.markdown ul {
+	list-style: disc;
+}
+
+.markdown ol {
+	list-style: decimal;
+}
+
+.markdown li::marker {
+	color: var(--app-label-3);
+}
+
+.markdown strong {
+	color: var(--app-label);
+	font-weight: 600;
+}
+
+.markdown a {
+	color: var(--app-accent-text);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	overflow-wrap: anywhere;
+}
+
+.markdown code {
+	padding: 1px 5px;
+	border-radius: var(--radius-label);
+	background: var(--app-fill-2);
+	color: var(--app-label);
+	font: 500 12.5px/1.5 var(--app-font-mono);
+	overflow-wrap: anywhere;
+}
+
+.markdown blockquote {
+	margin: 10px 0;
+	padding: 8px 12px;
+	border-radius: var(--radius-nest);
+	background: var(--app-fill-1);
+	color: var(--app-label);
+}
+
+.markdown blockquote p {
+	margin: 0;
+}
+
+.markdown hr {
+	margin: 12px 0;
+	border: 0;
+	border-top: 1px solid var(--app-sep);
+}
+
+.markdown .code-block {
+	position: relative;
+	margin: 10px 0;
+}
+
+.markdown pre {
+	margin: 0;
+	padding: 12px 44px 12px 14px;
+	border-radius: var(--radius-nest);
+	background: var(--app-fill-1);
+	overflow-x: auto;
+}
+
+.markdown pre code {
+	padding: 0;
+	background: none;
+	font-size: 12.5px;
+	overflow-wrap: normal;
+}
+
+.markdown [data-copy-code] {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	display: grid;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--app-sep);
+	border-radius: var(--radius-label);
+	background: var(--app-surface);
+	color: var(--app-label-2);
+	cursor: pointer;
+	transition:
+		background-color 200ms var(--ease-snap),
+		color 200ms var(--ease-snap);
+}
+
+.markdown [data-copy-code]:hover {
+	background: var(--app-fill-2);
+	color: var(--app-label);
+}
+
+.markdown :is([data-copy-check], [data-copy-state='copied'] [data-copy-icon]) {
+	display: none;
+}
+
+.markdown [data-copy-state='copied'] [data-copy-check] {
+	display: block;
+}
+
+.markdown [data-copy-state='copied'] {
+	color: var(--app-ready);
+}
+
+.markdown [data-copy-state='failed'] {
+	color: var(--app-blocked);
+}
+
+.markdown :is(.hljs-keyword, .hljs-literal) {
+	color: var(--app-accent-text);
+}
+
+.markdown .hljs-string {
+	color: var(--app-ready);
+}
+
+.markdown :is(.hljs-number, .hljs-built_in) {
+	color: var(--app-progress-text);
+}
+
+.markdown .hljs-comment {
+	color: var(--app-label-3);
+}
+
+@media (width < 45rem) {
+	.markdown pre {
+		min-height: 52px;
+		padding-right: 56px;
+	}
+
+	.markdown [data-copy-code] {
+		top: 4px;
+		right: 4px;
+		width: 44px;
+		height: 44px;
+	}
+}

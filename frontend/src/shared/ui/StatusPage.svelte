@@ -1,77 +1,58 @@
 <script lang="ts">
+	import type { LucideIcon } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
-	import Icon, { type IconName } from './Icon.svelte';
+	import PageTop from './PageTop.svelte';
 
 	let {
-		code,
-		icon,
+		icon: Icon,
 		tone = 'neutral',
+		code,
 		title,
-		description,
+		body,
 		path,
-		children
+		actions,
+		extra
 	}: {
+		icon: LucideIcon;
+		tone?: 'neutral' | 'warn' | 'bad';
 		code: string;
-		icon: IconName;
-		tone?: 'neutral' | 'warning' | 'negative';
 		title: string;
-		description: string;
+		body: string;
 		path?: string;
-		children?: Snippet;
+		actions?: Snippet;
+		extra?: Snippet;
 	} = $props();
+
+	const TONE = {
+		neutral: 'bg-neutral-soft text-neutral',
+		warn: 'bg-progress-soft text-progress',
+		bad: 'bg-blocked-soft text-blocked'
+	};
 </script>
 
-<div class="grid w-full max-w-128 justify-items-center gap-4 text-center" data-tone={tone}>
-	<span class="badge inline-flex size-14 items-center justify-center rounded-[1.125rem]">
-		<Icon name={icon} size={26} />
-	</span>
-
-	<div class="grid gap-2">
-		<span class="code font-mono">{code}</span>
-		<h1 class="text-[1.625rem] leading-tight font-bold tracking-[-0.02em] text-primary">{title}</h1>
-		<p class="text-[0.9375rem] leading-relaxed text-secondary">{description}</p>
-	</div>
-
-	{#if path}
-		<code class="chip font-mono">{path}</code>
-	{/if}
-
-	{#if children}{@render children()}{/if}
+<div class="flex min-h-dvh flex-col">
+	<PageTop />
+	<main class="flex flex-1 justify-center px-5 pt-14 pb-16 max-sm:px-4 max-sm:pt-8 max-sm:pb-10">
+		<div class="flex w-full max-w-140 flex-col items-center gap-4 text-center">
+			<span class={['grid size-14 place-items-center rounded-box', TONE[tone]]}>
+				<Icon size={28} />
+			</span>
+			<div class="flex flex-col items-center gap-2">
+				<span class="font-mono text-caption tracking-[0.12em] text-label-3">{code}</span>
+				<h1 class="text-title1 wrap-anywhere max-sm:text-[1.5rem]/[1.875rem]">{title}</h1>
+				<p class="max-w-120 text-subhead/[22px] text-label-2">{body}</p>
+			</div>
+			{#if path}
+				<code
+					class="max-w-full truncate rounded-label bg-fill-1 px-3 py-1.5 font-mono text-footnote font-medium text-label-2"
+				>
+					{path}
+				</code>
+			{/if}
+			{#if actions}
+				<div class="flex flex-wrap justify-center gap-2">{@render actions()}</div>
+			{/if}
+			{@render extra?.()}
+		</div>
+	</main>
 </div>
-
-<style>
-	.badge {
-		background: var(--tui-status-neutral-pale);
-		color: var(--tui-status-neutral);
-	}
-
-	[data-tone='warning'] .badge {
-		background: var(--tui-status-warning-pale);
-		color: var(--tui-status-warning);
-	}
-
-	[data-tone='negative'] .badge {
-		background: var(--tui-status-negative-pale);
-		color: var(--tui-status-negative);
-	}
-
-	.code {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		letter-spacing: 0.12em;
-		color: var(--tui-text-tertiary);
-	}
-
-	.chip {
-		display: inline-block;
-		max-inline-size: 100%;
-		overflow: hidden;
-		padding: 0.4375rem 0.875rem;
-		border-radius: 999px;
-		background: var(--tui-background-neutral-1);
-		font-size: 0.8125rem;
-		color: var(--tui-text-secondary);
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-</style>
