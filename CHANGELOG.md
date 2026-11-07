@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.33.0 - 2026-11-07
+#### 🚀 Features
+- (**api**) ✨ public directory shows assignee avatars - (47bdb93) - *zenkiet*
+
+- - -
+
 ## v1.32.0 - 2026-11-07
 #### 🚀 Features
 - (**directory**) ✨ redesign the public directory around tasks - (a72b870) - *zenkiet*
