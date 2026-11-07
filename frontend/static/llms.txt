@@ -1,0 +1,18 @@
+# Boreas
+
+> Boreas runs one staging environment per task: a Docker container behind a reverse proxy, with its build, deploy and people tracked. This server's public directory lists every task, the project it belongs to, who is on it and how its pipeline is going.
+
+## Directory
+
+- [Task directory](/): every task across projects, grouped by status, project or person
+- [Directory as JSON](/api/v1/public/projects): the same tasks, people and pipelines
+- [Change stream](/api/v1/public/events/stream): server-sent events; refetch the directory on each one
+
+## API
+
+- [OpenAPI document](/api/v1/openapi.json): every route, request and response
+- [API reference](/api/v1/docs): the OpenAPI document, rendered
+
+## Optional
+
+- [Privacy policy](/legal/privacy)

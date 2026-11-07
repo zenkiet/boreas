@@ -10,7 +10,7 @@ import (
 func ApplicationHandler(api, proxy http.Handler, logger *slog.Logger) http.Handler {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/"):
+		case r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/") || r.URL.Path == ardPath:
 			api.ServeHTTP(w, r)
 		default:
 			proxy.ServeHTTP(w, r)

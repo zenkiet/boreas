@@ -1,6 +1,8 @@
 package web
 
 import (
+	"compress/gzip"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -45,5 +47,42 @@ func TestHandlerRevalidatesFilesByETag(t *testing.T) {
 	h.ServeHTTP(rr, request)
 	if rr.Code != http.StatusNotModified {
 		t.Fatalf("status = %d, want 304 for an unchanged file", rr.Code)
+	}
+}
+
+func TestHandlerServesPrecompressedFiles(t *testing.T) {
+	h := Handler()
+	for accept, want := range map[string]string{"gzip, deflate, br, zstd": "br", "gzip": "gzip", "": ""} {
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		request.Header.Set("Accept-Encoding", accept)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, request)
+		header := rr.Header()
+		if header.Get("Content-Encoding") != want || !strings.HasPrefix(header.Get("Content-Type"), "text/html") || header.Get("Vary") != "Accept-Encoding" {
+			t.Fatalf("Accept-Encoding %q: headers = %v, want %q (run 'make frontend')", accept, header, want)
+		}
+		if want == "gzip" {
+			body, err := gzip.NewReader(rr.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if html, _ := io.ReadAll(body); !strings.HasPrefix(string(html), "<!doctype html>") {
+				t.Fatalf("gzip body = %.40q, want the page", html)
+			}
+		}
+	}
+}
+
+func TestHandlerAnswersMissingFilesWith404(t *testing.T) {
+	h := Handler()
+	for path, want := range map[string]int{
+		"/favicon.ico": http.StatusNotFound, "/.well-known/ai-catalog.json": http.StatusNotFound,
+		"/llms.txt": http.StatusOK, "/portal/v1.2": http.StatusOK,
+	} {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
+		if rr.Code != want {
+			t.Fatalf("%s = %d, want %d (run 'make frontend')", path, rr.Code, want)
+		}
 	}
 }

@@ -12,10 +12,13 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
+			inlineStyleThreshold: Infinity,
+			prerender: { crawl: false },
 			adapter: adapter({
 				pages: '../internal/web/public',
 				assets: '../internal/web/public',
-				fallback: '200.html'
+				fallback: '200.html',
+				precompress: true
 			})
 		})
 	],

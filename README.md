@@ -685,6 +685,11 @@ It needs no token, so a browser reads it with `EventSource`, and it carries the
 same signals: refetch `GET /api/v1/public/projects` on each one. Boreas holds at
 most 256 public streams at once and answers `503` to the next.
 
+AI agents find the API and the directory through `/llms.txt` and
+`/.well-known/ard.json`, an [ARD](https://agenticresourcediscovery.org/spec/)
+manifest built for the host asked. The pages ship precompressed with Brotli and
+gzip, and API JSON is gzipped, so a proxy in front need not compress either.
+
 ## Resource metrics
 
 Boreas streams live CPU, memory, and network usage straight from the Docker

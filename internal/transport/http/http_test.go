@@ -2,6 +2,7 @@ package httptransport
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -772,8 +774,9 @@ func TestApplicationHandlerRoutes(t *testing.T) {
 	h := ApplicationHandler(api, proxy, logger)
 
 	for path, want := range map[string]int{
-		"/api/v1/health": http.StatusNoContent,
-		"/team/T-1/app":  http.StatusTeapot,
+		"/api/v1/health":        http.StatusNoContent,
+		"/.well-known/ard.json": http.StatusNoContent,
+		"/team/T-1/app":         http.StatusTeapot,
 	} {
 		if rr := do(h, httptest.NewRequest(http.MethodGet, path, nil)); rr.Code != want {
 			t.Fatalf("%s status=%d want=%d", path, rr.Code, want)
@@ -1064,5 +1067,49 @@ func TestBoraConversationRoutes(t *testing.T) {
 	token := testHandler(stubTasks{}, &stubAuth{user: testMember, kind: core.TokenKindAPI}, projects)
 	if rr := do(token, authed(http.MethodGet, "/api/v1/bora/conversations", nil)); rr.Code != http.StatusForbidden {
 		t.Errorf("an API token listed conversations: %d", rr.Code)
+	}
+}
+
+func TestARDManifestNamesThisServersResources(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, ardPath, nil)
+	r.Host = "boreas.example:8443"
+	r.Header.Set("X-Forwarded-Proto", "https")
+	rr := do(testHandler(stubTasks{}, nil, nil), r)
+	var manifest struct {
+		Entries []ardEntry `json:"entries"`
+	}
+	if rr.Code != http.StatusOK || json.NewDecoder(rr.Body).Decode(&manifest) != nil || len(manifest.Entries) != 2 {
+		t.Fatalf("manifest = %d %+v", rr.Code, manifest)
+	}
+	urn := regexp.MustCompile(`^urn:air:boreas\.example(:[a-zA-Z0-9._-]+)+$`)
+	for _, entry := range manifest.Entries {
+		if !urn.MatchString(entry.Identifier) || !strings.HasPrefix(entry.URL, "https://boreas.example:8443/api/v1/") ||
+			len(entry.RepresentativeQueries) < 2 || len(entry.RepresentativeQueries) > 5 {
+			t.Fatalf("entry = %+v", entry)
+		}
+	}
+}
+
+func TestJSONIsGzippedButStreamsAreNot(t *testing.T) {
+	hub := NewHub()
+	hub.Close()
+	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
+	health := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	health.Header.Set("Accept-Encoding", "gzip, br")
+	rr := do(h, health)
+	body, err := gzip.NewReader(rr.Body)
+	if rr.Header().Get("Content-Encoding") != "gzip" || err != nil {
+		t.Fatalf("health headers = %v, %v", rr.Header(), err)
+	}
+	if data, _ := io.ReadAll(body); !json.Valid(data) {
+		t.Fatalf("gunzipped body = %q", data)
+	}
+	stream := authed(http.MethodGet, "/api/v1/events/stream", nil)
+	stream.Header.Set("Accept-Encoding", "gzip")
+	if rr := do(h, stream); rr.Header().Get("Content-Encoding") != "" || rr.Body.String() != "data: {}\n\n" {
+		t.Fatalf("stream = %v %q, want it plain", rr.Header(), rr.Body.String())
+	}
+	if rr := do(h, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)); rr.Header().Get("Content-Encoding") != "" {
+		t.Fatalf("plain client got %q", rr.Header().Get("Content-Encoding"))
 	}
 }

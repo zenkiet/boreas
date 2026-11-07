@@ -118,6 +118,7 @@ func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, pu
 	}
 	mux.HandleFunc("GET /api/v1/openapi.json", h.openapiJSON)
 	mux.HandleFunc("GET /api/v1/docs", h.docsPage)
+	mux.HandleFunc("GET "+ardPath, ardManifest)
 
-	return cors(mux)
+	return cors(compress(mux))
 }

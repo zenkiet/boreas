@@ -2,10 +2,12 @@
 package web
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -14,11 +16,12 @@ import (
 //go:embed all:public
 var files embed.FS
 
+// encodings are the build's precompressed siblings, best first.
+var encodings = [...]struct{ token, ext string }{{"br", ".br"}, {"gzip", ".gz"}}
+
 // Handler serves built files and falls back to the SPA shell
 func Handler() http.Handler {
 	root, _ := fs.Sub(files, "public")
-	shell, _ := fs.ReadFile(root, "200.html")
-	static := http.FileServerFS(root)
 	etags := map[string]string{}
 	_ = fs.WalkDir(root, ".", func(name string, entry fs.DirEntry, err error) error {
 		if err == nil && !entry.IsDir() {
@@ -30,31 +33,43 @@ func Handler() http.Handler {
 		return nil
 	})
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
-		if name == "" {
-			name = "index.html"
+	send := func(w http.ResponseWriter, r *http.Request, name string) {
+		header := w.Header()
+		if strings.HasPrefix(name, "_app/immutable/") {
+			header.Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Embedded files have no modification time, so without an ETag every page load downloads them again.
+			header.Set("Cache-Control", "no-cache")
 		}
-		if _, err := fs.Stat(root, name); err == nil {
-			if strings.HasPrefix(name, "_app/immutable/") {
-				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			} else if etag, ok := etags[name]; ok {
-				// Embedded files have no modification time, so without an ETag every page load downloads them again.
-				w.Header().Set("Cache-Control", "no-cache")
-				w.Header().Set("ETag", etag)
+		file := name
+		for _, e := range encodings {
+			if etags[name+e.ext] == "" {
+				continue
 			}
-			static.ServeHTTP(w, r)
-			return
+			header.Set("Vary", "Accept-Encoding")
+			if file == name && strings.Contains(r.Header.Get("Accept-Encoding"), e.token) {
+				file = name + e.ext
+				header.Set("Content-Encoding", e.token)
+				header.Set("Content-Type", mime.TypeByExtension(path.Ext(name)))
+			}
 		}
-		if _, err := fs.Stat(root, name+".html"); err == nil {
-			http.ServeFileFS(w, r, root, name+".html")
-			return
-		}
-		if shell == nil {
+		header.Set("ETag", etags[file])
+		http.ServeFileFS(w, r, root, file)
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := cmp.Or(strings.TrimPrefix(path.Clean(r.URL.Path), "/"), "index.html")
+		switch {
+		case etags[name] != "":
+		case etags[name+".html"] != "":
+			name += ".html"
+		// A file-like path can never be a page (project slugs have no dots), so it gets a real 404, not the shell.
+		case strings.HasPrefix(name, ".well-known/"), !strings.Contains(name, "/") && strings.Contains(name, "."), etags["200.html"] == "":
 			http.NotFound(w, r)
 			return
+		default:
+			name = "200.html"
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(shell)
+		send(w, r, name)
 	})
 }

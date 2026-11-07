@@ -3,6 +3,7 @@ package httptransport
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -115,6 +116,44 @@ func MarshalOpenAPIYAML() ([]byte, error) {
 		return nil, err
 	}
 	return spec.MarshalYAML()
+}
+
+const ardPath = "/.well-known/ard.json"
+
+type ardEntry struct {
+	Identifier            string   `json:"identifier"`
+	DisplayName           string   `json:"displayName"`
+	Type                  string   `json:"type"`
+	URL                   string   `json:"url"`
+	Description           string   `json:"description"`
+	RepresentativeQueries []string `json:"representativeQueries"`
+}
+
+// ardManifest lists the API and the public directory for AI agents (agenticresourcediscovery.org), at the origin asked.
+func ardManifest(w http.ResponseWriter, r *http.Request) {
+	origin := "http://" + r.Host
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		origin = "https://" + r.Host
+	}
+	urn := "urn:air:" + (&url.URL{Host: r.Host}).Hostname() + ":boreas:"
+	writeJSON(w, http.StatusOK, map[string][]ardEntry{"entries": {
+		{
+			Identifier: urn + "api", DisplayName: "Boreas API", Type: "application/vnd.oai.openapi+json",
+			URL:         origin + "/api/v1/openapi.json",
+			Description: "Run one staging environment per task: create and deploy tasks, follow their builds and assign people.",
+			RepresentativeQueries: []string{
+				"deploy a staging environment for a task", "list the tasks in a project", "report a CI build's progress for a task",
+			},
+		},
+		{
+			Identifier: urn + "directory", DisplayName: "Boreas public directory", Type: "application/json",
+			URL:         origin + "/api/v1/public/projects",
+			Description: "Every task on this server with its project, people, build and deploy, readable without a token.",
+			RepresentativeQueries: []string{
+				"which staging environments are running", "who is working on a task", "is a task's build passing",
+			},
+		},
+	}})
 }
 
 func (h *Handler) openapiJSON(w http.ResponseWriter, _ *http.Request) {

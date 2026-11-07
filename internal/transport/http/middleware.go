@@ -2,9 +2,11 @@ package httptransport
 
 import (
 	"cmp"
+	"compress/gzip"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -89,4 +91,56 @@ func cors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// compress gzips JSON for clients that accept it; streams and images pass through untouched.
+func compress(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", "Accept-Encoding")
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		gw := &gzipWriter{ResponseWriter: w}
+		defer gw.close()
+		next.ServeHTTP(gw, r)
+	})
+}
+
+type gzipWriter struct {
+	http.ResponseWriter
+	gz      *gzip.Writer
+	decided bool
+}
+
+// Unwrap exposes streaming capabilities, so an SSE handler still flushes.
+func (w *gzipWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *gzipWriter) WriteHeader(status int) {
+	if !w.decided {
+		w.decided = true
+		header := w.Header()
+		if strings.HasPrefix(header.Get("Content-Type"), "application/json") && status != http.StatusNoContent {
+			header.Set("Content-Encoding", "gzip")
+			header.Del("Content-Length")
+			w.gz = gzip.NewWriter(w.ResponseWriter)
+		}
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *gzipWriter) Write(b []byte) (int, error) {
+	if !w.decided {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.gz != nil {
+		return w.gz.Write(b)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *gzipWriter) close() {
+	if w.gz != nil {
+		_ = w.gz.Close()
+	}
 }
