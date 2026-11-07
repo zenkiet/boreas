@@ -17,7 +17,7 @@ func NewTaskStore(pool *pgxpool.Pool) *TaskStore { return &TaskStore{pool: pool}
 // tasks.id, not id: inside the assignee subselect a bare id binds to users.
 const taskColumns = `id, project_id, name, description, note, image, status, dev_status, form_factor, password_hash, port,
 	container_id, container_ip, labels, env, volumes, routes, build, revision, pending_recreate, error, created_at, updated_at,
-	COALESCE((SELECT json_agg(json_build_object('user_id', g.user_id, 'username', u.username, 'avatar_at', u.avatar_at)
+	COALESCE((SELECT json_agg(json_build_object('user_id', g.user_id, 'username', u.username, 'avatar_at', u.avatar_at, 'role', g.role)
 		ORDER BY u.username) FROM task_grants g JOIN users u ON u.id = g.user_id WHERE g.task_id = tasks.id), '[]')`
 
 func (s *TaskStore) List(ctx context.Context, projectID, userID uuid.UUID, allTasks bool) ([]core.Task, error) {

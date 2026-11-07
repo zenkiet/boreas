@@ -3,11 +3,12 @@
 
 @layer base {
 	html {
-		font-family: var(--app-font-text);
-		color: var(--tui-text-primary);
 		background: var(--app-canvas);
+		color: var(--app-label);
+		font-family: var(--app-font-text);
+		font-variant-ligatures: none;
 		-webkit-font-smoothing: antialiased;
-		/* Open 4/6/9 and straighten l for identifiers at small UI sizes. */
+		-moz-osx-font-smoothing: grayscale;
 		font-feature-settings:
 			'cv02' 1,
 			'cv03' 1,
@@ -18,21 +19,24 @@
 	body {
 		min-inline-size: 20rem;
 		min-block-size: 100dvh;
-		background: var(--app-canvas);
+		font-size: var(--text-subhead);
+		line-height: var(--text-subhead--line-height);
 	}
 
 	code,
+	kbd,
+	pre,
 	.font-mono {
 		font-feature-settings: normal;
 	}
 
 	::selection {
-		background: color-mix(in srgb, var(--tui-background-accent-1) 24%, transparent);
+		background: var(--app-accent-soft);
 	}
 
 	:focus-visible {
-		outline: 0.125rem solid var(--tui-border-focus);
-		outline-offset: 0.125rem;
+		outline: 2px solid var(--app-accent);
+		outline-offset: 2px;
 	}
 
 	* {
@@ -49,113 +53,287 @@
 		background: var(--app-scrollbar-thumb);
 		border-radius: 0.25rem;
 	}
-}
 
-@utility tabular {
-	font-variant-numeric: tabular-nums;
-}
-
-/* The 1rem inset divider that makes stacked rows read as one iOS list. */
-@utility row-divider {
-	&::before {
-		content: '';
-		position: absolute;
-		inset-block-start: 0;
-		inset-inline: 1rem 0;
-		block-size: 1px;
-		background: var(--tui-border-normal);
-	}
-
-	&:first-child::before {
-		content: none;
+	.lucide {
+		stroke-width: 1.75;
 	}
 }
 
-@utility skeleton {
-	border-radius: 0.375rem;
-	background: var(--tui-background-neutral-1);
-	animation: skeleton-pulse 1.4s ease-in-out infinite;
-	/* Data under 200ms must never flash a skeleton. */
-	opacity: 0;
-	animation-delay: 0.2s;
-	animation-fill-mode: backwards;
-}
-
-@keyframes skeleton-pulse {
-	0%,
-	100% {
-		opacity: 1;
-	}
-	50% {
-		opacity: 0.45;
-	}
-}
-
-.dot {
-	inline-size: 0.4375rem;
-	block-size: 0.4375rem;
-	flex: none;
-	border-radius: 999px;
-	background: var(--dot-color, var(--tui-status-neutral));
-}
-
-.dot--ready {
-	--dot-color: var(--tui-status-positive);
-}
-
-.dot--in_progress {
-	--dot-color: var(--tui-status-warning);
-}
-
-.dot--blocked {
-	--dot-color: var(--tui-status-negative);
-}
-
-.btn {
+@utility btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 0.375rem;
-	block-size: 2.5rem;
-	padding-inline: 1.125rem;
-	border: 0;
+	gap: 6px;
+	height: 40px;
+	padding-inline: 18px;
 	border-radius: 999px;
-	background: var(--tui-background-accent-1);
-	color: var(--tui-text-on-accent);
-	font: inherit;
-	font-size: 0.9375rem;
-	font-weight: 500;
+	background-color: var(--app-accent);
+	color: var(--app-on-accent);
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 20px;
 	white-space: nowrap;
 	text-decoration: none;
 	cursor: pointer;
 	transition:
-		background-color var(--tui-duration),
-		transform var(--tui-duration);
+		background-color 200ms var(--ease-snap),
+		transform 120ms var(--ease-snap);
+
+	&:hover {
+		background-color: var(--app-accent-hover);
+	}
+
+	&:active {
+		transform: scale(0.97);
+	}
+
+	&:disabled {
+		opacity: 0.45;
+		cursor: default;
+		transform: none;
+	}
 }
 
-.btn:hover {
-	background: var(--tui-background-accent-1-hover);
+@utility btn-ghost {
+	background-color: var(--app-fill-1);
+	color: var(--app-label);
+
+	&:hover {
+		background-color: var(--app-fill-2);
+	}
 }
 
-.btn:active {
-	transform: scale(0.97);
+@utility btn-quiet {
+	background-color: transparent;
+	color: var(--app-accent-text);
+
+	&:hover {
+		background-color: var(--app-accent-soft);
+	}
 }
 
-.btn--ghost {
-	background: var(--tui-background-neutral-1);
-	color: var(--tui-text-primary);
+@utility btn-sm {
+	height: 32px;
+	padding-inline: 12px;
+	font-size: 13px;
 }
 
-.btn--ghost:hover {
-	background: var(--tui-background-neutral-1-hover);
+@utility iconbtn {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 999px;
+	color: var(--app-label-2);
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		background-color 200ms var(--ease-snap),
+		color 200ms var(--ease-snap);
+
+	&:hover {
+		background-color: var(--app-fill-1);
+		color: var(--app-label);
+	}
+
+	@variant max-sm {
+		width: 44px;
+		height: 44px;
+	}
+}
+
+@utility iconbtn-soft {
+	background-color: var(--app-fill-1);
+
+	&:hover {
+		background-color: var(--app-fill-2);
+	}
+}
+
+@utility chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding-inline: 12px;
+	border-radius: 999px;
+	background-color: var(--app-surface);
+	box-shadow: inset 0 0 0 1px var(--app-sep);
+	color: var(--app-label-2);
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 18px;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		background-color 200ms var(--ease-snap),
+		color 200ms var(--ease-snap);
+
+	&:hover {
+		background-color: var(--app-surface-2);
+		color: var(--app-label);
+	}
+
+	&[aria-pressed='true'] {
+		background-color: var(--app-accent-soft);
+		box-shadow: none;
+		color: var(--app-accent-text);
+		font-weight: 600;
+	}
+
+	&:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+
+	& [data-count] {
+		color: var(--app-label-3);
+		font-variant-numeric: tabular-nums;
+	}
+
+	&[aria-pressed='true'] [data-count] {
+		color: inherit;
+	}
+
+	@variant max-sm {
+		height: 40px;
+		padding-inline: 14px;
+		font-size: 14px;
+	}
+}
+
+@utility chip-project {
+	font-size: 12px;
+
+	@variant max-sm {
+		font-size: 14px;
+	}
+}
+
+@utility seg {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	border-radius: 999px;
+	background-color: var(--app-fill-2);
+}
+
+@utility seg-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	height: 28px;
+	padding-inline: 12px;
+	border-radius: 999px;
+	color: var(--app-label-2);
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 18px;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		background-color 200ms var(--ease-snap),
+		color 200ms var(--ease-snap);
+
+	&:hover {
+		color: var(--app-label);
+	}
+
+	&[aria-pressed='true'] {
+		background-color: var(--app-thumb);
+		box-shadow: var(--app-thumb-shadow);
+		color: var(--app-label);
+		font-weight: 600;
+	}
+
+	@variant max-sm {
+		height: 34px;
+	}
+}
+
+@utility flag {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 5px;
+	height: 20px;
+	padding-inline: 7px;
+	border-radius: var(--radius-label);
+	background-color: var(--app-fill-1);
+	color: var(--app-label-2);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: 0.01em;
+	white-space: nowrap;
+}
+
+@utility flag-lg {
+	gap: 6px;
+	height: 24px;
+	padding-inline: 9px;
+	font-size: 13px;
+}
+
+@utility ilist {
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	border-radius: var(--radius-nest);
+	background-color: var(--app-fill-1);
+	list-style: none;
+}
+
+@utility ilist-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-height: 44px;
+	padding: 8px 12px;
+	font-size: 15px;
+	line-height: 20px;
+
+	& + &::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		right: 0;
+		left: 12px;
+		height: 1px;
+		background-color: var(--app-sep);
+	}
+}
+
+@utility skeleton {
+	display: block;
+	border-radius: var(--radius-label);
+	background-color: var(--app-fill-2);
+	animation:
+		skeleton-wait 200ms step-end,
+		skeleton-pulse 1.4s ease-in-out 200ms infinite;
+}
+
+@keyframes skeleton-wait {
+	from {
+		visibility: hidden;
+	}
+}
+
+@keyframes skeleton-pulse {
+	50% {
+		opacity: 0.45;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
 	*::after {
-		transition-duration: 0.01ms !important;
 		animation-duration: 0.01ms !important;
 		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
 	}
 }

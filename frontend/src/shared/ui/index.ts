@@ -1,6 +1,8 @@
+export { default as Brand } from './Brand.svelte';
+export { default as CopyButton } from './CopyButton.svelte';
 export { default as EmptyState } from './EmptyState.svelte';
-export { default as Icon } from './Icon.svelte';
-export { default as InsetGroup } from './InsetGroup.svelte';
+export { default as PageTop } from './PageTop.svelte';
 export { default as SearchField } from './SearchField.svelte';
-export { default as SkeletonRows } from './SkeletonRows.svelte';
+export { default as Segmented } from './Segmented.svelte';
+export { default as Skeleton } from './Skeleton.svelte';
 export { default as StatusPage } from './StatusPage.svelte';

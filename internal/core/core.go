@@ -288,9 +288,10 @@ type TaskGrant struct {
 
 // Assignee is a person on a task: their task grant, read with who they are.
 type Assignee struct {
-	UserID   uuid.UUID  `json:"user_id"`
-	Username string     `json:"username"`
-	AvatarAt *time.Time `json:"avatar_at,omitempty"`
+	UserID   uuid.UUID   `json:"user_id"`
+	Username string      `json:"username"`
+	AvatarAt *time.Time  `json:"avatar_at,omitempty"`
+	Role     ProjectRole `json:"role"`
 }
 
 // ProjectAccess is one caller's effective reach in one project.

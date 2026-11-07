@@ -1,0 +1,117 @@
+.policy :is(h1, h2) {
+	color: var(--app-label);
+}
+
+.policy h1 {
+	margin: 8px 0;
+	font-size: 34px;
+	line-height: 41px;
+	font-weight: 700;
+	letter-spacing: -0.022em;
+}
+
+.policy h2 {
+	margin: 36px 0 10px;
+	font-size: 20px;
+	line-height: 25px;
+	font-weight: 600;
+	letter-spacing: -0.012em;
+	scroll-margin-top: 24px;
+}
+
+.policy :is(p, ul) {
+	margin: 0 0 14px;
+	color: var(--app-label-2);
+	font-size: 16px;
+	line-height: 25px;
+}
+
+.policy ul {
+	display: grid;
+	gap: 6px;
+	padding-left: 22px;
+	list-style: disc;
+}
+
+.policy strong {
+	color: var(--app-label);
+	font-weight: 600;
+}
+
+.policy a {
+	color: var(--app-accent-text);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	overflow-wrap: anywhere;
+}
+
+.policy code {
+	padding: 1px 5px;
+	border-radius: var(--radius-label);
+	background: var(--app-fill-2);
+	color: var(--app-label);
+	font: 500 13px/1.5 var(--app-font-mono);
+}
+
+.policy .policy-table {
+	overflow-x: auto;
+	margin-bottom: 16px;
+	padding: 4px 8px;
+	border-radius: var(--radius-box);
+	background: var(--app-surface);
+	box-shadow: var(--app-shadow-1);
+}
+
+.policy table {
+	width: 100%;
+	margin: 8px 0 16px;
+	border-collapse: collapse;
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.policy :is(th, td) {
+	padding: 10px 12px;
+	text-align: left;
+	vertical-align: top;
+}
+
+.policy th {
+	border-bottom: 1px solid var(--app-line);
+	color: var(--app-label-3);
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.policy td {
+	border-bottom: 1px solid var(--app-sep);
+	color: var(--app-label-2);
+}
+
+.policy-head {
+	margin-bottom: 28px;
+	color: var(--app-label-3);
+	font-size: 13px;
+	line-height: 18px;
+}
+
+.policy .policy-head :is(p, strong) {
+	display: inline;
+	color: inherit;
+	font-size: inherit;
+	line-height: inherit;
+}
+
+.policy-head p + p::before {
+	content: ' · ' / '';
+}
+
+.policy .policy-summary h2 {
+	margin: 0 0 8px;
+	font-size: 17px;
+	line-height: 22px;
+}
+
+.policy .policy-summary p {
+	margin: 0;
+}

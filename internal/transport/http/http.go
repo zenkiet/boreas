@@ -52,7 +52,7 @@ type AuthService interface {
 type ProjectService interface {
 	Fleet(ctx context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
 	GrantedRoles(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]core.ProjectRole, error)
-	Directory(ctx context.Context) ([]core.Project, []core.Task, error)
+	Directory(ctx context.Context) ([]core.Project, []core.FleetTask, error)
 	Create(ctx context.Context, actor core.User, in service.CreateProjectInput) (core.Project, error)
 	Update(ctx context.Context, slug string, in service.UpdateProjectInput) (core.Project, error)
 	Delete(ctx context.Context, slug string) error
@@ -92,13 +92,17 @@ type PushStore interface {
 }
 
 const (
-	maxRequestBytes = 1 << 20
-	maxImageBytes   = 5 << 20
+	maxRequestBytes  = 1 << 20
+	maxImageBytes    = 5 << 20
+	maxPublicStreams = 256
 )
 
 // APIHandler serves the API and applies each route's declared access policy.
 func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, events *Hub, version string, logger *slog.Logger) http.Handler {
-	h := &Handler{tasks: tasks, auth: auth, projects: projects, push: push, events: events, version: version, logger: logger}
+	h := &Handler{
+		tasks: tasks, auth: auth, projects: projects, push: push, events: events,
+		publicStreams: make(chan struct{}, maxPublicStreams), version: version, logger: logger,
+	}
 
 	mux := http.NewServeMux()
 	for _, r := range routeTable {

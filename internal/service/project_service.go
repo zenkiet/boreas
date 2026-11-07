@@ -90,13 +90,9 @@ func (s *ProjectService) Fleet(ctx context.Context, actor core.User) ([]core.Pro
 	if err != nil {
 		return nil, nil, err
 	}
-	deploys, err := s.notifications.LastDeploys(ctx)
+	tasks, err := s.tasksWithDeploys(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("list last deploys: %w", err)
-	}
-	tasks, err := s.tasks.ListAll(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("list tasks: %w", err)
+		return nil, nil, err
 	}
 	reach := make(map[uuid.UUID]core.ProjectAccess, len(accesses))
 	for _, acc := range accesses {
@@ -109,13 +105,29 @@ func (s *ProjectService) Fleet(ctx context.Context, actor core.User) ([]core.Pro
 		if !member || (!acc.AllTasks && !granted) {
 			continue
 		}
-		entry := core.FleetTask{Task: task, Role: acc.Role.Max(grant)}
-		if deploy, ok := deploys[task.ID]; ok {
-			entry.LastDeploy = &deploy
-		}
-		fleet[task.ProjectID] = append(fleet[task.ProjectID], entry)
+		task.Role = acc.Role.Max(grant)
+		fleet[task.ProjectID] = append(fleet[task.ProjectID], task)
 	}
 	return accesses, fleet, nil
+}
+
+func (s *ProjectService) tasksWithDeploys(ctx context.Context) ([]core.FleetTask, error) {
+	deploys, err := s.notifications.LastDeploys(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list last deploys: %w", err)
+	}
+	tasks, err := s.tasks.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks: %w", err)
+	}
+	result := make([]core.FleetTask, len(tasks))
+	for i, task := range tasks {
+		result[i].Task = task
+		if deploy, ok := deploys[task.ID]; ok {
+			result[i].LastDeploy = &deploy
+		}
+	}
+	return result, nil
 }
 
 func (s *ProjectService) GrantedRoles(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]core.ProjectRole, error) {
@@ -124,14 +136,14 @@ func (s *ProjectService) GrantedRoles(ctx context.Context, userID uuid.UUID) (ma
 }
 
 // Directory lists every project and task for the anonymous environment index.
-func (s *ProjectService) Directory(ctx context.Context) ([]core.Project, []core.Task, error) {
+func (s *ProjectService) Directory(ctx context.Context) ([]core.Project, []core.FleetTask, error) {
 	projects, err := s.projects.List(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list projects: %w", err)
 	}
-	tasks, err := s.tasks.ListAll(ctx)
+	tasks, err := s.tasksWithDeploys(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("list tasks: %w", err)
+		return nil, nil, err
 	}
 	return projects, tasks, nil
 }

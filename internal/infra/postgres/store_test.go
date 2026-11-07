@@ -600,7 +600,8 @@ func TestTaskGrantsDieWithTheirTask(t *testing.T) {
 		t.Fatalf("task list ignored grants: %+v", scoped)
 	}
 	// A grantee is an assignee, read with every task, a write's RETURNING included.
-	if a := scoped[0].Assignees; len(a) != 1 || a[0].UserID != user.ID || a[0].Username != user.Username || a[0].AvatarAt != nil {
+	if a := scoped[0].Assignees; len(a) != 1 || a[0].UserID != user.ID || a[0].Username != user.Username || a[0].AvatarAt != nil ||
+		a[0].Role != core.ProjectRoleOperator {
 		t.Fatalf("listed assignees = %+v", a)
 	}
 	at := time.Date(2026, 10, 28, 9, 30, 0, 0, time.UTC)

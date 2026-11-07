@@ -299,6 +299,34 @@ func TestFleetScopesTasksAndRoles(t *testing.T) {
 	}
 }
 
+func TestDirectoryCarriesLastDeploys(t *testing.T) {
+	svc, tasks := newProjects(t)
+	ctx := context.Background()
+	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "web"})
+	seedTask(t, tasks, core.Task{ProjectID: project.ID, Name: "db"})
+	if _, err := svc.notifications.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: "web", Type: core.NotificationDeployed, Status: core.NotificationSuccess,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, directory, err := svc.Directory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, task := range directory {
+		got = append(got, fmt.Sprintf("%s=%t", task.Name, task.LastDeploy != nil))
+	}
+	slices.Sort(got)
+	if strings.Join(got, " ") != "db=false web=true" {
+		t.Fatalf("directory = %v, want only web deployed", got)
+	}
+}
+
 func TestGrantRejectsOwner(t *testing.T) {
 	svc, tasks := newProjects(t)
 	ctx := context.Background()

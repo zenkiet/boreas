@@ -215,8 +215,19 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/public/projects", access: accessPublic, handler: (*Handler).publicProjects,
 		tag: "system", summary: "Public environment directory",
 		description: "Every project with its tasks, reduced to what the public directory pages show. " +
-			"Image, port, environment and container identifiers are never included.",
+			"Image, port, environment, container identifiers, the build's CI link and the revision's repository are never included. " +
+			"assignees are the usernames of the task's member grants; a task with a password carries neither note nor assignees.",
 		resp: new(publicProjectsResponse),
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/public/events/stream", access: accessPublic, handler: (*Handler).streamPublicEvents,
+		tag: "system", summary: "Stream public change signals",
+		description: "Server-Sent Events carrying {} once on connect and after every change GET /api/v1/events/stream signals, " +
+			"with nothing about what changed: refetch GET /api/v1/public/projects. " +
+			"Bursts arrive as one event, and a comment heartbeat fills idle time. " +
+			"It needs no token, so EventSource reads it. 503 when 256 public streams are already open.",
+		resp: new(string), contentType: "text/event-stream",
+		extraErrors: []int{http.StatusServiceUnavailable},
 	},
 
 	{
