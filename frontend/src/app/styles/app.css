@@ -14,6 +14,11 @@
 			'cv03' 1,
 			'cv04' 1,
 			'cv11' 1;
+		scrollbar-gutter: stable;
+
+		&:has(dialog:modal) {
+			overflow: hidden;
+		}
 	}
 
 	body {
@@ -57,6 +62,10 @@
 	.lucide {
 		stroke-width: 1.75;
 	}
+
+	:where(.btn, .chip, .seg-btn, .iconbtn):active {
+		scale: 0.96;
+	}
 }
 
 @utility btn {
@@ -76,21 +85,17 @@
 	text-decoration: none;
 	cursor: pointer;
 	transition:
-		background-color 200ms var(--ease-snap),
-		transform 120ms var(--ease-snap);
+		background-color 200ms var(--ease-out),
+		scale 120ms var(--ease-out);
 
 	&:hover {
 		background-color: var(--app-accent-hover);
 	}
 
-	&:active {
-		transform: scale(0.97);
-	}
-
 	&:disabled {
 		opacity: 0.45;
 		cursor: default;
-		transform: none;
+		scale: none;
 	}
 }
 
@@ -129,8 +134,9 @@
 	text-decoration: none;
 	cursor: pointer;
 	transition:
-		background-color 200ms var(--ease-snap),
-		color 200ms var(--ease-snap);
+		background-color 200ms var(--ease-out),
+		color 200ms var(--ease-out),
+		scale 120ms var(--ease-out);
 
 	&:hover {
 		background-color: var(--app-fill-1);
@@ -167,8 +173,9 @@
 	white-space: nowrap;
 	cursor: pointer;
 	transition:
-		background-color 200ms var(--ease-snap),
-		color 200ms var(--ease-snap);
+		background-color 200ms var(--ease-out),
+		color 200ms var(--ease-out),
+		scale 120ms var(--ease-out);
 
 	&:hover {
 		background-color: var(--app-surface-2);
@@ -233,23 +240,45 @@
 	line-height: 18px;
 	white-space: nowrap;
 	cursor: pointer;
+	position: relative;
+	isolation: isolate;
 	transition:
-		background-color 200ms var(--ease-snap),
-		color 200ms var(--ease-snap);
+		background-color 200ms var(--ease-out),
+		color 200ms var(--ease-out),
+		scale 120ms var(--ease-out);
 
 	&:hover {
 		color: var(--app-label);
 	}
 
 	&[aria-pressed='true'] {
-		background-color: var(--app-thumb);
-		box-shadow: var(--app-thumb-shadow);
 		color: var(--app-label);
 		font-weight: 600;
 	}
 
 	@variant max-sm {
 		height: 34px;
+	}
+}
+
+@utility seg-thumb {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background-color: var(--app-thumb);
+	box-shadow: var(--app-thumb-shadow);
+}
+
+@utility pop {
+	transition-property: scale, opacity, filter;
+	transition-duration: 200ms;
+	transition-timing-function: var(--ease-out);
+
+	@starting-style {
+		scale: 0.5;
+		opacity: 0;
+		filter: blur(2px);
 	}
 }
 
@@ -326,6 +355,11 @@
 	50% {
 		opacity: 0.45;
 	}
+}
+
+::view-transition-group(*) {
+	animation-duration: 200ms;
+	animation-timing-function: var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {

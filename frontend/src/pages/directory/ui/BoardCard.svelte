@@ -4,6 +4,7 @@
 	import { taskKey } from '#shared/api';
 	import type { DirectoryTask } from '#shared/api';
 	import { ago, stamp } from '#shared/lib';
+	import { flash } from '#shared/ui';
 	import { openTask, showProject, urlState } from '../model/url-state.ts';
 	import ContainerFlag from './ContainerFlag.svelte';
 	import TaskId from './TaskId.svelte';
@@ -16,8 +17,8 @@
 </script>
 
 <article
-	class="relative flex flex-col gap-2 rounded-nest bg-surface p-3 shadow-1 transition-shadow duration-200 ease-snap hover:ring-1 hover:ring-line data-on:ring-2 data-on:ring-accent"
-	data-on={open || undefined}
+	class="relative flex flex-col gap-2 rounded-nest bg-surface p-3 shadow-1 transition-[box-shadow,scale] duration-200 ease-out hover:ring-1 hover:ring-line active:scale-[0.98] has-[[aria-current]]:ring-2 has-[[aria-current]]:ring-accent"
+	{@attach flash(task)}
 >
 	<button
 		type="button"
@@ -45,7 +46,9 @@
 		{task.description || 'No description'}
 	</p>
 	<div class="flex min-w-0 items-center justify-between gap-2">
-		<TaskPeople {task} />
+		<span class="relative z-1 cursor-pointer" role="presentation" onclick={() => openTask(key)}>
+			<TaskPeople {task} />
+		</span>
 		<PipeLabel {...pipelineOf(task)} />
 	</div>
 </article>

@@ -1,12 +1,20 @@
 <script lang="ts">
-	import type { ClassValue } from 'svelte/elements';
+	import type { HTMLAttributes } from 'svelte/elements';
 	import { initials, toneOf } from '../model/avatar.ts';
 
 	let {
 		username,
+		src,
 		size = 24,
-		class: className
-	}: { username?: string; size?: 20 | 24 | 28 | 40; class?: ClassValue } = $props();
+		class: className,
+		...rest
+	}: HTMLAttributes<HTMLSpanElement> & {
+		username?: string;
+		src?: string;
+		size?: 20 | 24 | 28 | 40;
+	} = $props();
+
+	let failed = $state<string>();
 
 	const SIZE = {
 		20: 'size-5 text-[8.5px]',
@@ -21,13 +29,25 @@
 {#if username}
 	<span
 		class={[
-			'inline-grid flex-none place-items-center rounded-full leading-none font-semibold tracking-[0.02em] text-white uppercase',
+			'relative inline-grid flex-none place-items-center rounded-full leading-none font-semibold tracking-[0.02em] text-white uppercase',
 			SIZE[size],
 			TONE[toneOf(username)],
 			className
 		]}
-		aria-hidden="true">{initials(username)}</span
+		{...rest}
+		aria-hidden="true"
 	>
+		{initials(username)}
+		{#if src && src !== failed}
+			<img
+				{src}
+				alt=""
+				loading="lazy"
+				class="absolute inset-0 size-full rounded-full object-cover"
+				onerror={() => (failed = src)}
+			/>
+		{/if}
+	</span>
 {:else}
 	<span
 		class={[

@@ -186,9 +186,9 @@ var routeTable = [...]route{
 		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict},
 	},
 	{
-		method: http.MethodGet, path: "/api/v1/users/{id}/avatar", access: accessAuthed, handler: (*Handler).getAvatar,
+		method: http.MethodGet, path: "/api/v1/users/{id}/avatar", access: accessPublic, handler: (*Handler).getAvatar,
 		tag: "users", summary: "Get a user's avatar",
-		description: "Add ?v= with the user's avatar_at, so a new avatar is not served from cache. 404 when the user has none.",
+		description: "Public for the directory; the random user ID is the key. Add ?v= with avatar_at to skip a stale cache. 404 when none.",
 		req:         new(idPath), resp: new(string), contentType: "image/*", extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 

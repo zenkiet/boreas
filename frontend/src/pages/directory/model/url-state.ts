@@ -69,3 +69,14 @@ export const closeTask = () => {
 	pushed = '';
 	history.back();
 };
+
+const VIEW = ['person', 'group', 'view'];
+
+type Hop = { url: URL } | null;
+
+export const switchesView = ({ from, to }: { from: Hop; to: Hop }) =>
+	!!from &&
+	!!to &&
+	!to.url.searchParams.has('task') &&
+	(from.url.pathname !== to.url.pathname ||
+		VIEW.some((key) => from.url.searchParams.get(key) !== to.url.searchParams.get(key)));

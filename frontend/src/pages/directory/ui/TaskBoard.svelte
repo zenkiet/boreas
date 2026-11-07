@@ -3,6 +3,7 @@
 	import { DEV_STATUS_LABEL, taskKey } from '#shared/api';
 	import type { DirectoryTask } from '#shared/api';
 	import { plural } from '#shared/lib';
+	import { Count, move, rise } from '#shared/ui';
 	import { columns } from '../model/groups.ts';
 	import { urlState } from '../model/url-state.ts';
 	import BoardCard from './BoardCard.svelte';
@@ -18,14 +19,18 @@
 		<section
 			class="flex snap-start flex-col gap-2 rounded-box bg-fill-1 p-2"
 			aria-label="{label}, {plural(column.tasks.length, 'task')}"
+			animate:move
+			transition:rise
 		>
 			<div class="flex items-center gap-2 px-2 pt-1.5 pb-1">
 				<StatusGlyph status={column.status} />
 				<h2 class="text-footnote font-semibold">{label}</h2>
-				<span class="font-medium text-label-3 tabular-nums">{column.tasks.length}</span>
+				<span class="font-medium text-label-3 tabular-nums"
+					><Count value={column.tasks.length} /></span
+				>
 			</div>
 			{#each column.tasks as task (taskKey(task))}
-				<BoardCard {task} />
+				<div animate:move transition:rise><BoardCard {task} /></div>
 			{:else}
 				<p class="px-2 py-5 text-center text-footnote text-label-3">Nothing here right now</p>
 			{/each}

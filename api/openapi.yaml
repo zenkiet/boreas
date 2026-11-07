@@ -3445,8 +3445,8 @@ paths:
       - users
   /api/v1/users/{id}/avatar:
     get:
-      description: Add ?v= with the user's avatar_at, so a new avatar is not served
-        from cache. 404 when the user has none.
+      description: Public for the directory; the random user ID is the key. Add ?v=
+        with avatar_at to skip a stale cache. 404 when none.
       operationId: get-users-id-avatar
       parameters:
       - in: path
@@ -3467,12 +3467,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Bad Request
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Unauthorized
         "404":
           content:
             application/json:
@@ -3485,8 +3479,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Internal Server Error
-      security:
-      - bearerAuth: []
       summary: Get a user's avatar
       tags:
       - users
@@ -4516,6 +4508,17 @@ components:
       - state
       - at
       type: object
+    PublicPerson:
+      properties:
+        avatar:
+          example: /api/v1/users/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar?v=1794061680
+          type: string
+        username:
+          example: phuong.nam
+          type: string
+      required:
+      - username
+      type: object
     PublicProject:
       properties:
         name:
@@ -4560,7 +4563,7 @@ components:
       properties:
         assignees:
           items:
-            type: string
+            $ref: '#/components/schemas/PublicPerson'
           type: array
         build:
           $ref: '#/components/schemas/PublicBuild'

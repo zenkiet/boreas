@@ -4,7 +4,7 @@
 	import { StatusGlyph } from '#entities/task';
 	import { DEV_STATUSES, DEV_STATUS_LABEL, devCount } from '#shared/api';
 	import type { DirectoryTask } from '#shared/api';
-	import { Segmented } from '#shared/ui';
+	import { Count, Segmented } from '#shared/ui';
 	import type { GroupBy } from '../model/groups.ts';
 	import { replaceWith, urlState } from '../model/url-state.ts';
 
@@ -33,7 +33,7 @@
 			aria-pressed={urlState.status === 'all'}
 			onclick={() => replaceWith({ status: '' })}
 		>
-			All<span data-count>{tasks.length}</span>
+			All<span data-count><Count value={tasks.length} /></span>
 		</button>
 		{#each DEV_STATUSES as status (status)}
 			<button
@@ -43,7 +43,7 @@
 				onclick={() => replaceWith({ status })}
 			>
 				<StatusGlyph {status} size={14} />
-				{DEV_STATUS_LABEL[status]}<span data-count>{devCount(tasks, status)}</span>
+				{DEV_STATUS_LABEL[status]}<span data-count><Count value={devCount(tasks, status)} /></span>
 			</button>
 		{/each}
 	</div>

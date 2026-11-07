@@ -12,6 +12,9 @@ class Directory {
 	error = $state<string>();
 	now = $state(Date.now());
 	tasks = $derived(flattenTasks(this.projects));
+	avatars = $derived<Readonly<Record<string, string>>>(
+		Object.assign({}, ...this.tasks.map((task) => task.avatars))
+	);
 
 	#timer: ReturnType<typeof setTimeout> | undefined;
 	#inflight = false;

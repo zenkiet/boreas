@@ -13,6 +13,8 @@
 		label,
 		iconOnly = false
 	}: { options: readonly Option[]; value: T; label: string; iconOnly?: boolean } = $props();
+
+	const id = $props.id();
 </script>
 
 <div class="seg" role="group" aria-label={label}>
@@ -25,6 +27,9 @@
 			title={iconOnly ? item.label : undefined}
 			onclick={() => (value = item.value)}
 		>
+			{#if value === item.value}
+				<span class="seg-thumb" style:view-transition-name="seg-{id}"></span>
+			{/if}
 			{#if item.icon}<item.icon size={16} />{/if}
 			{#if !iconOnly}{item.label}{/if}
 		</button>

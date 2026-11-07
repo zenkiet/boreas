@@ -5,6 +5,7 @@
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
 	import { directory } from '#entities/task';
+	import { Count } from '#shared/ui';
 	import { showProject, urlState } from '../model/url-state.ts';
 
 	const chips = $derived([
@@ -42,7 +43,7 @@
 			onclick={() => pick(chip.slug)}
 			{@attach pressed ? reveal : undefined}
 		>
-			{chip.label}<span data-count>{chip.count}</span>
+			{chip.label}<span data-count><Count value={chip.count} /></span>
 		</button>
 	{/each}
 </div>

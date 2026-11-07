@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Lock from '@lucide/svelte/icons/lock';
+	import { directory } from '#entities/task';
 	import { AvatarStack } from '#entities/user';
 	import type { PublicTask } from '#shared/api';
 
@@ -19,7 +20,7 @@
 		<Lock size={12} />Private
 	</span>
 {:else if task.assignees.length}
-	<AvatarStack usernames={task.assignees} />
+	<AvatarStack usernames={task.assignees} avatars={directory.avatars} />
 {:else}
 	<span class="text-footnote text-label-3" aria-hidden="true">Unassigned</span>
 {/if}

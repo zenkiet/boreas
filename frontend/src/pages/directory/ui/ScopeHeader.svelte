@@ -37,7 +37,7 @@
 			{#if heading.kind === 'project'}
 				<ProjectMark name={heading.title} large />
 			{:else if heading.kind === 'person'}
-				<Avatar username={heading.title} size={40} />
+				<Avatar username={heading.title} src={directory.avatars[heading.title]} size={40} />
 			{:else if heading.kind === 'none'}
 				<Avatar size={40} />
 			{/if}
@@ -52,7 +52,7 @@
 		{/if}
 		{#if team.length}
 			<div class="mt-3 flex items-center gap-2 text-footnote text-label-2">
-				<AvatarStack usernames={team} max={5} />
+				<AvatarStack usernames={team} avatars={directory.avatars} max={5} />
 				<span>{plural(team.length, 'person', 'people')}</span>
 			</div>
 		{/if}

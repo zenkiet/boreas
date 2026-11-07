@@ -23,7 +23,7 @@
 		{#if task.assignees.length}
 			<li class="ilist-row">
 				<span class="w-16 flex-none text-footnote text-label-2">People</span>
-				<AvatarStack usernames={task.assignees} />
+				<AvatarStack usernames={task.assignees} avatars={directory.avatars} />
 				<span class="min-w-0 flex-1 truncate">{task.assignees.join(', ')}</span>
 			</li>
 		{/if}

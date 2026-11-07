@@ -47,7 +47,7 @@ func do(h http.Handler, r *http.Request) *httptest.ResponseRecorder {
 func TestOnlyPublicRoutesSkipAuthentication(t *testing.T) {
 	public := map[string]bool{
 		"GET /api/v1/health": true, "POST /api/v1/auth/login": true, "POST /api/v1/auth/pairing/claim": true,
-		"GET /api/v1/public/projects": true, "GET /api/v1/public/events/stream": true,
+		"GET /api/v1/public/projects": true, "GET /api/v1/public/events/stream": true, "GET /api/v1/users/{id}/avatar": true,
 	}
 	h := testHandler(stubTasks{}, nil, nil)
 	gone, cancel := context.WithCancel(t.Context())
@@ -307,7 +307,8 @@ func TestPublicDirectoryShowsProgressButNotLockedPeople(t *testing.T) {
 			Status: core.StatusRunning, DevStatus: core.DevInProgress, FormFactor: core.FormFactorWeb, UpdatedAt: at,
 			Assignees: []core.Assignee{
 				{Username: "kiet.le", Role: core.ProjectRoleViewer},
-				{Username: "phuong.nam", Role: core.ProjectRoleMember},
+				{UserID: uuid.MustParse("7c9e6679-7425-40de-944b-e07fc1f90ae7"), Username: "phuong.nam", AvatarAt: &at, Role: core.ProjectRoleMember},
+				{Username: "qui.nguyen", Role: core.ProjectRoleMember},
 			},
 			Build:    core.Build{State: core.BuildRunning, Stage: "Lint", Progress: 20, URL: "https://ci.example.com/1", At: at},
 			Revision: core.Revision{Repo: "github.com/org/dinein", Commit: "c81f0d6", Previous: "9b31e07"},
@@ -324,7 +325,7 @@ func TestPublicDirectoryShowsProgressButNotLockedPeople(t *testing.T) {
 		`"last_deploy":{"status":"success","at":"2026-11-07T14:28:00Z"},"revision":{"commit":"c81f0d6","previous":"9b31e07"}`
 	want := `{"projects":[{"slug":"qrcode-dinein","name":"QRCode DineIn","tasks":[` +
 		`{"name":"wo-715","description":"Improve Menu Scheduler logic","note":"seeded","status":"running","dev_status":"in_progress","updated_at":"2026-11-07T14:28:00Z",` +
-		`"assignees":["phuong.nam"],` + progress + `,"form_factor":"web","has_password":false},` +
+		`"assignees":[{"username":"phuong.nam","avatar":"/api/v1/users/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar?v=1794061680"},{"username":"qui.nguyen"}],` + progress + `,"form_factor":"web","has_password":false},` +
 		`{"name":"wo-718","description":"Improve Menu Scheduler logic","status":"running","dev_status":"in_progress","updated_at":"2026-11-07T14:28:00Z",` +
 		progress + `,"form_factor":"mobile","has_password":true}]}],"total":1}` + "\n"
 	if body != want {
@@ -1000,7 +1001,7 @@ func TestSetAvatar(t *testing.T) {
 	if rr := do(h, authed(http.MethodPut, "/api/v1/auth/me/avatar", strings.NewReader(png))); rr.Code != http.StatusOK || !slices.Equal(auth.avatars, []string{"image/png"}) {
 		t.Fatalf("set: %d %s, passed on %v", rr.Code, rr.Body, auth.avatars)
 	}
-	if rr := do(h, authed(http.MethodGet, "/api/v1/users/"+uuid.NewString()+"/avatar", nil)); rr.Code != http.StatusNotFound {
+	if rr := do(h, httptest.NewRequest(http.MethodGet, "/api/v1/users/"+uuid.NewString()+"/avatar", nil)); rr.Code != http.StatusNotFound {
 		t.Fatalf("no avatar: %d, want 404", rr.Code)
 	}
 }

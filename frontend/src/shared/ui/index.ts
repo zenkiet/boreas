@@ -1,8 +1,10 @@
 export { default as Brand } from './Brand.svelte';
 export { default as CopyButton } from './CopyButton.svelte';
+export { default as Count } from './Count.svelte';
 export { default as EmptyState } from './EmptyState.svelte';
 export { default as PageTop } from './PageTop.svelte';
 export { default as SearchField } from './SearchField.svelte';
 export { default as Segmented } from './Segmented.svelte';
 export { default as Skeleton } from './Skeleton.svelte';
 export { default as StatusPage } from './StatusPage.svelte';
+export { flash, lift, move, rise, viewTransition } from './motion.ts';

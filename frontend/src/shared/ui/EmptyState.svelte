@@ -25,7 +25,7 @@
 >
 	<span
 		class={[
-			'mb-1 grid size-11 place-items-center rounded-nest',
+			'mb-1 grid size-11 pop place-items-center rounded-nest',
 			tone === 'bad' ? 'bg-blocked-soft text-blocked' : 'bg-fill-1 text-label-3'
 		]}
 	>

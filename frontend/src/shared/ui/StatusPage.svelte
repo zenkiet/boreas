@@ -34,7 +34,7 @@
 	<PageTop />
 	<main class="flex flex-1 justify-center px-5 pt-14 pb-16 max-sm:px-4 max-sm:pt-8 max-sm:pb-10">
 		<div class="flex w-full max-w-140 flex-col items-center gap-4 text-center">
-			<span class={['grid size-14 place-items-center rounded-box', TONE[tone]]}>
+			<span class={['grid size-14 pop place-items-center rounded-box', TONE[tone]]}>
 				<Icon size={28} />
 			</span>
 			<div class="flex flex-col items-center gap-2">

@@ -11,7 +11,7 @@ const payload = {
 				{
 					name: 'bdm-999',
 					note: 'leaked',
-					assignees: ['tuan.pham'],
+					assignees: [{ username: 'tuan.pham', avatar: '/a/tuan' }],
 					status: 'running',
 					dev_status: 'ready',
 					updated_at: '2026-11-01T09:00:00Z',
@@ -33,7 +33,7 @@ const payload = {
 					status: 'running',
 					dev_status: 'blocked',
 					updated_at: '2026-10-01T09:00:00Z',
-					assignees: ['christie'],
+					assignees: [{ username: 'christie', avatar: '/a/christie' }, { username: 'ty.go' }],
 					form_factor: 'web',
 					has_password: false
 				}
@@ -48,10 +48,13 @@ const respond = (status: number, body: unknown) => () =>
 
 test('listProjects maps the wire to camelCase and drops non-deploys', async () => {
 	const [project] = await listProjects(respond(200, payload));
-	const [locked, stopped] = project.tasks;
+	const [locked, stopped, blocked] = project.tasks;
 	assert.equal(locked.locked, true);
 	assert.equal(locked.formFactor, 'mobile');
 	assert.deepEqual(locked.assignees, []);
+	assert.deepEqual(locked.avatars, {});
+	assert.deepEqual(blocked.assignees, ['christie', 'ty.go']);
+	assert.deepEqual(blocked.avatars, { christie: '/a/christie' });
 	assert.equal(locked.note, undefined);
 	assert.deepEqual(locked.lastDeploy, { status: 'success', at: '2026-11-01T09:00:00Z' });
 	assert.equal(stopped.lastDeploy, undefined);

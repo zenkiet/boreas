@@ -2,11 +2,12 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import type { Snippet } from 'svelte';
+	import { onNavigate } from '$app/navigation';
 	import { directory } from '#entities/task';
 	import { taskKey } from '#shared/api';
 	import { ThemeToggle } from '#shared/theme';
-	import { Brand, EmptyState } from '#shared/ui';
-	import { closeTask, urlState } from '../model/url-state.ts';
+	import { Brand, EmptyState, viewTransition } from '#shared/ui';
+	import { closeTask, switchesView, urlState } from '../model/url-state.ts';
 	import { CARD } from './layout.ts';
 	import Sidebar from './Sidebar.svelte';
 	import TaskPanel from './TaskPanel.svelte';
@@ -20,6 +21,8 @@
 		'Something went wrong while showing it';
 
 	$effect(() => directory.live());
+
+	onNavigate((navigation) => (switchesView(navigation) ? viewTransition(navigation) : undefined));
 </script>
 
 <div class="flex min-h-dvh max-lg:flex-col">

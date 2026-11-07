@@ -15,5 +15,8 @@
 	title={label}
 	onclick={() => theme.toggle()}
 >
-	{#if theme.resolved === 'dark'}<Sun size={20} />{:else}<Moon size={20} />{/if}
+	{#if theme.resolved === 'dark'}<Sun size={20} class="pop" />{:else}<Moon
+			size={20}
+			class="pop"
+		/>{/if}
 </button>

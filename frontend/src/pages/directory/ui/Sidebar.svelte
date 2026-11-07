@@ -5,7 +5,7 @@
 	import { devCount } from '#shared/api';
 	import { plural } from '#shared/lib';
 	import { ThemeToggle } from '#shared/theme';
-	import { Brand, Skeleton } from '#shared/ui';
+	import { Brand, Count, Skeleton } from '#shared/ui';
 	import { people } from '../model/groups.ts';
 	import { isUnassigned, NONE } from '../model/scope.ts';
 	import { hrefWith, urlState } from '../model/url-state.ts';
@@ -51,7 +51,7 @@
 	<nav class={NAV} aria-label="Projects">
 		<div class={LABEL}>
 			<span>Projects</span><span class="tabular-nums"
-				>{loading ? '' : directory.projects.length}</span
+				>{#if !loading}<Count value={directory.projects.length} />{/if}</span
 			>
 		</div>
 		{#if loading}
@@ -77,7 +77,9 @@
 
 	<nav class={NAV} aria-label="People">
 		<div class={LABEL}>
-			<span>People</span><span class="tabular-nums">{loading ? '' : team.length}</span>
+			<span>People</span><span class="tabular-nums"
+				>{#if !loading}<Count value={team.length} />{/if}</span
+			>
 		</div>
 		{#if loading}
 			{@render skeletons(true)}
@@ -89,7 +91,7 @@
 				count={own.length}
 				replace
 			>
-				<Avatar username={name} size={20} />
+				<Avatar username={name} src={directory.avatars[name]} size={20} />
 				<span class={NAME}>{name}</span>
 			</NavItem>
 		{/each}

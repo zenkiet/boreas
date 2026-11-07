@@ -165,6 +165,8 @@ Assigning grants `member` on that task, and unassigning revokes it. Members of
 the project at `member` rank or above may assign, but only other project members;
 only an owner or administrator assigns someone outside the project. A new task
 takes `assignees` too, and they land even when its container then fails.
+The public directory lists only `member` assignees, as `username` and, when
+they have one, a ready `avatar` URL.
 
 Every project and task response carries `my_role`, the caller's effective role,
 so a client can hide what it cannot do. `GET /projects` lists each project with
@@ -195,7 +197,7 @@ All API routes are under `/api/v1`.
 | `POST`   | `/users`                                       | admin         | Create a user                                   |
 | `PATCH`  | `/users/{id}`                                  | admin         | Update a user                                   |
 | `DELETE` | `/users/{id}`                                  | admin         | Delete a user                                   |
-| `GET`    | `/users/{id}/avatar`                           | user          | Get a user's avatar                             |
+| `GET`    | `/users/{id}/avatar`                           | public        | Get a user's avatar                             |
 | `GET`    | `/registry-credentials`                        | admin         | List registry credentials                       |
 | `POST`   | `/registry-credentials`                        | admin         | Create a registry credential                    |
 | `DELETE` | `/registry-credentials/{id}`                   | admin         | Delete a registry credential                    |

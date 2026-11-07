@@ -2,6 +2,7 @@ package httptransport
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -350,12 +351,17 @@ type publicTaskDTO struct {
 	Status      core.TaskStatus    `json:"status"`
 	DevStatus   core.DevStatus     `json:"dev_status"`
 	UpdatedAt   time.Time          `json:"updated_at"`
-	Assignees   []string           `json:"assignees,omitempty"`
+	Assignees   []publicPersonDTO  `json:"assignees,omitempty"`
 	Build       publicBuildDTO     `json:"build,omitzero"`
 	LastDeploy  *lastDeployDTO     `json:"last_deploy,omitempty"`
 	Revision    *publicRevisionDTO `json:"revision,omitempty"`
 	FormFactor  core.FormFactor    `json:"form_factor"`
 	HasPassword bool               `json:"has_password"`
+}
+
+type publicPersonDTO struct {
+	Username string `json:"username" example:"phuong.nam"`
+	Avatar   string `json:"avatar,omitempty" example:"/api/v1/users/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar?v=1794061680"`
 }
 
 type publicBuildDTO struct {
@@ -388,10 +394,17 @@ func publicTask(t core.FleetTask) publicTaskDTO {
 	dto.Note = t.Note
 	for _, a := range t.Assignees {
 		if a.Role == core.ProjectRoleMember {
-			dto.Assignees = append(dto.Assignees, a.Username)
+			dto.Assignees = append(dto.Assignees, publicPersonDTO{Username: a.Username, Avatar: avatarURL(a)})
 		}
 	}
 	return dto
+}
+
+func avatarURL(a core.Assignee) string {
+	if a.AvatarAt == nil {
+		return ""
+	}
+	return fmt.Sprintf("/api/v1/users/%s/avatar?v=%d", a.UserID, a.AvatarAt.Unix())
 }
 
 type publicProjectDTO struct {

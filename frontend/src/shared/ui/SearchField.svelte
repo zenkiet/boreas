@@ -28,7 +28,7 @@
 </script>
 
 <label
-	class="flex h-9 cursor-text items-center gap-2 rounded-full bg-surface pr-2 pl-3 text-label-3 inset-ring inset-ring-sep transition-shadow duration-200 ease-snap focus-within:inset-ring-2 focus-within:inset-ring-accent"
+	class="flex h-9 cursor-text items-center gap-2 rounded-full bg-surface pr-2 pl-3 text-label-3 inset-ring inset-ring-sep transition-shadow duration-200 ease-out focus-within:inset-ring-2 focus-within:inset-ring-accent"
 >
 	<Search size={16} />
 	<input

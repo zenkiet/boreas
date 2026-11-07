@@ -20,6 +20,6 @@
 	class={['btn btn-ghost', className]}
 	onclick={() => copyText(text).then((done) => (copied = done))}
 >
-	{#if copied}<Check size={16} />{:else}<Link size={16} />{/if}
+	{#if copied}<Check size={16} class="pop" />{:else}<Link size={16} class="pop" />{/if}
 	<span aria-live="polite">{copied ? 'Copied' : 'Copy link'}</span>
 </button>

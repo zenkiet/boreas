@@ -115,8 +115,8 @@
 	color: var(--app-label-2);
 	cursor: pointer;
 	transition:
-		background-color 200ms var(--ease-snap),
-		color 200ms var(--ease-snap);
+		background-color 200ms var(--ease-out),
+		color 200ms var(--ease-out);
 }
 
 .markdown [data-copy-code]:hover {

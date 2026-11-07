@@ -56,31 +56,28 @@
 
 <style>
 	dialog {
-		--from: translateX(16px);
-		opacity: 0;
+		--from: translateX(calc(100% + 12px));
 		transform: var(--from);
 		transition:
-			opacity 280ms var(--ease-snap),
-			transform 280ms var(--ease-snap),
-			translate 280ms var(--ease-snap),
-			display 280ms allow-discrete,
-			overlay 280ms allow-discrete;
+			transform 400ms var(--ease-layout),
+			translate 400ms var(--ease-layout),
+			display 400ms allow-discrete,
+			overlay 400ms allow-discrete;
 
 		@media (width < 45rem) {
-			--from: translateY(40px);
+			--from: translateY(100%);
 		}
 
 		&::backdrop {
 			background-color: transparent;
 			transition:
-				background-color 200ms var(--ease-snap),
+				background-color 200ms var(--ease-out),
 				display 200ms allow-discrete,
 				overlay 200ms allow-discrete;
 		}
 	}
 
 	dialog[open] {
-		opacity: 1;
 		transform: none;
 
 		&::backdrop {
@@ -88,7 +85,6 @@
 		}
 
 		@starting-style {
-			opacity: 0;
 			transform: var(--from);
 
 			&::backdrop {

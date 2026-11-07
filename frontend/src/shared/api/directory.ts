@@ -10,7 +10,7 @@ export const DEV_STATUS_LABEL: Record<DevStatus, string> = {
 
 export type TaskStatus = 'creating' | 'starting' | 'running' | 'stopped' | 'error' | 'unknown';
 
-export type BuildState = 'running' | 'success' | 'failure' | 'canceled';
+type BuildState = 'running' | 'success' | 'failure' | 'canceled';
 
 export interface Build {
 	readonly state: BuildState;
@@ -24,7 +24,7 @@ export interface Deploy {
 	readonly at: string;
 }
 
-export interface Revision {
+interface Revision {
 	readonly commit: string;
 	readonly previous?: string;
 }
@@ -37,6 +37,7 @@ export interface PublicTask {
 	readonly devStatus: DevStatus;
 	readonly updatedAt: string;
 	readonly assignees: readonly string[];
+	readonly avatars?: Readonly<Record<string, string>>;
 	readonly build?: Build;
 	readonly lastDeploy?: Deploy;
 	readonly revision?: Revision;
@@ -59,7 +60,7 @@ interface TaskPayload {
 	status: TaskStatus;
 	dev_status: DevStatus;
 	updated_at: string;
-	assignees?: string[];
+	assignees?: { username: string; avatar?: string }[];
 	build?: Build;
 	last_deploy?: { status: string; at: string };
 	revision?: Revision;
@@ -76,20 +77,26 @@ const deployOf = (deploy: TaskPayload['last_deploy']): Deploy | undefined =>
 		? { status: deploy.status, at: deploy.at }
 		: undefined;
 
-const toTask = (task: TaskPayload): PublicTask => ({
-	name: task.name,
-	description: task.description,
-	note: task.has_password ? undefined : task.note,
-	status: task.status,
-	devStatus: task.dev_status,
-	updatedAt: task.updated_at,
-	assignees: task.has_password ? [] : (task.assignees ?? []),
-	build: task.build,
-	lastDeploy: deployOf(task.last_deploy),
-	revision: task.revision,
-	formFactor: task.form_factor,
-	locked: task.has_password
-});
+const toTask = (task: TaskPayload): PublicTask => {
+	const people = task.has_password ? [] : (task.assignees ?? []);
+	return {
+		name: task.name,
+		description: task.description,
+		note: task.has_password ? undefined : task.note,
+		status: task.status,
+		devStatus: task.dev_status,
+		updatedAt: task.updated_at,
+		assignees: people.map(({ username }) => username),
+		avatars: Object.fromEntries(
+			people.flatMap(({ username, avatar }) => (avatar ? [[username, avatar]] : []))
+		),
+		build: task.build,
+		lastDeploy: deployOf(task.last_deploy),
+		revision: task.revision,
+		formFactor: task.form_factor,
+		locked: task.has_password
+	};
+};
 
 export const listProjects = (load: typeof fetch = fetch): Promise<readonly PublicProject[]> =>
 	load('/api/v1/public/projects')

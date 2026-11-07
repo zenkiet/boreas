@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { directory } from '#entities/task';
 	import { bySeverity } from '#shared/api';
+	import { rise } from '#shared/ui';
 	import { headingOf, inScope } from '../model/scope.ts';
 	import { matches, needleOf } from '../model/search.ts';
 	import { urlState } from '../model/url-state.ts';
@@ -42,16 +43,18 @@
 {:else if missing}
 	<NotFound slug={scope.project} />
 {:else}
-	<ScopeHeader {heading} />
-	<ProjectChips />
-	<Toolbar tasks={scoped} />
-	{#if !directory.tasks.length}
-		<DirectoryStates kind="empty" />
-	{:else if !visible.length}
-		<DirectoryStates kind="nomatch" />
-	{:else if urlState.view === 'board'}
-		<TaskBoard tasks={visible} />
-	{:else}
-		<TaskList tasks={visible} {needle} />
-	{/if}
+	<div in:rise>
+		<ScopeHeader {heading} />
+		<ProjectChips />
+		<Toolbar tasks={scoped} />
+		{#if !directory.tasks.length}
+			<DirectoryStates kind="empty" />
+		{:else if !visible.length}
+			<DirectoryStates kind="nomatch" />
+		{:else if urlState.view === 'board'}
+			<TaskBoard tasks={visible} />
+		{:else}
+			<TaskList tasks={visible} {needle} />
+		{/if}
+	</div>
 {/if}

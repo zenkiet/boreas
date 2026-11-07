@@ -1,8 +1,9 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Lock from '@lucide/svelte/icons/lock';
-	import { StatusGlyph } from '#entities/task';
+	import { directory, StatusGlyph } from '#entities/task';
 	import { Avatar } from '#entities/user';
+	import { Count } from '#shared/ui';
 	import { breakdown } from '../model/groups.ts';
 	import type { TaskGroup } from '../model/groups.ts';
 	import { hrefWith, urlState } from '../model/url-state.ts';
@@ -26,7 +27,7 @@
 	{:else if group.kind === 'project'}
 		<ProjectMark name={group.label} />
 	{:else if group.kind === 'person'}
-		<Avatar username={group.key} />
+		<Avatar username={group.key} src={directory.avatars[group.key]} />
 	{:else if group.kind === 'none'}
 		<Avatar />
 	{:else}
@@ -36,7 +37,7 @@
 	{#if group.kind === 'project'}
 		<span class="font-mono text-caption font-normal text-label-3">/{group.key}</span>
 	{/if}
-	<span class="font-medium text-label-3 tabular-nums">{group.tasks.length}</span>
+	<span class="font-medium text-label-3 tabular-nums"><Count value={group.tasks.length} /></span>
 	{#if !group.status}<span class="text-label-3">· {breakdown(group.tasks)}</span>{/if}
 	{#if pick}
 		<a

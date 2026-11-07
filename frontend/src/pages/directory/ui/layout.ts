@@ -8,7 +8,7 @@ export const HEAD_SIDE =
 
 export const TITLE = 'min-w-0 text-title1 wrap-anywhere @max-[720px]/main:text-large';
 
-export const CARD = 'overflow-hidden rounded-box bg-surface shadow-1';
+export const CARD = 'relative overflow-hidden rounded-box bg-surface shadow-1';
 
 const PHONE_COLS = '@max-[720px]/main:[--cols:16px_auto_auto_minmax(0,1fr)_auto]';
 
