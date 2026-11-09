@@ -79,29 +79,34 @@ const vietnamese = "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽ�
 // answerIn names the reply's language, since the model has answered an English question in Spanish.
 // ponytail: Vietnamese typed without marks is answered in English; tell by words if users type that way.
 func answerIn(question string) string {
-	language := "English"
-	if strings.ContainsAny(strings.ToLower(question), vietnamese) {
-		language = "Vietnamese"
+	return "\n- Write the answer, its say and the title in " + language(question) + ", whatever language the data is in."
+}
+
+func language(text string) string {
+	if strings.ContainsAny(strings.ToLower(text), vietnamese) {
+		return "Vietnamese"
 	}
-	return "\n- Write the answer, its say and the title in " + language + ", whatever language the data is in."
+	return "English"
 }
 
 // BoraEvent is one event of a turn's stream: conversation, step, say, delta, reset, then done, error or stopped.
 type BoraEvent struct {
-	Name, Text, Title string
-	ID                uuid.UUID
-	Message           *core.BoraMessage
-	Err               error
+	Name, Text, Title, Key string
+	Finished               bool
+	ID                     uuid.UUID
+	Message                *core.BoraMessage
+	Err                    error
 }
 
 // boraTurn keeps its events, so any number of streams replay and follow it.
 type boraTurn struct {
-	user    uuid.UUID
-	conv    core.BoraConversation // a new conversation lives only here until its first answer is saved
-	first   bool
-	pending core.BoraPending
-	images  []core.Image // the question's, read before the turn starts
-	cancel  context.CancelFunc
+	id, user uuid.UUID
+	spec     bool
+	conv     core.BoraConversation // a new conversation lives only here until its first answer is saved
+	first    bool
+	pending  core.BoraPending
+	images   []core.Image // the question's, read before the turn starts
+	cancel   context.CancelFunc
 
 	mu     sync.Mutex
 	events []BoraEvent
@@ -233,7 +238,7 @@ func (s *ProjectService) ask(ctx context.Context, actor core.User, conv core.Bor
 	}
 	turnCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	t := &boraTurn{
-		user: actor.ID, conv: conv, first: first, pending: core.BoraPending{Question: question, Images: append([]uuid.UUID{}, images...), Since: now},
+		id: conv.ID, user: actor.ID, conv: conv, first: first, pending: core.BoraPending{Question: question, Images: append([]uuid.UUID{}, images...), Since: now},
 		images: shots, cancel: cancel, wake: make(chan struct{}),
 	}
 	if err := s.enter(t); err != nil {
@@ -243,35 +248,42 @@ func (s *ProjectService) ask(ctx context.Context, actor core.User, conv core.Bor
 	if first {
 		t.publish(BoraEvent{Name: "conversation", ID: conv.ID})
 	}
-	go s.runTurn(turnCtx, t, b, question, screen)
+	go s.runTurn(turnCtx, t, func(ctx context.Context) (BoraEvent, error) { return s.answer(ctx, t, b, question, screen) })
 	return t.follow(ctx), nil
 }
 
 func (s *ProjectService) enter(t *boraTurn) error {
 	s.turnsMu.Lock()
 	defer s.turnsMu.Unlock()
-	mine := 0
+	mine, specs := 0, 0
 	for _, other := range s.turns {
 		if other.user == t.user {
 			mine++
 		}
+		if other.spec {
+			specs++
+		}
 	}
 	switch {
-	case s.turns[t.conv.ID] != nil:
+	case s.turns[t.id] != nil:
 		return core.ErrConflict
-	case mine >= turnsPerUser || len(s.turns) >= turnsInFlight:
+	case mine >= turnsPerUser || len(s.turns) >= turnsInFlight || t.spec && specs >= specsInFlight:
 		return core.ErrTooMany
 	}
-	s.turns[t.conv.ID] = t
+	s.turns[t.id] = t
 	return nil
 }
 
-func (s *ProjectService) runTurn(ctx context.Context, t *boraTurn, b *bora, question, screen string) {
-	defer t.cancel()
-	done, err := s.answer(ctx, t, b, question, screen)
+func (s *ProjectService) leave(t *boraTurn) {
 	s.turnsMu.Lock()
-	delete(s.turns, t.conv.ID)
-	s.turnsMu.Unlock()
+	defer s.turnsMu.Unlock()
+	delete(s.turns, t.id)
+}
+
+func (s *ProjectService) runTurn(ctx context.Context, t *boraTurn, work func(context.Context) (BoraEvent, error)) {
+	defer t.cancel()
+	done, err := work(ctx)
+	s.leave(t)
 	switch {
 	case err == nil:
 		t.publish(done)
@@ -565,7 +577,7 @@ func hundreds(n int, full bool) string {
 func (s *ProjectService) turn(actor core.User, id uuid.UUID) *boraTurn {
 	s.turnsMu.Lock()
 	defer s.turnsMu.Unlock()
-	if t := s.turns[id]; t != nil && t.user == actor.ID {
+	if t := s.turns[id]; t != nil && t.user == actor.ID && !t.spec {
 		return t
 	}
 	return nil
@@ -663,7 +675,7 @@ func (s *ProjectService) DeleteBora(ctx context.Context, actor core.User, id *uu
 	s.turnsMu.Lock()
 	defer s.turnsMu.Unlock()
 	for cid, t := range s.turns {
-		if t.user == actor.ID && (id == nil || cid == *id) {
+		if t.user == actor.ID && !t.spec && (id == nil || cid == *id) {
 			t.cancel()
 			if t.first && errors.Is(err, core.ErrNotFound) {
 				err = nil

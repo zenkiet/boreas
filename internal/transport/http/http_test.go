@@ -1070,6 +1070,71 @@ func TestBoraConversationRoutes(t *testing.T) {
 	}
 }
 
+func TestBoraSpecRoutes(t *testing.T) {
+	id := uuid.New()
+	spec := core.BoraSpec{ID: id, Key: "wo-718", Slugs: []string{"shop"}, State: core.SpecWriting, Body: core.SpecBody{
+		Rounds: []core.SpecRound{{Questions: []core.SpecQuestion{{ID: "Q1.1"}, {ID: "Q1.2"}}, Answers: []core.SpecAnswer{}}},
+	}}
+	projects := &stubProjects{spec: spec, turn: []service.BoraEvent{
+		{Name: "step", Key: "plan:shop", Text: "Planned shop", Finished: true},
+		{Name: "done"},
+		{Name: "stopped"},
+	}}
+	h := testHandler(stubTasks{}, &stubAuth{user: testMember}, projects)
+	base := "/api/v1/bora/specs/" + id.String()
+	rr := do(h, authed(http.MethodPost, "/api/v1/bora/specs", strings.NewReader(`{"key":"wo-718","projects":["shop"],"ticket":"Export"}`)))
+	for _, want := range []string{`"state":"failed"`, `"questions":0`, `"rounds":[{"questions":[`} {
+		if rr.Code != http.StatusAccepted || !strings.Contains(rr.Body.String(), want) {
+			t.Errorf("start answered %d without %s: %s", rr.Code, want, rr.Body.String())
+		}
+	}
+	projects.spec.State = core.SpecAsking
+	if rr := do(h, authed(http.MethodGet, "/api/v1/bora/specs?project=shop", nil)); !strings.Contains(rr.Body.String(), `"state":"asking","questions":2`) {
+		t.Errorf("list: %s", rr.Body.String())
+	}
+	rr = do(h, authed(http.MethodGet, base+"/stream", nil))
+	for _, frame := range []string{
+		"event: step\ndata: {\"done\":true,\"key\":\"plan:shop\",\"text\":\"Planned shop\"}\n\n", "event: done\ndata: {}\n\n", "event: stopped\ndata: {}\n\n",
+	} {
+		if !strings.Contains(rr.Body.String(), frame) {
+			t.Errorf("stream lacks %q:\n%s", frame, rr.Body.String())
+		}
+	}
+	export := authed(http.MethodGet, base+"/export?project=shop", nil)
+	export.Host = "boreas.example"
+	export.Header.Set("X-Forwarded-Proto", "https")
+	token := testHandler(stubTasks{}, &stubAuth{user: testMember, kind: core.TokenKindAPI}, projects)
+	if rr := do(token, export); rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != "text/markdown; charset=utf-8" ||
+		rr.Body.String() != "# wo-718 for shop at https://boreas.example" {
+		t.Errorf("an API token exports: %d %q %s", rr.Code, rr.Header().Get("Content-Type"), rr.Body.String())
+	}
+	if rr := do(token, authed(http.MethodPost, base+"/write", nil)); rr.Code != http.StatusForbidden {
+		t.Errorf("an API token wrote a spec: %d", rr.Code)
+	}
+	projects.turn = nil
+	for _, tc := range []struct {
+		r    *http.Request
+		want int
+	}{
+		{authed(http.MethodPost, base+"/answers", strings.NewReader(`{"round":1,"answers":[{"question":"Q1.1","options":["Admins"]}]}`)), http.StatusAccepted},
+		{authed(http.MethodPost, base+"/answers", strings.NewReader(`{"round":1,"answers":[{"question":"Q1.1","pick":"Admins"}]}`)), http.StatusBadRequest},
+		{authed(http.MethodPost, base+"/retry", nil), http.StatusAccepted},
+		{authed(http.MethodGet, base+"/stream", nil), http.StatusNoContent},
+		{authed(http.MethodPost, base+"/stop", nil), http.StatusNoContent},
+		{authed(http.MethodGet, "/api/v1/bora/specs/nope", nil), http.StatusBadRequest},
+	} {
+		if rr := do(h, tc.r); rr.Code != tc.want {
+			t.Errorf("%s %s: %d %s, want %d", tc.r.Method, tc.r.URL, rr.Code, rr.Body.String(), tc.want)
+		}
+	}
+	projects.specErr = core.ErrNotFound
+	for _, r := range []*http.Request{authed(http.MethodGet, base, nil), authed(http.MethodGet, base+"/stream", nil), authed(http.MethodDelete, base, nil)} {
+		if rr := do(h, r); rr.Code != http.StatusNotFound {
+			t.Errorf("%s %s of a hidden spec: %d", r.Method, r.URL, rr.Code)
+		}
+	}
+}
+
 func TestARDManifestNamesThisServersResources(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, ardPath, nil)
 	r.Host = "boreas.example:8443"

@@ -27,9 +27,7 @@ type FCMConfig struct {
 }
 
 type AIConfig struct {
-	BaseURL string
-	APIKey  string
-	Model   string
+	BaseURL, APIKey, Model, PlanModel string
 }
 
 func (c AIConfig) Enabled() bool { return c.BaseURL != "" && c.Model != "" }
@@ -104,6 +102,7 @@ func Load() (*Config, error) {
 	setString("BOREAS_AI_BASE_URL", &cfg.AI.BaseURL)
 	setString("BOREAS_AI_API_KEY", &cfg.AI.APIKey)
 	setString("BOREAS_AI_MODEL", &cfg.AI.Model)
+	setString("BOREAS_AI_PLAN_MODEL", &cfg.AI.PlanModel)
 	setString("BOREAS_SOURCEBOT_URL", &cfg.Sourcebot.URL)
 	setString("BOREAS_SOURCEBOT_API_KEY", &cfg.Sourcebot.APIKey)
 	setString("BOREAS_S3_ENDPOINT", &cfg.S3.Endpoint)

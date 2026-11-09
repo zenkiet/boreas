@@ -1061,6 +1061,590 @@ paths:
       summary: Get one of your images
       tags:
       - bora
+  /api/v1/bora/specs:
+    get:
+      description: The newest 50 the caller sees, of one project and one ticket when
+        given. questions counts the open round's while the spec asks them.
+      operationId: get-bora-specs
+      parameters:
+      - in: query
+        name: project
+        schema:
+          type: string
+      - in: query
+        name: key
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecsResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List specs
+      tags:
+      - bora
+    post:
+      description: 'Starts a spec for ticket key across projects, by slug: Bora reads
+        their code, then asks the team business questions or proposes the decisions
+        the plan rests on. A spec shows to the members of all its projects. 202 with
+        the spec, whose step GET /api/v1/bora/specs/{id}/stream follows. 403 answers
+        an API token or a project Bora does not serve, 404 a project the caller cannot
+        see, 409 a server without an assistant, and 429 a caller with 3 turns running,
+        or a server with 20 turns or 2 specs.'
+      operationId: post-bora-specs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartSpecRequest'
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecResponse'
+          description: Accepted
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Plan a ticket
+      tags:
+      - bora
+  /api/v1/bora/specs/{id}:
+    delete:
+      description: For its author or an administrator; also stops its step.
+      operationId: delete-bora-specs-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Delete a spec
+      tags:
+      - bora
+    get:
+      description: state is failed when the step it was on stopped or broke off; retry
+        runs it again.
+      operationId: get-bora-specs-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Get a spec
+      tags:
+      - bora
+  /api/v1/bora/specs/{id}/answers:
+    post:
+      description: 'While asking: the answers to the open round, whose number round
+        is. A question left out, or answered with no option and no other, is left
+        to Bora. While confirming: note corrects the proposed decisions. Bora then
+        interviews again. 409 in another state or round, or while a step runs.'
+      operationId: post-bora-specs-id-answers
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpecAnswersRequest'
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecResponse'
+          description: Accepted
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Answer Bora's questions
+      tags:
+      - bora
+  /api/v1/bora/specs/{id}/export:
+    get:
+      description: 'Markdown for a coding agent in the project''s repository: the
+        steps to take, then each file of an OpenSpec change (schema spec-driven: .openspec.yaml,
+        proposal.md, a delta spec per capability with the test cases as scenarios,
+        design.md, tasks.md) under its path, then the ticket fenced as data. API tokens
+        may read it. 409 unless the spec is ready.'
+      operationId: get-bora-specs-id-export
+      parameters:
+      - in: query
+        name: project
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            text/markdown:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Export a project's OpenSpec change
+      tags:
+      - bora
+  /api/v1/bora/specs/{id}/retry:
+    post:
+      description: 409 unless the spec failed.
+      operationId: post-bora-specs-id-retry
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecResponse'
+          description: Accepted
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Run a failed step again
+      tags:
+      - bora
+  /api/v1/bora/specs/{id}/stop:
+    post:
+      description: The spec keeps what it held and shows failed until the step runs
+        again. Also 204 when no step runs.
+      operationId: post-bora-specs-id-stop
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Stop a spec's running step
+      tags:
+      - bora
+  /api/v1/bora/specs/{id}/stream:
+    get:
+      description: 'Replays the running step from its start, then follows it, as Server-Sent
+        Events, each an `event: <name>` with a JSON data line: step {key, text, done},
+        key naming the step (research, brief, plan:<project>, tests) and done true
+        once it is over; then done {} once the spec is saved, error {status, kind,
+        message}, or stopped {}. A dropped connection does not stop the step, and
+        a comment heartbeat fills idle time. 204 when no step runs. Read it with fetch
+        and a stream reader: EventSource cannot send the Authorization header.'
+      operationId: get-bora-specs-id-stream
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Follow a spec's running step
+      tags:
+      - bora
+  /api/v1/bora/specs/{id}/write:
+    post:
+      description: Writes the OpenSpec change (name, why, capabilities and their requirements,
+        the contract between the projects), then every project's design and tasks
+        at once, each reading only its own code, then test cases that cover every
+        requirement. Once ready, writes them all again. 409 in another state, or while
+        a step runs.
+      operationId: post-bora-specs-id-write
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecResponse'
+          description: Accepted
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Confirm the decisions and write the plan
+      tags:
+      - bora
   /api/v1/events/stream:
     get:
       description: 'Server-Sent Events carrying {} once on connect and after any successful
@@ -4693,6 +5277,346 @@ components:
       required:
       - query
       type: object
+    Spec:
+      properties:
+        capabilities:
+          items:
+            $ref: '#/components/schemas/SpecCapability'
+          nullable: true
+          type: array
+        cases:
+          items:
+            $ref: '#/components/schemas/SpecCase'
+          nullable: true
+          type: array
+        change:
+          type: string
+        contract:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        created_by:
+          $ref: '#/components/schemas/UUID'
+        criteria:
+          items:
+            $ref: '#/components/schemas/SpecCriterion'
+          nullable: true
+          type: array
+        decisions:
+          items:
+            $ref: '#/components/schemas/SpecDecision'
+          nullable: true
+          type: array
+        findings:
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        key:
+          type: string
+        plans:
+          items:
+            $ref: '#/components/schemas/SpecPlan'
+          nullable: true
+          type: array
+        projects:
+          items:
+            type: string
+          nullable: true
+          type: array
+        questions:
+          type: integer
+        rounds:
+          items:
+            $ref: '#/components/schemas/SpecRound'
+          nullable: true
+          type: array
+        state:
+          $ref: '#/components/schemas/SpecState'
+        ticket:
+          type: string
+        title:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+        why:
+          type: string
+      required:
+      - id
+      - key
+      - title
+      - projects
+      - state
+      - questions
+      - created_by
+      - created_at
+      - updated_at
+      - ticket
+      - findings
+      - rounds
+      - decisions
+      - change
+      - why
+      - capabilities
+      - criteria
+      - contract
+      - plans
+      - cases
+      type: object
+    SpecAnswer:
+      properties:
+        options:
+          items:
+            type: string
+          nullable: true
+          type: array
+        other:
+          maxLength: 500
+          type: string
+        question:
+          example: Q1.1
+          type: string
+      required:
+      - question
+      - options
+      type: object
+    SpecAnswersRequest:
+      properties:
+        answers:
+          items:
+            $ref: '#/components/schemas/SpecAnswer'
+          nullable: true
+          type: array
+        note:
+          maxLength: 2000
+          type: string
+        round:
+          type: integer
+      required:
+      - round
+      - answers
+      type: object
+    SpecCapability:
+      properties:
+        path:
+          type: string
+        purpose:
+          type: string
+      required:
+      - path
+      - purpose
+      type: object
+    SpecCase:
+      properties:
+        criteria:
+          items:
+            type: string
+          nullable: true
+          type: array
+        expected:
+          type: string
+        id:
+          type: string
+        project:
+          type: string
+        steps:
+          items:
+            type: string
+          nullable: true
+          type: array
+        title:
+          type: string
+      required:
+      - id
+      - project
+      - criteria
+      - title
+      - steps
+      - expected
+      type: object
+    SpecCriterion:
+      properties:
+        capability:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        projects:
+          items:
+            type: string
+          nullable: true
+          type: array
+        text:
+          type: string
+      required:
+      - id
+      - capability
+      - name
+      - text
+      - projects
+      type: object
+    SpecDecision:
+      properties:
+        by_ai:
+          type: boolean
+        id:
+          type: string
+        text:
+          type: string
+      required:
+      - id
+      - text
+      - by_ai
+      type: object
+    SpecItem:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        created_by:
+          $ref: '#/components/schemas/UUID'
+        id:
+          $ref: '#/components/schemas/UUID'
+        key:
+          type: string
+        projects:
+          items:
+            type: string
+          nullable: true
+          type: array
+        questions:
+          type: integer
+        state:
+          $ref: '#/components/schemas/SpecState'
+        title:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - id
+      - key
+      - title
+      - projects
+      - state
+      - questions
+      - created_by
+      - created_at
+      - updated_at
+      type: object
+    SpecOption:
+      properties:
+        detail:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - detail
+      type: object
+    SpecPlan:
+      properties:
+        design:
+          type: string
+        project:
+          type: string
+        sources:
+          items:
+            $ref: '#/components/schemas/CodeSource'
+          nullable: true
+          type: array
+        tasks:
+          items:
+            $ref: '#/components/schemas/SpecTaskGroup'
+          nullable: true
+          type: array
+      required:
+      - project
+      - design
+      - tasks
+      - sources
+      type: object
+    SpecQuestion:
+      properties:
+        id:
+          type: string
+        multi:
+          type: boolean
+        options:
+          items:
+            $ref: '#/components/schemas/SpecOption'
+          nullable: true
+          type: array
+        text:
+          type: string
+        why:
+          type: string
+      required:
+      - id
+      - text
+      - why
+      - multi
+      - options
+      type: object
+    SpecResponse:
+      properties:
+        spec:
+          $ref: '#/components/schemas/Spec'
+      required:
+      - spec
+      type: object
+    SpecRound:
+      properties:
+        answers:
+          items:
+            $ref: '#/components/schemas/SpecAnswer'
+          nullable: true
+          type: array
+        note:
+          type: string
+        questions:
+          items:
+            $ref: '#/components/schemas/SpecQuestion'
+          nullable: true
+          type: array
+      required:
+      - questions
+      - answers
+      type: object
+    SpecState:
+      enum:
+      - researching
+      - asking
+      - confirming
+      - writing
+      - ready
+      - failed
+      type: string
+    SpecTaskGroup:
+      properties:
+        items:
+          items:
+            type: string
+          nullable: true
+          type: array
+        title:
+          type: string
+      required:
+      - title
+      - items
+      type: object
+    SpecsResponse:
+      properties:
+        specs:
+          items:
+            $ref: '#/components/schemas/SpecItem'
+          nullable: true
+          type: array
+      required:
+      - specs
+      type: object
     StartConversationRequest:
       properties:
         about:
@@ -4714,6 +5638,29 @@ components:
       required:
       - about
       - question
+      type: object
+    StartSpecRequest:
+      properties:
+        key:
+          example: wo-718
+          maxLength: 63
+          minLength: 1
+          type: string
+        projects:
+          items:
+            type: string
+          maxItems: 5
+          minItems: 1
+          nullable: true
+          type: array
+        ticket:
+          maxLength: 20000
+          minLength: 1
+          type: string
+      required:
+      - key
+      - projects
+      - ticket
       type: object
     SuccessResponse:
       properties:

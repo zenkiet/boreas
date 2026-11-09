@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/uuid"
+	"github.com/openai/openai-go/v3/option"
 	"github.com/zenkiet/boreas/internal/config"
 	"github.com/zenkiet/boreas/internal/core"
 	"github.com/zenkiet/boreas/internal/infra/apprise"
@@ -41,6 +43,7 @@ const (
 	notifyTimeout    = 5 * time.Second
 	startupTimeout   = 30 * time.Second
 	shutdownTimeout  = 10 * time.Second
+	planTimeout      = 5 * time.Minute
 )
 
 var version = "dev"
@@ -121,12 +124,13 @@ func run(logger *slog.Logger) error {
 	projects := service.NewProjectService(projectStore, credentials, notifications, grants, taskStore, runtime.MakeFolder)
 	projects.Notify = notify
 	projects.Users = users
-	projects.Conversations = pginfra.NewBoraStore(pool)
+	projects.Conversations, projects.Specs, projects.Changed = pginfra.NewBoraStore(pool), pginfra.NewSpecStore(pool), events.Publish
 	if cfg.Sourcebot.Enabled() {
 		projects.Code = sourcebot.New(cfg.Sourcebot.URL, cfg.Sourcebot.APIKey)
 	}
 	if cfg.AI.Enabled() {
 		projects.Assist = assistant(llm.New(cfg.AI.BaseURL, cfg.AI.APIKey, cfg.AI.Model), logger)
+		projects.Plan = assistant(llm.New(cfg.AI.BaseURL, cfg.AI.APIKey, cmp.Or(cfg.AI.PlanModel, cfg.AI.Model), option.WithRequestTimeout(planTimeout)), logger)
 	}
 	if cfg.S3.Enabled() {
 		store := s3.New(cfg.S3.Endpoint, cfg.S3.Bucket, cfg.S3.Region, cfg.S3.AccessKeyID, cfg.S3.SecretAccessKey)

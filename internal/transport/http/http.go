@@ -77,6 +77,16 @@ type ProjectService interface {
 	BoraConversation(ctx context.Context, actor core.User, id uuid.UUID) (core.BoraConversation, error)
 	AddBoraRan(ctx context.Context, actor core.User, id uuid.UUID, index int, line string) error
 	DeleteBora(ctx context.Context, actor core.User, id *uuid.UUID) error
+	StartSpec(ctx context.Context, actor core.User, key string, projects []string, ticket string) (core.BoraSpec, error)
+	AnswerSpec(ctx context.Context, actor core.User, id uuid.UUID, round int, answers []core.SpecAnswer, note string) (core.BoraSpec, error)
+	WriteSpec(ctx context.Context, actor core.User, id uuid.UUID) (core.BoraSpec, error)
+	RetrySpec(ctx context.Context, actor core.User, id uuid.UUID) (core.BoraSpec, error)
+	BoraSpec(ctx context.Context, actor core.User, id uuid.UUID) (core.BoraSpec, error)
+	BoraSpecs(ctx context.Context, actor core.User, project, key string) ([]core.BoraSpec, error)
+	FollowSpec(ctx context.Context, actor core.User, id uuid.UUID) (<-chan service.BoraEvent, error)
+	StopSpec(ctx context.Context, actor core.User, id uuid.UUID) error
+	DeleteSpec(ctx context.Context, actor core.User, id uuid.UUID) error
+	ExportSpec(ctx context.Context, actor core.User, id uuid.UUID, project, origin string) (string, error)
 	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
 	Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error
 	Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error

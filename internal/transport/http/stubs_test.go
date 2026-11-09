@@ -219,6 +219,8 @@ type stubProjects struct {
 	turn            []service.BoraEvent
 	uploaded        []string // the sniffed type of each image the handler passed on
 	unserved        []string // projects Sourcebot has no search context for
+	spec            core.BoraSpec
+	specErr         error
 }
 
 func (s *stubProjects) Access(_ context.Context, actor core.User, _, _ string) (core.ProjectAccess, error) {
@@ -295,6 +297,45 @@ func (s *stubProjects) AddBoraRan(context.Context, core.User, uuid.UUID, int, st
 }
 
 func (s *stubProjects) DeleteBora(context.Context, core.User, *uuid.UUID) error { return nil }
+
+func (s *stubProjects) StartSpec(context.Context, core.User, string, []string, string) (core.BoraSpec, error) {
+	return s.spec, s.specErr
+}
+
+func (s *stubProjects) AnswerSpec(context.Context, core.User, uuid.UUID, int, []core.SpecAnswer, string) (core.BoraSpec, error) {
+	return s.spec, s.specErr
+}
+
+func (s *stubProjects) WriteSpec(context.Context, core.User, uuid.UUID) (core.BoraSpec, error) {
+	return s.spec, s.specErr
+}
+
+func (s *stubProjects) RetrySpec(context.Context, core.User, uuid.UUID) (core.BoraSpec, error) {
+	return s.spec, s.specErr
+}
+
+func (s *stubProjects) BoraSpec(context.Context, core.User, uuid.UUID) (core.BoraSpec, error) {
+	return s.spec, s.specErr
+}
+
+func (s *stubProjects) BoraSpecs(context.Context, core.User, string, string) ([]core.BoraSpec, error) {
+	return []core.BoraSpec{s.spec}, s.specErr
+}
+
+func (s *stubProjects) FollowSpec(context.Context, core.User, uuid.UUID) (<-chan service.BoraEvent, error) {
+	if s.turn == nil {
+		return nil, s.specErr
+	}
+	return s.StartBora(context.Background(), core.User{}, core.BoraAbout{}, "", "")
+}
+
+func (s *stubProjects) StopSpec(context.Context, core.User, uuid.UUID) error { return s.specErr }
+
+func (s *stubProjects) DeleteSpec(context.Context, core.User, uuid.UUID) error { return s.specErr }
+
+func (s *stubProjects) ExportSpec(_ context.Context, _ core.User, _ uuid.UUID, project, origin string) (string, error) {
+	return "# " + s.spec.Key + " for " + project + " at " + origin, s.specErr
+}
 
 func (s *stubProjects) Fleet(c context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
 	if s.fleet != nil {

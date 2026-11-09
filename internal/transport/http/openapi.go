@@ -129,12 +129,16 @@ type ardEntry struct {
 	RepresentativeQueries []string `json:"representativeQueries"`
 }
 
+func origin(r *http.Request) string {
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		return "https://" + r.Host
+	}
+	return "http://" + r.Host
+}
+
 // ardManifest lists the API and the public directory for AI agents (agenticresourcediscovery.org), at the origin asked.
 func ardManifest(w http.ResponseWriter, r *http.Request) {
-	origin := "http://" + r.Host
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		origin = "https://" + r.Host
-	}
+	origin := origin(r)
 	urn := "urn:air:" + (&url.URL{Host: r.Host}).Hostname() + ":boreas:"
 	writeJSON(w, http.StatusOK, map[string][]ardEntry{"entries": {
 		{
