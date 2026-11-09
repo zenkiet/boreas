@@ -224,6 +224,16 @@ All API routes are under `/api/v1`.
 | `POST`   | `/bora/conversations/{id}/messages/{index}/ran` | login session | Record what ran from an answer                 |
 | `DELETE` | `/bora/conversations/{id}`                     | login session | Delete one of your conversations                |
 | `DELETE` | `/bora/conversations`                          | login session | Delete all your conversations                   |
+| `POST`   | `/bora/specs`                                  | login session | Plan a ticket across projects                   |
+| `GET`    | `/bora/specs`                                  | login session | List the specs you can see                      |
+| `GET`    | `/bora/specs/{id}`                             | login session | Read a spec                                     |
+| `POST`   | `/bora/specs/{id}/answers`                     | login session | Answer Bora's questions, or correct its decisions |
+| `POST`   | `/bora/specs/{id}/write`                       | login session | Confirm the decisions and write the plan        |
+| `POST`   | `/bora/specs/{id}/retry`                       | login session | Run a failed step again                         |
+| `GET`    | `/bora/specs/{id}/stream`                      | login session | Follow a spec's running step                    |
+| `POST`   | `/bora/specs/{id}/stop`                        | login session | Stop a spec's running step                      |
+| `DELETE` | `/bora/specs/{id}`                             | login session | Delete a spec (its author or an admin)          |
+| `GET`    | `/bora/specs/{id}/export?project=`             | user          | One project's OpenSpec change for a coding agent |
 | `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
 | `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
 | `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
@@ -533,6 +543,23 @@ With `claude-sonnet-5-5`, EVAL_RESULT. Score a model before relying on it:
 BOREAS_TEST_AI_BASE_URL=https://… BOREAS_TEST_AI_MODEL=claude-sonnet-5-5 BOREAS_TEST_AI_API_KEY=… \
   go test ./internal/infra/llm -run TestClarifyEval -v
 ```
+
+### Plan a ticket
+
+A spec turns a pasted ticket into an [OpenSpec](https://github.com/Fission-AI/OpenSpec)
+change for each project that shares its key, plus a test plan. Bora reads the
+code of every project, then asks the team 1 to 7 business questions a round, at
+most three rounds, or proposes the decisions the plan rests on, each marked as
+the team's or its own assumption, and writes the plan once someone confirms
+them.
+
+- A spec shows to the members of all its projects; those who can ask Bora about
+  all of them may answer, correct, confirm or retry it.
+- A project gets at most 10 requirements, the limit `openspec validate --strict`
+  allows. API tokens may read the export, so a coding agent can fetch it itself.
+- A spec reads code only, never Sourcebot's agent, and changes nothing.
+- At most two specs run at once on a server. A restart, a stop or a model
+  failure leaves the step `failed`, and `retry` runs it again.
 
 ## Deploy from a build pipeline
 
@@ -887,6 +914,7 @@ the database connection and the initial administrator.
 | `BOREAS_AI_BASE_URL`    | unset             | OpenAI-compatible endpoint Bora answers with, streaming and calling tools   |
 | `BOREAS_AI_MODEL`       | unset             | Model name at that endpoint                                                  |
 | `BOREAS_AI_API_KEY`     | unset             | Bearer key for that endpoint; local servers such as Ollama need none         |
+| `BOREAS_AI_PLAN_MODEL`  | `BOREAS_AI_MODEL` | Model that writes specs, with five minutes per request                       |
 | `BOREAS_SOURCEBOT_URL`  | unset             | Sourcebot that indexes the code Bora reads                                   |
 | `BOREAS_SOURCEBOT_API_KEY` | unset          | Sourcebot API key                                                            |
 | `BOREAS_S3_ENDPOINT`    | unset             | S3-compatible endpoint for images asked about and avatars, e.g. `https://<account>.r2.cloudflarestorage.com` |

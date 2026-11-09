@@ -630,6 +630,7 @@ type Tool struct {
 	Name, Description string
 	Params            map[string]any // JSON Schema of the arguments object
 	Run               func(ctx context.Context, args string) string
+	Final             bool
 }
 
 // Ask is one question; Data is text others wrote, kept out of the system message, and Delta streams the answer.
@@ -638,6 +639,8 @@ type Ask struct {
 	Clarify        bool
 	Tools          []Tool
 	Budget         int
+	Rounds, Limit  int
+	Finish         string
 	History        []ChatMessage
 	Question, Data string
 	Images         []Image
@@ -646,6 +649,126 @@ type Ask struct {
 	Delta       func(string)
 	// Reset says the text streamed since the last reset led into a tool call.
 	Reset func()
+}
+
+type SpecState string
+
+const (
+	SpecResearching SpecState = "researching"
+	SpecAsking      SpecState = "asking"
+	SpecConfirming  SpecState = "confirming"
+	SpecWriting     SpecState = "writing"
+	SpecReady       SpecState = "ready"
+	SpecFailed      SpecState = "failed"
+)
+
+func (SpecState) Enum() []any {
+	return []any{SpecResearching, SpecAsking, SpecConfirming, SpecWriting, SpecReady, SpecFailed}
+}
+
+type SpecOption struct {
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+}
+
+type SpecQuestion struct {
+	ID      string       `json:"id"`
+	Text    string       `json:"text"`
+	Why     string       `json:"why"`
+	Multi   bool         `json:"multi"`
+	Options []SpecOption `json:"options"`
+}
+
+type SpecAnswer struct {
+	Question string   `json:"question" example:"Q1.1"`
+	Options  []string `json:"options"`
+	Other    string   `json:"other,omitempty" maxLength:"500"`
+}
+
+type SpecRound struct {
+	Questions []SpecQuestion `json:"questions"`
+	Answers   []SpecAnswer   `json:"answers"`
+	Note      string         `json:"note,omitempty"`
+}
+
+type SpecDecision struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+	ByAI bool   `json:"by_ai"`
+}
+
+type SpecCapability struct {
+	Path    string `json:"path"`
+	Purpose string `json:"purpose"`
+}
+
+type SpecCriterion struct {
+	ID         string   `json:"id"`
+	Capability string   `json:"capability"`
+	Name       string   `json:"name"`
+	Text       string   `json:"text"`
+	Projects   []string `json:"projects"`
+}
+
+type SpecTaskGroup struct {
+	Title string   `json:"title"`
+	Items []string `json:"items"`
+}
+
+type SpecPlan struct {
+	Project string          `json:"project"`
+	Design  string          `json:"design"`
+	Tasks   []SpecTaskGroup `json:"tasks"`
+	Sources []CodeSource    `json:"sources"`
+}
+
+type SpecCase struct {
+	ID       string   `json:"id"`
+	Project  string   `json:"project"`
+	Criteria []string `json:"criteria"`
+	Title    string   `json:"title"`
+	Steps    []string `json:"steps"`
+	Expected string   `json:"expected"`
+}
+
+type SpecBody struct {
+	Ticket       string           `json:"ticket"`
+	Findings     string           `json:"findings"`
+	Rounds       []SpecRound      `json:"rounds"`
+	Decisions    []SpecDecision   `json:"decisions"`
+	Change       string           `json:"change"`
+	Why          string           `json:"why"`
+	Capabilities []SpecCapability `json:"capabilities"`
+	Criteria     []SpecCriterion  `json:"criteria"`
+	Contract     string           `json:"contract"`
+	Plans        []SpecPlan       `json:"plans"`
+	Cases        []SpecCase       `json:"cases"`
+}
+
+type BoraSpec struct {
+	ID                   uuid.UUID
+	Key, Title           string
+	Projects             []uuid.UUID
+	Slugs                []string
+	State                SpecState
+	CreatedBy            *uuid.UUID
+	Body                 SpecBody
+	Running              bool
+	CreatedAt, UpdatedAt time.Time
+}
+
+func (s BoraSpec) Status() SpecState {
+	if !s.Running && (s.State == SpecResearching || s.State == SpecWriting) {
+		return SpecFailed
+	}
+	return s.State
+}
+
+type SpecStore interface {
+	Get(ctx context.Context, userID uuid.UUID, admin bool, id uuid.UUID) (BoraSpec, error)
+	List(ctx context.Context, userID uuid.UUID, admin bool, project, key string) ([]BoraSpec, error)
+	Save(ctx context.Context, s BoraSpec, from SpecState) error
+	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 // secrets catches values hardcoded in ordinary source and logs, which the Sourcebot blocklist of file names misses.

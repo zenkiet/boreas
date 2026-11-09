@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"slices"
@@ -703,5 +704,54 @@ func (f *fakeObjects) Delete(_ context.Context, key string) error {
 	defer f.mu.Unlock()
 	delete(f.objects, key)
 	f.deleted = append(f.deleted, key)
+	return nil
+}
+
+type fakeSpecStore struct {
+	mu    sync.Mutex
+	specs map[uuid.UUID][]byte
+}
+
+func newFakeSpecStore() *fakeSpecStore { return &fakeSpecStore{specs: map[uuid.UUID][]byte{}} }
+
+func (f *fakeSpecStore) Get(_ context.Context, _ uuid.UUID, _ bool, id uuid.UUID) (core.BoraSpec, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var s core.BoraSpec
+	raw, ok := f.specs[id]
+	if !ok {
+		return s, core.ErrNotFound
+	}
+	return s, json.Unmarshal(raw, &s)
+}
+
+func (f *fakeSpecStore) List(_ context.Context, _ uuid.UUID, _ bool, project, key string) ([]core.BoraSpec, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []core.BoraSpec
+	for _, raw := range f.specs {
+		var s core.BoraSpec
+		if json.Unmarshal(raw, &s) == nil && (project == "" || slices.Contains(s.Slugs, project)) && (key == "" || strings.EqualFold(s.Key, key)) {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeSpecStore) Save(ctx context.Context, s core.BoraSpec, from core.SpecState) error {
+	old, err := f.Get(ctx, uuid.Nil, false, s.ID)
+	if from != "" && (err != nil || old.State != from) {
+		return core.ErrConflict
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.specs[s.ID], err = json.Marshal(s)
+	return err
+}
+
+func (f *fakeSpecStore) Delete(_ context.Context, id uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.specs, id)
 	return nil
 }

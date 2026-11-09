@@ -1039,3 +1039,63 @@ func TestBoraConversations(t *testing.T) {
 		t.Fatalf("after deleting all: %v, %v", left, err)
 	}
 }
+
+func TestSpecStore(t *testing.T) {
+	pool := newPool(t)
+	ctx, store, projects := context.Background(), NewSpecStore(pool), NewProjectStore(pool)
+	shop, crm := seedProject(t, pool), seedProject(t, pool)
+	both, one, admin := seedUser(t, pool, "both", core.RoleUser), seedUser(t, pool, "one", core.RoleUser), seedUser(t, pool, "admin", core.RoleAdmin)
+	for _, m := range []core.ProjectMember{
+		{ProjectID: shop.ID, UserID: both.ID, Role: core.ProjectRoleViewer},
+		{ProjectID: crm.ID, UserID: both.ID, Role: core.ProjectRoleOwner},
+		{ProjectID: shop.ID, UserID: one.ID, Role: core.ProjectRoleOwner},
+	} {
+		if err := projects.AddMember(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	spec := core.BoraSpec{
+		ID: uuid.New(), Key: "WO-718", Title: "Export", Projects: []uuid.UUID{shop.ID, crm.ID}, Slugs: []string{crm.Slug, shop.Slug},
+		State: core.SpecResearching, CreatedBy: &both.ID, Body: core.SpecBody{Ticket: "t", Findings: "f", Plans: []core.SpecPlan{{Project: shop.Slug, Design: "p"}}},
+	}
+	t.Cleanup(func() { _ = store.Delete(context.Background(), spec.ID) })
+	if err := store.Save(ctx, spec, ""); err != nil {
+		t.Fatal(err)
+	}
+	spec.State, spec.Body.Decisions = core.SpecConfirming, []core.SpecDecision{{ID: "D1", Text: "Admins", ByAI: true}}
+	if err := store.Save(ctx, spec, core.SpecResearching); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(ctx, spec, core.SpecResearching); !errors.Is(err, core.ErrConflict) {
+		t.Fatalf("a save from a state the spec left: %v", err)
+	}
+	for _, tc := range []struct {
+		user  core.User
+		admin bool
+		see   bool
+	}{{both, false, true}, {one, false, false}, {admin, true, true}} {
+		got, err := store.Get(ctx, tc.user.ID, tc.admin, spec.ID)
+		if tc.see != (err == nil) || tc.see && (got.State != core.SpecConfirming || got.Body.Decisions[0] != spec.Body.Decisions[0] || *got.CreatedBy != both.ID) {
+			t.Errorf("%s sees %+v, %v", tc.user.Username, got, err)
+		}
+	}
+	for _, tc := range []struct {
+		project, key string
+		want         int
+	}{{"", "", 1}, {shop.Slug, "wo-718", 1}, {shop.Slug, "wo-719", 0}, {"nope", "", 0}} {
+		list, err := store.List(ctx, both.ID, false, tc.project, tc.key)
+		if n := len(slices.DeleteFunc(list, func(s core.BoraSpec) bool { return s.ID != spec.ID })); err != nil || n != tc.want ||
+			n == 1 && (list[0].Body.Ticket != "" || list[0].Body.Plans != nil || len(list[0].Body.Decisions) != 1) {
+			t.Errorf("list %q %q: %+v, %v", tc.project, tc.key, list, err)
+		}
+	}
+	if err := projects.Delete(ctx, crm.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Get(ctx, both.ID, false, spec.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("a spec of a deleted project still shows: %v", err)
+	}
+	if err := store.Delete(ctx, spec.ID); err != nil || !errors.Is(store.Delete(ctx, spec.ID), core.ErrNotFound) {
+		t.Errorf("delete: %v", err)
+	}
+}

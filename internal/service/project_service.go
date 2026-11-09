@@ -31,6 +31,9 @@ type ProjectService struct {
 	Code          core.CodeIndex
 	Logs          func(ctx context.Context, project, task string, opts core.LogOptions) (string, error)
 	Metrics       func(ctx context.Context, acc core.ProjectAccess, task string) (<-chan core.TaskMetric, error)
+	Plan          func(ctx context.Context, userID uuid.UUID, ask core.Ask) (string, []string, error)
+	Specs         core.SpecStore
+	Changed       func()
 
 	turnsMu sync.Mutex
 	turns   map[uuid.UUID]*boraTurn // running Bora turns by conversation

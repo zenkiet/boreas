@@ -290,7 +290,7 @@ crm (Acme CRM): you are owner, 2 tasks, 2 running`
 	for _, c := range cases {
 		for run := range 3 {
 			started := time.Now()
-			reply := a.clarify(context.Background(), c.brief, tools, c.history, withData(c.question, c.data))
+			reply := a.clarify(context.Background(), c.brief, tools, c.history, withData(c.question, c.data, resultLimit))
 			latencies = append(latencies, time.Since(started))
 			runs[c.vague]++
 			ok := reply.Choices != nil
@@ -315,5 +315,36 @@ crm (Acme CRM): you are owner, 2 tasks, 2 running`
 		latencies[len(latencies)/2].Round(100*time.Millisecond), latencies[len(latencies)-1].Round(100*time.Millisecond))
 	if asked[true]*7 < runs[true]*6 || asked[false]*21 > runs[false]*2 {
 		t.Errorf("want at least 6/7 of vague and at most 2/21 of clear questions asked back")
+	}
+}
+
+func TestAnswerEndsOnAFinalTool(t *testing.T) {
+	var got []string
+	done := core.Tool{Name: "done", Final: true, Params: map[string]any{"type": "object"}, Run: func(_ context.Context, args string) string {
+		got = append(got, args)
+		if args == `{"ok":false}` {
+			return "error: not yet"
+		}
+		return "ok"
+	}}
+	big := core.Tool{Name: "big", Params: map[string]any{"type": "object"}, Run: func(context.Context, string) string { return strings.Repeat("x", 100) }}
+	server, requests := stub(t,
+		completion("", "c1", "done", `{"ok":false}`),
+		completion("", "c2", "big", `{}`),
+		completion("", "c3", "done", `{"ok":true}`))
+	_, err := New(server.URL, "", "m").Answer(context.Background(), core.Ask{
+		Tools: []core.Tool{big, done}, Budget: 50, Rounds: 9, Finish: "Call done now.", Question: "Go", Data: strings.Repeat("d", 40<<10), Limit: 64 << 10,
+	})
+	messages := (*requests)[2]["messages"].([]any)
+	if err != nil || len(*requests) != 3 || !slices.Equal(got, []string{`{"ok":false}`, `{"ok":true}`}) ||
+		messages[len(messages)-1].(map[string]any)["content"] != "Call done now." ||
+		strings.Contains((*requests)[0]["messages"].([]any)[1].(map[string]any)["content"].(string), "truncated") {
+		t.Fatalf("err %v, requests %d, final calls %v", err, len(*requests), got)
+	}
+
+	server, requests = stub(t, completion("", "c", "big", `{}`))
+	answer, err := New(server.URL, "", "m").Answer(context.Background(), core.Ask{Tools: []core.Tool{big, done}, Rounds: 2, Question: "Loop"})
+	if err != nil || answer.Content != outOfSteps || len(*requests) != 3 {
+		t.Fatalf("a final round without the final tool: %q, %v, %d requests", answer.Content, err, len(*requests))
 	}
 }

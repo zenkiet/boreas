@@ -413,6 +413,85 @@ var routeTable = [...]route{
 		status:      http.StatusNoContent, quiet: true,
 	},
 	{
+		method: http.MethodPost, path: "/api/v1/bora/specs", access: accessSession, handler: (*Handler).startSpec,
+		tag: "bora", summary: "Plan a ticket",
+		description: "Starts a spec for ticket key across projects, by slug: Bora reads their code, then asks the team business " +
+			"questions or proposes the decisions the plan rests on. A spec shows to the members of all its projects. 202 with the " +
+			"spec, whose step GET /api/v1/bora/specs/{id}/stream follows. 403 answers an API token or a project Bora does not serve, " +
+			"404 a project the caller cannot see, 409 a server without an assistant, and 429 a caller with 3 turns running, or a " +
+			"server with 20 turns or 2 specs.",
+		req: new(startSpecRequest), resp: new(specResponse), status: http.StatusAccepted,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/specs", access: accessSession, handler: (*Handler).listSpecs,
+		tag: "bora", summary: "List specs",
+		description: "The newest 50 the caller sees, of one project and one ticket when given. questions counts the open round's " +
+			"while the spec asks them.",
+		req: new(specsQuery), resp: new(specsResponse),
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/specs/{id}", access: accessSession, handler: (*Handler).getSpec,
+		tag: "bora", summary: "Get a spec",
+		description: "state is failed when the step it was on stopped or broke off; retry runs it again.",
+		req:         new(idPath), resp: new(specResponse), extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/specs/{id}/answers", access: accessSession, handler: (*Handler).answerSpec,
+		tag: "bora", summary: "Answer Bora's questions",
+		description: "While asking: the answers to the open round, whose number round is. A question left out, or answered with " +
+			"no option and no other, is left to Bora. While confirming: note corrects the proposed decisions. Bora then interviews " +
+			"again. 409 in another state or round, or while a step runs.",
+		req: new(specAnswersRequest), resp: new(specResponse), status: http.StatusAccepted,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/specs/{id}/write", access: accessSession, handler: (*Handler).writeSpec,
+		tag: "bora", summary: "Confirm the decisions and write the plan",
+		description: "Writes the OpenSpec change (name, why, capabilities and their requirements, the contract between the projects), " +
+			"then every project's design and tasks at once, each reading only its own code, then test cases that cover every requirement. " +
+			"Once ready, writes them all again. 409 in another state, or while a step runs.",
+		req: new(idPath), resp: new(specResponse), status: http.StatusAccepted,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/specs/{id}/retry", access: accessSession, handler: (*Handler).retrySpec,
+		tag: "bora", summary: "Run a failed step again",
+		description: "409 unless the spec failed.",
+		req:         new(idPath), resp: new(specResponse), status: http.StatusAccepted,
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/specs/{id}/stream", access: accessSession, handler: (*Handler).followSpec,
+		tag: "bora", summary: "Follow a spec's running step",
+		description: "Replays the running step from its start, then follows it, as Server-Sent Events, each an `event: <name>` " +
+			"with a JSON data line: step {key, text, done}, key naming the step (research, brief, plan:<project>, tests) and done " +
+			"true once it is over; then done {} once the spec is saved, error {status, kind, message}, or stopped {}. A dropped " +
+			"connection does not stop the step, and a comment heartbeat fills idle time. 204 when no step runs. " + readSSE,
+		req: new(idPath), resp: new(string), contentType: "text/event-stream", extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+	},
+	{
+		method: http.MethodPost, path: "/api/v1/bora/specs/{id}/stop", access: accessSession, handler: (*Handler).stopSpec,
+		tag: "bora", summary: "Stop a spec's running step",
+		description: "The spec keeps what it held and shows failed until the step runs again. Also 204 when no step runs.",
+		req:         new(idPath), status: http.StatusNoContent, extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/bora/specs/{id}", access: accessSession, handler: (*Handler).deleteSpec,
+		tag: "bora", summary: "Delete a spec",
+		description: "For its author or an administrator; also stops its step.",
+		req:         new(idPath), status: http.StatusNoContent, extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/bora/specs/{id}/export", access: accessAuthed, handler: (*Handler).exportSpec,
+		tag: "bora", summary: "Export a project's OpenSpec change",
+		description: "Markdown for a coding agent in the project's repository: the steps to take, then each file of an OpenSpec change " +
+			"(schema spec-driven: .openspec.yaml, proposal.md, a delta spec per capability with the test cases as scenarios, design.md, " +
+			"tasks.md) under its path, then the ticket fenced as data. API tokens may read it. 409 unless the spec is ready.",
+		req: new(specExportQuery), resp: new(string), contentType: "text/markdown",
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict},
+	},
+	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/folders", access: accessViewer, handler: (*Handler).listFolders,
 		tag: "projects", summary: "List the project's shared folders",
 		description: "The project's folders in the boreas-appdata volume that task volumes can mount.",
