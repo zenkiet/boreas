@@ -83,7 +83,7 @@ func TestBoraSpec(t *testing.T) {
 	hold := make(chan struct{})
 	script = func(ctx context.Context, ask core.Ask) (string, error) {
 		<-hold
-		if !slices.EqualFunc(ask.Tools, []string{"search_code", "read_file", "code_history", "code_diff", "blame", "propose_decisions", "ask_questions"},
+		if !slices.EqualFunc(ask.Tools, []string{"search_code", "read_file", "code_history", "code_diff", "blame", "ask_sourcebot", "propose_decisions", "ask_questions"},
 			func(tool core.Tool, name string) bool { return tool.Name == name }) ||
 			ask.Rounds != 10 || ask.Limit != specDataLimit || !strings.Contains(ask.Data, "The ticket wo-718:\nExport invoices as CSV") ||
 			strings.Contains(ask.Data+ask.Brief, "hunter2") || !strings.Contains(ask.System, "Write everything in English") {
@@ -99,7 +99,7 @@ func TestBoraSpec(t *testing.T) {
 		return "", nil
 	}
 	started, err := svc.StartSpec(ctx, owner, "wo-718", []string{"shop", "crm", "shop"}, ticket)
-	if err != nil || !started.Running || started.State != core.SpecResearching || !slices.Equal(started.Slugs, []string{"crm", "shop"}) {
+	if err != nil || !started.Running || started.State != core.SpecResearching || !slices.Equal(started.Slugs, []string{"crm", "shop"}) || started.CreatedByName != owner.Username {
 		t.Fatalf("started %+v, %v", started, err)
 	}
 	id := started.ID

@@ -1064,7 +1064,8 @@ paths:
   /api/v1/bora/specs:
     get:
       description: The newest 50 the caller sees, of one project and one ticket when
-        given. questions counts the open round's while the spec asks them.
+        given. questions counts the open round's while the spec asks them. created_by_name
+        is the author's username while the account exists.
       operationId: get-bora-specs
       parameters:
       - in: query
@@ -1222,8 +1223,8 @@ paths:
       tags:
       - bora
     get:
-      description: state is failed when the step it was on stopped or broke off; retry
-        runs it again.
+      description: state is failed when the step it was on stopped or broke off, and
+        stopped then names that step, researching or writing; retry runs it again.
       operationId: get-bora-specs-id
       parameters:
       - in: path
@@ -5298,6 +5299,8 @@ components:
           type: string
         created_by:
           $ref: '#/components/schemas/UUID'
+        created_by_name:
+          type: string
         criteria:
           items:
             $ref: '#/components/schemas/SpecCriterion'
@@ -5332,6 +5335,8 @@ components:
           nullable: true
           type: array
         state:
+          $ref: '#/components/schemas/SpecState'
+        stopped:
           $ref: '#/components/schemas/SpecState'
         ticket:
           type: string
@@ -5477,6 +5482,8 @@ components:
           type: string
         created_by:
           $ref: '#/components/schemas/UUID'
+        created_by_name:
+          type: string
         id:
           $ref: '#/components/schemas/UUID'
         key:
@@ -5489,6 +5496,8 @@ components:
         questions:
           type: integer
         state:
+          $ref: '#/components/schemas/SpecState'
+        stopped:
           $ref: '#/components/schemas/SpecState'
         title:
           type: string

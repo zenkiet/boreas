@@ -752,6 +752,7 @@ type BoraSpec struct {
 	Slugs                []string
 	State                SpecState
 	CreatedBy            *uuid.UUID
+	CreatedByName        string
 	Body                 SpecBody
 	Running              bool
 	CreatedAt, UpdatedAt time.Time

@@ -42,6 +42,8 @@ type specItemDTO struct {
 	State     core.SpecState `json:"state"`
 	Questions int            `json:"questions"`
 	CreatedBy *uuid.UUID     `json:"created_by"`
+	Author    string         `json:"created_by_name,omitempty"`
+	Stopped   core.SpecState `json:"stopped,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 }
@@ -62,7 +64,10 @@ type specResponse struct {
 func specItemFromCore(s core.BoraSpec) specItemDTO {
 	item := specItemDTO{
 		ID: s.ID, Key: s.Key, Title: s.Title, Projects: s.Slugs, State: s.Status(),
-		CreatedBy: s.CreatedBy, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+		CreatedBy: s.CreatedBy, Author: s.CreatedByName, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+	}
+	if item.State == core.SpecFailed {
+		item.Stopped = s.State
 	}
 	if n := len(s.Body.Rounds); item.State == core.SpecAsking && n > 0 {
 		item.Questions = len(s.Body.Rounds[n-1].Questions)

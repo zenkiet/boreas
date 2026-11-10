@@ -123,40 +123,47 @@ func (b *bora) tools(first bool) []core.Tool {
 			tool("grants", "List who holds a grant on one task of a project you own, with its role.",
 				object(map[string]any{"project": project, "task": task}), b.listGrants))
 	}
-	if b.readsCode() {
-		code := text("project slug, or empty for the project asked about")
-		repo := text("repository, as search_code or task_details names it")
-		ref := text("a branch, tag or commit; empty for the default branch")
-		tools = append(tools,
-			tool("search_code", "Search a project's code on each repository's default branch for words that must all appear; quote a phrase, "+
-				"file:<regex> narrows paths and sym:<name> finds where a symbol is defined. Returns snippets with repository, file and line.",
-				object(map[string]any{"project": code, "query": text("the words")}), b.searchCode),
-			tool("read_file", "Read one file of a project's code at a ref, or list a folder when its path ends in /.", object(map[string]any{
-				"project": code, "repo": repo, "path": text("file path as search_code returns it, or a folder ending in /"), "ref": ref,
-			}), b.readFile),
-			tool("code_history", "List a repository's newest commits at a ref, with how many there are in all: hash, date, author and subject. "+
-				"The ref may be a range: a task's own commits are HEAD..<its commit>. Path keeps the commits that touched it; "+
-				"query keeps those whose message matches, such as a Jira key.", object(map[string]any{
-				"project": code, "repo": repo, "ref": ref, "path": text("a file or folder, or empty"), "query": text("words of the message, or empty"),
-			}), b.codeHistory),
-			tool("code_diff", "Show what changed from base to head: the commits, the files, then the changes, smallest file first, cut when long. "+
-				"What a task's last deploy changed: base is the commit the deploy before ran and head its commit. "+
-				"A whole branch: base is its oldest own commit followed by ^. For one file of a long diff, pass its path.", object(map[string]any{
-				"project": code, "repo": repo, "base": text("a branch, tag or commit"), "head": text("a branch, tag or commit"),
-				"path": text("a file, or empty for every file"),
-			}), b.codeDiff),
-			tool("blame", "Show who last changed each range of lines of one file: lines, commit, date, author and subject.", object(map[string]any{
-				"project": code, "repo": repo, "path": text("file path"), "ref": ref,
-			}), b.blame),
-			tool("ask_sourcebot", "Ask Sourcebot's agent, which answers from the project's code and from every app connected to Sourcebot, such as Jira. "+
-				"Slow: use it for what those apps hold, such as the ticket a link or key names, or when your code tools fall short.",
-				object(map[string]any{"project": code, "query": text("the whole question, with any link or key it names")}), b.askSourcebot))
-	}
+	tools = append(tools, b.codeTools()...)
 	if first {
 		tools = append(tools, tool("set_title", "Name this new conversation in the user's list, in their language, in at most 60 characters.",
 			object(map[string]any{"title": text("the name")}), b.setTitle))
 	}
 	return tools
+}
+
+// codeTools read a project's code, and through Sourcebot's agent the apps connected to it, such as Jira; none without code search.
+func (b *bora) codeTools() []core.Tool {
+	if !b.readsCode() {
+		return nil
+	}
+	code := text("project slug, or empty for the project asked about")
+	repo := text("repository, as search_code or task_details names it")
+	ref := text("a branch, tag or commit; empty for the default branch")
+	return []core.Tool{
+		tool("search_code", "Search a project's code on each repository's default branch for words that must all appear; quote a phrase, "+
+			"file:<regex> narrows paths and sym:<name> finds where a symbol is defined. Returns snippets with repository, file and line.",
+			object(map[string]any{"project": code, "query": text("the words")}), b.searchCode),
+		tool("read_file", "Read one file of a project's code at a ref, or list a folder when its path ends in /.", object(map[string]any{
+			"project": code, "repo": repo, "path": text("file path as search_code returns it, or a folder ending in /"), "ref": ref,
+		}), b.readFile),
+		tool("code_history", "List a repository's newest commits at a ref, with how many there are in all: hash, date, author and subject. "+
+			"The ref may be a range: a task's own commits are HEAD..<its commit>. Path keeps the commits that touched it; "+
+			"query keeps those whose message matches, such as a Jira key.", object(map[string]any{
+			"project": code, "repo": repo, "ref": ref, "path": text("a file or folder, or empty"), "query": text("words of the message, or empty"),
+		}), b.codeHistory),
+		tool("code_diff", "Show what changed from base to head: the commits, the files, then the changes, smallest file first, cut when long. "+
+			"What a task's last deploy changed: base is the commit the deploy before ran and head its commit. "+
+			"A whole branch: base is its oldest own commit followed by ^. For one file of a long diff, pass its path.", object(map[string]any{
+			"project": code, "repo": repo, "base": text("a branch, tag or commit"), "head": text("a branch, tag or commit"),
+			"path": text("a file, or empty for every file"),
+		}), b.codeDiff),
+		tool("blame", "Show who last changed each range of lines of one file: lines, commit, date, author and subject.", object(map[string]any{
+			"project": code, "repo": repo, "path": text("file path"), "ref": ref,
+		}), b.blame),
+		tool("ask_sourcebot", "Ask Sourcebot's agent, which answers from the project's code and from every app connected to Sourcebot, such as Jira. "+
+			"Slow: use it for what those apps hold, such as the ticket a link or key names, or when your code tools fall short.",
+			object(map[string]any{"project": code, "query": text("the whole question, with any link or key it names")}), b.askSourcebot),
+	}
 }
 
 // readsCode holds for every project Bora serves: with code search set up, each has a search context.

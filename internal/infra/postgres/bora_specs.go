@@ -19,14 +19,14 @@ const visibleSpec = `($2 OR cardinality(s.projects) = (
 
 func (s *SpecStore) Get(ctx context.Context, userID uuid.UUID, admin bool, id uuid.UUID) (core.BoraSpec, error) {
 	return one(ctx, s.pool, scanSpec, "get spec",
-		`SELECT s.id, s.key, s.title, s.projects, s.slugs, s.state, s.body, s.created_by, s.created_at, s.updated_at
-		FROM bora_specs s WHERE `+visibleSpec+` AND s.id = $3`, userID, admin, id)
+		`SELECT s.id, s.key, s.title, s.projects, s.slugs, s.state, s.body, s.created_by, coalesce(u.username, ''), s.created_at, s.updated_at
+		FROM bora_specs s LEFT JOIN users u ON u.id = s.created_by WHERE `+visibleSpec+` AND s.id = $3`, userID, admin, id)
 }
 
 func (s *SpecStore) List(ctx context.Context, userID uuid.UUID, admin bool, project, key string) ([]core.BoraSpec, error) {
 	return many(ctx, s.pool, scanSpec, "list specs", "scan specs",
-		`SELECT s.id, s.key, s.title, s.projects, s.slugs, s.state, s.body - 'ticket' - 'findings' - 'plans', s.created_by, s.created_at, s.updated_at
-		FROM bora_specs s WHERE `+visibleSpec+` AND ($3 = '' OR $3 = ANY(s.slugs)) AND ($4 = '' OR lower(s.key) = lower($4))
+		`SELECT s.id, s.key, s.title, s.projects, s.slugs, s.state, s.body - 'ticket' - 'findings' - 'plans', s.created_by, coalesce(u.username, ''), s.created_at, s.updated_at
+		FROM bora_specs s LEFT JOIN users u ON u.id = s.created_by WHERE `+visibleSpec+` AND ($3 = '' OR $3 = ANY(s.slugs)) AND ($4 = '' OR lower(s.key) = lower($4))
 		ORDER BY s.updated_at DESC, s.id DESC LIMIT 50`, userID, admin, project, key)
 }
 
@@ -50,6 +50,6 @@ func (s *SpecStore) Delete(ctx context.Context, id uuid.UUID) error {
 
 func scanSpec(row pgx.CollectableRow) (core.BoraSpec, error) {
 	var b core.BoraSpec
-	err := row.Scan(&b.ID, &b.Key, &b.Title, &b.Projects, &b.Slugs, &b.State, &b.Body, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt)
+	err := row.Scan(&b.ID, &b.Key, &b.Title, &b.Projects, &b.Slugs, &b.State, &b.Body, &b.CreatedBy, &b.CreatedByName, &b.CreatedAt, &b.UpdatedAt)
 	return b, err
 }

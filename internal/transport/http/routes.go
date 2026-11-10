@@ -427,14 +427,15 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/bora/specs", access: accessSession, handler: (*Handler).listSpecs,
 		tag: "bora", summary: "List specs",
 		description: "The newest 50 the caller sees, of one project and one ticket when given. questions counts the open round's " +
-			"while the spec asks them.",
+			"while the spec asks them. created_by_name is the author's username while the account exists.",
 		req: new(specsQuery), resp: new(specsResponse),
 	},
 	{
 		method: http.MethodGet, path: "/api/v1/bora/specs/{id}", access: accessSession, handler: (*Handler).getSpec,
 		tag: "bora", summary: "Get a spec",
-		description: "state is failed when the step it was on stopped or broke off; retry runs it again.",
-		req:         new(idPath), resp: new(specResponse), extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+		description: "state is failed when the step it was on stopped or broke off, and stopped then names that step, " +
+			"researching or writing; retry runs it again.",
+		req: new(idPath), resp: new(specResponse), extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/bora/specs/{id}/answers", access: accessSession, handler: (*Handler).answerSpec,

@@ -1075,7 +1075,7 @@ func TestSpecStore(t *testing.T) {
 		see   bool
 	}{{both, false, true}, {one, false, false}, {admin, true, true}} {
 		got, err := store.Get(ctx, tc.user.ID, tc.admin, spec.ID)
-		if tc.see != (err == nil) || tc.see && (got.State != core.SpecConfirming || got.Body.Decisions[0] != spec.Body.Decisions[0] || *got.CreatedBy != both.ID) {
+		if tc.see != (err == nil) || tc.see && (got.State != core.SpecConfirming || got.Body.Decisions[0] != spec.Body.Decisions[0] || *got.CreatedBy != both.ID || got.CreatedByName != both.Username) {
 			t.Errorf("%s sees %+v, %v", tc.user.Username, got, err)
 		}
 	}
@@ -1085,7 +1085,7 @@ func TestSpecStore(t *testing.T) {
 	}{{"", "", 1}, {shop.Slug, "wo-718", 1}, {shop.Slug, "wo-719", 0}, {"nope", "", 0}} {
 		list, err := store.List(ctx, both.ID, false, tc.project, tc.key)
 		if n := len(slices.DeleteFunc(list, func(s core.BoraSpec) bool { return s.ID != spec.ID })); err != nil || n != tc.want ||
-			n == 1 && (list[0].Body.Ticket != "" || list[0].Body.Plans != nil || len(list[0].Body.Decisions) != 1) {
+			n == 1 && (list[0].Body.Ticket != "" || list[0].Body.Plans != nil || len(list[0].Body.Decisions) != 1 || list[0].CreatedByName != both.Username) {
 			t.Errorf("list %q %q: %+v, %v", tc.project, tc.key, list, err)
 		}
 	}

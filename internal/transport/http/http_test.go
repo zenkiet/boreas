@@ -1083,7 +1083,7 @@ func TestBoraSpecRoutes(t *testing.T) {
 	h := testHandler(stubTasks{}, &stubAuth{user: testMember}, projects)
 	base := "/api/v1/bora/specs/" + id.String()
 	rr := do(h, authed(http.MethodPost, "/api/v1/bora/specs", strings.NewReader(`{"key":"wo-718","projects":["shop"],"ticket":"Export"}`)))
-	for _, want := range []string{`"state":"failed"`, `"questions":0`, `"rounds":[{"questions":[`} {
+	for _, want := range []string{`"state":"failed"`, `"stopped":"writing"`, `"questions":0`, `"rounds":[{"questions":[`} {
 		if rr.Code != http.StatusAccepted || !strings.Contains(rr.Body.String(), want) {
 			t.Errorf("start answered %d without %s: %s", rr.Code, want, rr.Body.String())
 		}

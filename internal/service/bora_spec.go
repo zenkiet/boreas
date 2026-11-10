@@ -49,7 +49,6 @@ const (
 
 var (
 	errUnfinished  = errors.New("bora did not finish this step")
-	codeToolNames  = []string{"search_code", "read_file", "code_history", "code_diff", "blame"}
 	kebab          = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	capabilityPath = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*$`)
 	nonKebab       = regexp.MustCompile(`[^a-z0-9]+`)
@@ -73,7 +72,7 @@ func (s *ProjectService) StartSpec(ctx context.Context, actor core.User, key str
 	now := time.Now().UTC()
 	spec := core.BoraSpec{
 		ID: uuid.New(), Key: key, Title: clean(strings.SplitN(ticket, "\n", 2)[0], 80), Slugs: slugs,
-		CreatedBy: &actor.ID, CreatedAt: now, UpdatedAt: now, Body: core.SpecBody{
+		CreatedBy: &actor.ID, CreatedByName: actor.Username, CreatedAt: now, UpdatedAt: now, Body: core.SpecBody{
 			Ticket: ticket, Rounds: []core.SpecRound{}, Decisions: []core.SpecDecision{}, Capabilities: []core.SpecCapability{},
 			Criteria: []core.SpecCriterion{}, Plans: []core.SpecPlan{}, Cases: []core.SpecCase{},
 		},
@@ -542,10 +541,6 @@ func (r *specRun) data(plans []core.SpecPlan) string {
 		fmt.Fprintf(&out, "\nThe plan for %s:\n%s\n\n%s", p.Project, p.Design, taskList(p.Tasks))
 	}
 	return out.String()
-}
-
-func (b *bora) codeTools() []core.Tool {
-	return slices.DeleteFunc(b.tools(false), func(t core.Tool) bool { return !slices.Contains(codeToolNames, t.Name) })
 }
 
 func validQuestions(round int, questions []core.SpecQuestion) ([]core.SpecQuestion, error) {
