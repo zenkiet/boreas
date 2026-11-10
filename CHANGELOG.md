@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.34.0 - 2026-11-10
+#### 🚀 Features
+- (**bora**) ✨ plan a ticket as OpenSpec changes across projects - (5fd7f30) - *zenkiet*
+
+- - -
+
 ## v1.33.1 - 2026-11-07
 #### ⚡ Performance Improvements
 - (**directory**) ⚡ precompressed pages - (1c88b8d) - *zenkiet*
