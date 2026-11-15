@@ -1,10 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Setup and usage documentation
-    url: https://github.com/zenkiet/boreas/blob/main/README.md
+    url: https://github.com/zenkiet/boreas/blob/main/docs/README.md
     about: >
-      The README covers deployment, authentication, the full API table, and
-      every BOREAS_* configuration variable; check it before filing a bug.
+      The guides in docs/ cover installation, tasks, deploys from CI,
+      notifications, every BOREAS_* setting and the full API route list;
+      check them before filing a bug.
   - name: API reference
     url: https://github.com/zenkiet/boreas/blob/main/api/openapi.yaml
     about: The committed OpenAPI contract; a running server also serves /api/v1/docs.

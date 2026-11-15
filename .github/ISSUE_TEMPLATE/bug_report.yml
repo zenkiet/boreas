@@ -55,7 +55,7 @@ body:
       label: Steps to reproduce
       description: >
         The exact requests or commands, in order. curl commands like the ones
-        in the README are ideal. Redact tokens and passwords.
+        in the docs/ guides are ideal. Redact tokens and passwords.
       placeholder: |
         1. BOREAS_ADMIN_PASSWORD=change-me docker compose up --build -d
         2. curl -X POST http://localhost:8080/api/v1/projects ... -d '{"slug":"demo","name":"Demo"}'

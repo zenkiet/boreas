@@ -26,7 +26,7 @@ three; run them yourself first to avoid a rejected push. -->
 
 - [ ] Routes or DTOs changed → `make openapi` was run and the regenerated `api/openapi.yaml` is in this PR
 - [ ] Persistent state changed → a new numbered migration was added under `internal/pkg/database/migrations/` (never rewrite an applied one)
-- [ ] New `BOREAS_*` variable → documented in the README configuration table with its default
+- [ ] New `BOREAS_*` variable → documented in `docs/configuration.md` with its default
 
 ## Breaking changes
 

@@ -3,7 +3,7 @@
 Boreas is a Go HTTP service that manages per-task staging environments: one
 Docker container per task, exposed through a reverse proxy, with state in
 PostgreSQL. This file covers what an autonomous agent needs to build, test,
-and change this repository safely. The README holds the full API and
+and change this repository safely. The guides in `docs/` hold the API and
 configuration reference; when routes or DTOs change, the OpenAPI contract
 must be regenerated (see below).
 
@@ -24,7 +24,7 @@ make db      # start only PostgreSQL via docker compose
 ```
 
 Configuration is environment variables only (`BOREAS_*`, documented in the
-README Configuration table). A fresh database needs `BOREAS_ADMIN_USERNAME`,
+configuration guide, `docs/configuration.md`). A fresh database needs `BOREAS_ADMIN_USERNAME`,
 `BOREAS_ADMIN_EMAIL` and `BOREAS_ADMIN_PASSWORD` to seed the first
 administrator; Compose defaults the first two:
 

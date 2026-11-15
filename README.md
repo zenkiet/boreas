@@ -1,1019 +1,146 @@
+<div align="center">
+
+<img src="docs/assets/logo.svg" alt="Boreas logo" width="112" height="112">
+
 # Boreas
 
-Boreas is a per-task staging environment manager. It starts one Docker
-container per task, exposes it through a stable subpath, and provides an HTTP
-API for lifecycle, environment, and log access. Tasks belong to projects, and
-access is controlled per project.
+**A separate test environment for every task.**
 
-## Architecture
+Boreas runs your app in a Docker container for each task, with a stable link that developers and testers can share.
 
-```text
-Browser/API client -> Boreas (:8080) -> reverse proxy -> task container
-                           |                    |
-                    PostgreSQL state       boreas-net
-                           |
-                    Docker Engine socket
-```
+[![Release](https://img.shields.io/github/v/release/zenkiet/boreas?style=flat-square&labelColor=0B1B3A&color=0088FF)](https://github.com/zenkiet/boreas/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/zenkiet/boreas?style=flat-square&labelColor=0B1B3A&color=00ADD8&logo=go&logoColor=white)](go.mod)
+[![Publish workflow](https://img.shields.io/github/actions/workflow/status/zenkiet/boreas/publish.yml?style=flat-square&labelColor=0B1B3A&label=publish)](https://github.com/zenkiet/boreas/actions/workflows/publish.yml)
+[![Container image](https://img.shields.io/badge/ghcr.io%2Fzenkiet%2Fboreas-0088FF?style=flat-square&labelColor=0B1B3A&logo=docker&logoColor=white)](https://github.com/zenkiet/boreas/pkgs/container/boreas)
+[![License](https://img.shields.io/github/license/zenkiet/boreas?style=flat-square&labelColor=0B1B3A&color=0088FF)](LICENSE)
 
-The Go code follows clean-architecture boundaries:
 
-- `internal/core`: domain types and interfaces
-- `internal/service`: application use cases
-- `internal/infra`: Docker, persistence, and proxy implementations
-- `internal/transport`: HTTP API, SSE, middleware, and routing
+[Live directory](https://boreas.zenkiet.dev) · [Documentation](docs/README.md) · [Releases](https://github.com/zenkiet/boreas/releases) · [API reference](https://boreas.zenkiet.dev/api/v1/docs)
 
-State lives in PostgreSQL and is accessed through `pgx`. The schema is embedded
-in the binary and applied at startup, so no separate migration step is needed.
-Boreas has no cgo dependencies and builds with `CGO_ENABLED=0`.
+</div>
 
-## Requirements
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/hero-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/hero-light.png">
+  <img src="docs/assets/screenshots/hero-light.png" alt="The Boreas app's home screen: a live chart of CPU and memory use above the list of projects and their tasks">
+</picture>
 
-- Go 1.27
-- Docker Engine
-- PostgreSQL 16 or newer
+## Why Boreas
+
+On a shared staging server, deploying one change can replace another team's
+work. Testers lose the build they were checking, and everyone has to ask which
+version is running.
+
+Boreas keeps those environments separate. A checkout fix and a new search page
+can run at the same time, each with its own link, assignees and testing status.
+
+## How it works
+
+1. Create a **project** for your product and a **task** for a change, such as `wo-718`.
+2. Your CI pipeline builds and publishes a Docker image: the packaged app.
+3. The pipeline asks Boreas to deploy that image to the task.
+4. Testers open `https://your-server/shop/wo-718/`. Later deploys use the same link.
+
+Each task runs one container. CI deploys identify an image by its **digest**, a
+fingerprint of the exact build, rather than a tag that could change.
+
+Boreas runs images; it does not build them or automatically watch branches.
+Apps must support being served under a path such as `/shop/wo-718/`.
+
+## Features
+
+- **Separate task links:** test several changes without replacing each other's builds.
+- **Build visibility:** see the deployed commit, pipeline progress, logs and live resource use.
+- **Testing status:** mark work as in progress, blocked or ready, and show who is responsible.
+- **Team access:** project roles and individual task grants control management permissions.
+- **Notifications:** follow activity in the app, team chat or push notifications.
+- **Bora, an optional AI assistant:** ask about tasks, logs and code, or draft a ticket plan. Changes require your approval.
+- **Preview options:** password-protect a link or display a mobile web app in a phone frame.
+
+**Public by default:** anyone who can reach the server can browse the task
+directory and open unlocked task links. Management roles do not protect those
+links. Containers share a Docker network and web origin; this is a staging
+tool for trusted apps, not a sandbox for untrusted code.
+
+Use Boreas from the team app on the web, iOS and Android, from an Amazfit watch
+with the [Zepp OS companion](https://github.com/zenkiet/boreas-zeppOS), or
+through the [API](docs/api.md).
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/directory.png" alt="The public task directory listing tasks with their dev status, project and assignees" width="100%">
+      <br><sub>The public directory: every task, who is on it, and what is ready</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/project.png" alt="One project's tasks in the Boreas app, each with its status and last deploy" width="100%">
+      <br><sub>One project's tasks in the app</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/task.png" alt="A single task in the Boreas app with its status, build progress and logs" width="100%">
+      <br><sub>A task: its status, build and logs</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/bora.png" alt="Bora answering a question about a task in the Boreas app" width="100%">
+      <br><sub>Bora answering a question</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/mobile-frame.png" alt="A mobile app task opened in a desktop browser inside an iPhone frame" width="100%">
+      <br><sub>A mobile task on a desktop, inside an iPhone frame</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/screenshots/phone.png" alt="The Boreas app on a phone in portrait" width="300">
+      <br><sub>The app on a phone</sub>
+    </td>
+  </tr>
+</table>
+
 
 ## Quick start
 
-`BOREAS_ADMIN_USERNAME`, `BOREAS_ADMIN_EMAIL` and `BOREAS_ADMIN_PASSWORD` seed
-the first administrator; Compose defaults the first two. They are required only
-while the user table is empty and are ignored afterwards.
+You need Docker Engine with the Compose plugin. Replace `change-me` with your
+own administrator password, at least 8 characters:
 
 ```bash
+git clone https://github.com/zenkiet/boreas.git && cd boreas
 BOREAS_ADMIN_PASSWORD=change-me docker compose up --build -d
-curl http://localhost:8080/api/v1/health
 ```
 
-Compose mounts the Docker socket, keeps PostgreSQL data in a named volume, and
-connects Boreas to the explicitly named `boreas-net` network. Dynamically
-created task containers join the same network.
-
-To run the binary directly against the Compose database:
-
-```bash
-make db
-BOREAS_ADMIN_USERNAME=admin BOREAS_ADMIN_EMAIL=admin@localhost BOREAS_ADMIN_PASSWORD=change-me make dev
-```
-
-## Authenticate
-
-Every `/api/v1` route except `/health`, `/auth/login` and `/auth/pairing/claim` requires a bearer
-token. Tokens are returned once at login and expire after 30 days.
-
-```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"change-me"}' | jq -r .token)
-```
-
-Changing a password, changing a role, or disabling an account revokes that
-user's existing login sessions and API tokens.
-
-## Create and access a task
-
-```bash
-curl -X POST http://localhost:8080/api/v1/projects \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"slug":"demo","name":"Demo"}'
-
-curl -X POST http://localhost:8080/api/v1/projects/demo/tasks \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"web","image":"nginx:alpine","port":80}'
-```
-
-The task is available at:
-
-```text
-http://localhost:8080/demo/web/
-```
-
-Proxied task traffic is public unless the task has a password (see
-[Password-protected tasks](#password-protected-tasks)); the API always requires a token.
-
-Project slugs and task names must match:
-
-```regex
-^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$
-```
-
-In other words, 1–63 characters, starting with an ASCII letter or digit and
-containing only letters, digits, `.`, `_`, or `-`. Because project slugs
-occupy the first path segment, `api`, `health`, and `static` are reserved.
-Task names are unique per project whatever their case, so `BWEB` clashes with
-`bweb` while two projects may each have a `web`. The App URL takes a task's
-name in any case and redirects to the name it was created with.
-
-## Access control
-
-Two global roles decide who administers the installation:
-
-| Role    | Grants                                                                       |
-| ------- | ---------------------------------------------------------------------------- |
-| `admin` | Users, registry credentials, project creation, and ownership of every project |
-| `user`  | Only the projects they are a member of, or hold a task grant in               |
-
-Within a project, four roles stack, each adding to the one before it:
-
-| Role       | Adds                                              |
-| ---------- | ------------------------------------------------- |
-| `viewer`   | Read tasks, logs, and deploy notifications        |
-| `operator` | Start, stop, restart, deploy, and report builds   |
-| `member`   | Create, update, and delete tasks                  |
-| `owner`    | Project settings, membership, and task grants     |
-
-Add an existing user to a project, or change a member's role; the last owner
-can be neither removed nor demoted:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/projects/demo/members \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"user_id":"<id>","role":"viewer"}'
-```
-
-### Task grants
-
-A grant raises a user's role on one task above whatever the project gives them.
-It never lowers it: the effective role is the higher of the two. Grant `owner`
-is rejected, since it only means something at project scope.
-
-```bash
-curl -X POST http://localhost:8080/api/v1/projects/demo/tasks/web/grants \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"user_id":"<id>","role":"operator"}'
-```
-
-A grant is enough to reach the project without being a member. Such a user sees
-only the tasks they hold grants on, only those tasks' deploy notifications, and
-never the project's task form defaults, which may carry secrets.
-
-Grants are deleted with the task they point at, so access cannot outlive its
-subject. A project or task the caller cannot reach answers `404`, not `403`, so
-that names do not leak. `403` means the caller can see it but ranks too low.
-
-### Assignees
-
-Every task carries `assignees`, the people its grants name, with their username
-and `avatar_at`. Replace them in one call; `[]` unassigns everyone, and a body
-without `user_ids` is refused:
-
-```bash
-curl -X PUT http://localhost:8080/api/v1/projects/demo/tasks/web/assignees \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"user_ids":["<id>"]}'
-```
-
-Assigning grants `member` on that task, and unassigning revokes it. Members of
-the project at `member` rank or above may assign, but only other project members;
-only an owner or administrator assigns someone outside the project. A new task
-takes `assignees` too, and they land even when its container then fails.
-The public directory lists only `member` assignees, as `username` and, when
-they have one, a ready `avatar` URL.
-
-Every project and task response carries `my_role`, the caller's effective role,
-so a client can hide what it cannot do. `GET /projects` lists each project with
-the tasks the caller sees, each with its own `my_role` and `last_deploy`.
-
-## API
-
-All API routes are under `/api/v1`.
-
-| Method   | Route                                          | Access        | Purpose                                         |
-| -------- | ---------------------------------------------- | ------------- | ----------------------------------------------- |
-| `GET`    | `/health`                                      | public        | Health check                                    |
-| `POST`   | `/auth/login`                                  | public        | Exchange credentials for a token                |
-| `POST`   | `/auth/pairing`                                | login session | Start signing in another device                 |
-| `POST`   | `/auth/pairing/claim`                          | public        | Exchange a pairing code for a token             |
-| `POST`   | `/auth/pairing/stream`                         | login session | Wait for a pairing code to sign a device in     |
-| `POST`   | `/auth/logout`                                 | user          | Revoke the current token                        |
-| `GET`    | `/auth/me`                                     | user          | Current user                                    |
-| `PUT`    | `/auth/me/avatar`                              | login session | Set your avatar                                 |
-| `GET`    | `/auth/tokens`                                 | login session | List your API tokens                            |
-| `POST`   | `/auth/tokens`                                 | login session | Create an API token                             |
-| `DELETE` | `/auth/tokens/{id}`                            | login session | Revoke one of your API tokens                   |
-| `GET`    | `/stats`                                       | user          | Service statistics                              |
-| `GET`    | `/events/stream`                               | login session | Signal changes over SSE, so clients refetch     |
-| `GET`    | `/public/projects`                             | public        | Public environment directory                    |
-| `GET`    | `/public/events/stream`                        | public        | Signal changes over SSE, without a token        |
-| `GET`    | `/users`                                       | admin         | List users                                      |
-| `POST`   | `/users`                                       | admin         | Create a user                                   |
-| `PATCH`  | `/users/{id}`                                  | admin         | Update a user                                   |
-| `DELETE` | `/users/{id}`                                  | admin         | Delete a user                                   |
-| `GET`    | `/users/{id}/avatar`                           | public        | Get a user's avatar                             |
-| `GET`    | `/registry-credentials`                        | admin         | List registry credentials                       |
-| `POST`   | `/registry-credentials`                        | admin         | Create a registry credential                    |
-| `DELETE` | `/registry-credentials/{id}`                   | admin         | Delete a registry credential                    |
-| `GET`    | `/projects`                                    | user          | List reachable projects with their tasks        |
-| `POST`   | `/projects`                                    | admin         | Create a project; the creator becomes owner     |
-| `GET`    | `/projects/{project}`                          | viewer        | Get a project                                   |
-| `PATCH`  | `/projects/{project}`                          | owner         | Update a project                                |
-| `DELETE` | `/projects/{project}`                          | owner         | Delete a project                                |
-| `GET`    | `/projects/{project}/members`                  | member        | List members                                    |
-| `POST`   | `/projects/{project}/members`                  | owner         | Add or promote a member                         |
-| `DELETE` | `/projects/{project}/members/{userID}`         | owner         | Remove a member                                 |
-| `GET`    | `/notifications`                               | user          | List notifications across projects              |
-| `POST`   | `/notifications/seen`                          | user          | Mark notifications seen                         |
-| `GET`    | `/projects/{project}/notifications`            | viewer        | List a project's notifications                  |
-| `GET`    | `/projects/{project}/metrics/stream`           | viewer        | Stream metrics for every running task over SSE  |
-| `GET`    | `/projects/{project}/folders`                  | viewer        | List the folders task volumes can mount         |
-| `POST`   | `/bora/conversations`                          | login session | Ask Bora in a new conversation, streamed        |
-| `POST`   | `/bora/conversations/{id}/messages`            | login session | Ask a follow-up question, streamed              |
-| `GET`    | `/bora/conversations/{id}/stream`              | login session | Follow a running answer from its start          |
-| `POST`   | `/bora/conversations/{id}/stop`                | login session | Stop a running answer; nothing is saved         |
-| `GET`    | `/bora/conversations`                          | login session | List your conversations                         |
-| `POST`   | `/bora/conversations/search`                   | login session | Search your conversations                       |
-| `GET`    | `/bora/conversations/{id}`                     | login session | Read one of your conversations                  |
-| `POST`   | `/bora/conversations/{id}/messages/{index}/ran` | login session | Record what ran from an answer                 |
-| `DELETE` | `/bora/conversations/{id}`                     | login session | Delete one of your conversations                |
-| `DELETE` | `/bora/conversations`                          | login session | Delete all your conversations                   |
-| `POST`   | `/bora/specs`                                  | login session | Plan a ticket across projects                   |
-| `GET`    | `/bora/specs`                                  | login session | List the specs you can see                      |
-| `GET`    | `/bora/specs/{id}`                             | login session | Read a spec                                     |
-| `POST`   | `/bora/specs/{id}/answers`                     | login session | Answer Bora's questions, or correct its decisions |
-| `POST`   | `/bora/specs/{id}/write`                       | login session | Confirm the decisions and write the plan        |
-| `POST`   | `/bora/specs/{id}/retry`                       | login session | Run a failed step again                         |
-| `GET`    | `/bora/specs/{id}/stream`                      | login session | Follow a spec's running step                    |
-| `POST`   | `/bora/specs/{id}/stop`                        | login session | Stop a spec's running step                      |
-| `DELETE` | `/bora/specs/{id}`                             | login session | Delete a spec (its author or an admin)          |
-| `GET`    | `/bora/specs/{id}/export?project=`             | user          | One project's OpenSpec change for a coding agent |
-| `GET`    | `/projects/{project}/tasks`                    | viewer        | List tasks                                      |
-| `POST`   | `/projects/{project}/tasks`                    | member        | Create a task                                   |
-| `GET`    | `/projects/{project}/tasks/{name}`             | viewer        | Get a task                                      |
-| `PATCH`  | `/projects/{project}/tasks/{name}`             | member        | Update image, port, labels, env, volumes, description, note, dev status, or password |
-| `POST`   | `/projects/{project}/tasks/{name}/deploy`      | operator      | Deploy an image built elsewhere                 |
-| `PUT`    | `/projects/{project}/tasks/{name}/state`       | operator      | Start, stop, or restart                         |
-| `PUT`    | `/projects/{project}/tasks/{name}/build`       | operator      | Report CI build progress                        |
-| `DELETE` | `/projects/{project}/tasks/{name}`             | member        | Delete a task and its container                 |
-| `GET`    | `/projects/{project}/tasks/{name}/logs`        | viewer        | Read task logs                                  |
-| `GET`    | `/projects/{project}/tasks/{name}/logs/stream` | viewer        | Stream logs over SSE                            |
-| `GET`    | `/projects/{project}/tasks/{name}/metrics/stream` | viewer     | Stream CPU, memory, and network over SSE        |
-| `GET`    | `/projects/{project}/tasks/{name}/grants`      | owner         | List task grants                                |
-| `POST`   | `/projects/{project}/tasks/{name}/grants`      | owner         | Grant a user access to one task                 |
-| `DELETE` | `/projects/{project}/tasks/{name}/grants/{userID}` | owner     | Revoke a task grant                             |
-| `PUT`    | `/projects/{project}/tasks/{name}/assignees`   | member        | Replace a task's assignees                      |
-
-Only the fields present in a `PATCH` body are changed. Editing just the
-description or dev status leaves a running container alone; changing `image`,
-`port`, `labels`, or `env` needs a new container, which `auto_restart` applies
-immediately (the default) or defers to the next start or restart. A task is
-renamed by recreating it, because its name is part of its public URL. After a
-reboot, Docker starts every task that was running again; a task stopped from
-Boreas stays stopped.
-
-```bash
-curl -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"image":"nginx:1.27-alpine"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web
-```
-
-Task responses include their current `env`. Update or clear it through the
-same PATCH endpoint:
-
-```bash
-curl -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"env":{"APP_MODE":"staging"},"auto_restart":false}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web
-```
-
-## Development status
-
-`status` reports the container; `dev_status` reports the code. A task can run
-while it is not yet worth testing, so the two are tracked separately.
-
-| `dev_status`  | Meaning                                | Suggested colour |
-| ------------- | -------------------------------------- | ---------------- |
-| `in_progress` | Normal development, the default        | Yellow           |
-| `blocked`     | Broken or stuck, do not hand it to QA  | Red              |
-| `ready`       | Dev is done, QA can test it            | Green            |
-
-Every task is created `in_progress`. Any member of the task, that is a project
-member or owner, a user holding a `member` grant on it, or an administrator,
-moves it between the three values. Deploys never change it, so it says what a
-person last said it says.
-
-```bash
-curl -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"dev_status":"ready"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web
-```
-
-The API returns the value only; mapping the three values to colours is the
-client's business.
-
-## Task notes
-
-A task carries two free-text fields. `description` is the one-line summary that
-list views and notification bodies show, so keep it short. `note` is an
-open-ended scratchpad for whatever the task needs — context, checklists,
-credentials to rotate, links:
-
-```bash
-curl -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"note":"## Context\n- seed the staging DB\n\n`make db`"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web
-```
-
-Both are stored and returned verbatim, so `note` holds Markdown without any
-server-side interpretation: Boreas never renders it. A client that renders it
-as HTML must sanitise the result, because any member of a task can write it.
-Neither field changes the container and neither raises a notification.
-
-## Task form defaults
-
-A project carries `default_image`, `default_port`, and `default_env` so a UI can
-prefill its task creation form. They are stored hints only: task creation uses
-exactly the `image`, `port`, and `env` it is sent, and editing them never
-changes an existing task or restarts a container.
-
-```bash
-curl -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"default_image":"nginx:alpine","default_port":8080,"default_env":{"APP_ENV":"dev"}}' \
-  http://localhost:8080/api/v1/projects/demo
-```
-
-Send `""` for `default_image` or `{}` for `default_env` to clear a default;
-omit a field to leave it unchanged. New projects start at `""`, `80`, and `{}`.
-
-`default_form_factor` is the exception: a task created without a `form_factor`
-takes it (see [Mobile tasks](#mobile-tasks)).
-
-## Volumes
-
-`volumes` mounts folders prepared by an administrator into a task, writable:
-certificates, configuration, seed scripts, data the task keeps. It maps a path
-in the container to one of the project's folders, and saving fails with `400`
-when the folder does not exist.
-
-```bash
-curl -H "$AUTH" http://localhost:8080/api/v1/projects/demo/folders
-# {"folders":["certs","init"],"total":2}
-
-curl -X PATCH -H "$AUTH" -H "$JSON" \
-  -d '{"volumes":{"/etc/certs":"certs","/docker-entrypoint-initdb.d":"init"}}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/db
-```
-
-The folders live in the `boreas-appdata` volume, one directory per project
-(`demo/certs`), which Boreas creates with the project. A task reaches only its own project's folders; to share one
-between projects, symlink inside the volume (`demo/certs -> ../_shared/certs`).
-Boreas lists them through its own mount at `/opt/appdata`, so on a server back
-the volume with a host directory reserved for Boreas (Docker Engine 26 or later):
-
-```yaml
-volumes:
-  appdata:
-    name: boreas-appdata
-    driver: local
-    driver_opts: { type: none, o: bind, device: /opt/appdata/boreas }
-```
-
-Only what a task writes into its volumes survives its container: deploys,
-restarts and configuration changes start everything else from the image again.
-Every task of the project sees the same folder. Before creating a container,
-Boreas opens each mounted folder to every user (mode 0777), so an app that does
-not run as root can write too; this needs Boreas's own `/opt/appdata` mount
-writable. Files and subfolders inside keep their own permissions.
-
-## Bora
-
-Bora is the app's assistant. Members ask it about the running system (why a
-deploy failed, what a log line means, which tasks need attention) and about how
-a project's code behaves. It answers from their projects, tasks, builds,
-activity, settings, live metrics, task logs (the newest 200 lines, or those
-from a time on) and its code, with the OpenAI-compatible model in
-`BOREAS_AI_*`, which must support tool calling and streaming. Owners also let
-it read who is a member and who holds a grant. Bora takes login sessions only,
-and only for projects the caller is a member of: a project reached through task
-grants alone gets 403, and anything the caller cannot see gets 404. With
-Sourcebot set up, Bora serves only the projects it has a search context for
-(see Code below); any other project gets 403, and `bora` is false for it in the
-project list, so the app leaves it out. The list's `code_search` says whether
-Bora reads code on this server at all, so the app tells a project waiting for
-its context from a server without Sourcebot.
-
-Every question is asked in a conversation, which Boreas keeps. The first
-question starts one about the whole `fleet`, a `project`, a `task`, its latest
-`build`, an Activity `alert` (`project` and `id`), or a `log` line (`project`,
-`task`, `at`, `line`). Follow-ups go into it, and Boreas gives the model its
-last 12 messages:
-
-```bash
-curl -N -X POST -H "$AUTH" -H "$JSON" http://localhost:8080/api/v1/bora/conversations -d '{
-  "about": {"kind": "task", "project": "demo", "task": "qa-1"},
-  "question": "Why did this fail?"
-}'
-curl -N -X POST -H "$AUTH" -H "$JSON" -d '{"question":"How do I fix it?"}' \
-  http://localhost:8080/api/v1/bora/conversations/<id>/messages
-```
-
-The answer streams as Server-Sent Events:
-
-- `conversation` names a new conversation;
-- a `step` comes before each tool call ("Reading qa-1's logs…");
-- `say` carries the line the phone reads aloud, 1 or 2 sentences written as
-  they are spoken (numbers, times and names in words), before the answer's
-  text, or just before `done` when the model wrote none;
-- each `delta` carries text as it is written, and `reset` drops what came so
-  far, its `say` included, when it turned out to lead into a tool call;
-- `done` carries the saved answer, `error` the failure, and `stopped` ends an
-  answer that was stopped.
-
-A dropped connection does not stop the answer, which is saved anyway, and
-`GET …/{id}/stream` replays a running answer from its start. Only
-`POST …/{id}/stop` cancels one, and then nothing is saved. A new conversation
-is saved with its first answer; until then only its stream and `GET …/{id}`
-reach it.
-
-**Privacy and search:**
-
-- A conversation is its user's alone: anyone else, an administrator included,
-  gets 404, and deleting a user deletes their conversations.
-- It records every project its answers read and stays hidden while one of
-  them that still exists is out of the user's reach; it comes back with
-  access.
-- Nothing is pruned: the user deletes one conversation or all of them.
-- `POST /bora/conversations/search` finds the conversations with a message
-  holding every word of `query` as a prefix, whatever its accents: "loi bui"
-  finds "lỗi build". The query travels in the body, so request logs never hold
-  it. The migration creates Postgres' `unaccent` extension, which needs the
-  database owner.
-
-Bora changes nothing. An answer may carry `actions`, each checked against the
-caller's role as the route that runs it will check again, and run only when
-the user taps it, through the existing routes, with the user's own session.
-For each action it runs, the app posts its own result line to
-`…/messages/{index}/ran` (at most 10 for an answer), and Bora takes those lines
-as fact.
-
-| Role     | Actions                                                                                                         |
-| -------- | --------------------------------------------------------------------------------------------------------------- |
-| operator | `task.start`, `task.stop`, `task.restart`                                                                       |
-| member   | `task.create`, `task.delete`, `task.update` (description, note, dev status, image, port, volumes), `task.env`   |
-| owner    | `member.add`, `member.role`, `member.remove`, `grant.add`, `grant.remove`, `project.update`, `project.delete`   |
-
-Bora turns the names it hears into the ids the routes take. Since only
-administrators may list users and registry credentials:
-
-- an owner can name only people already in the project (members, or holders of
-  a grant there);
-- only an administrator can change a project's registry credential;
-- anyone else named gets the same refusal as a name nobody has.
-
-### Code
-
-Bora reads a project's code through a self-hosted
-[Sourcebot](https://www.sourcebot.dev) (its free plan is enough), set by
-`BOREAS_SOURCEBOT_URL` and `BOREAS_SOURCEBOT_API_KEY`. A project's code is the
-Sourcebot [search context](https://docs.sourcebot.dev/docs/features/search/search-contexts)
-named after its slug; nothing is set in Boreas. For the project `demo`, in
-Sourcebot's config:
-
-```json
-"contexts": {
-  "demo": {
-    "include": ["github.com/acme/web", "github.com/acme/api"],
-    "description": "Demo: web app and its API"
-  }
-}
-```
-
-- Boreas asks Sourcebot which projects have a context at most every 5 minutes,
-  so a context added or removed shows within that time.
-- Bora searches each repository's default branch and reads any branch, tag or
-  commit, a folder too. It lists commits (a range such as `HEAD..<commit>` keeps
-  a branch's own), compares two commits, and says who last changed each line.
-- A task whose pipeline reports the commit it deployed (see Deploy from CI)
-  lets Bora read the code it runs and say what changed since the deploy
-  before. Sourcebot fetches each repository on its own schedule
-  (`reindexIntervalMs`, an hour by default), so a commit pushed moments ago may
-  not be there yet.
-- It lists the files it read under its answer.
-- With Ask Sourcebot (a paid plan), Bora can also hand a question to
-  Sourcebot's own agent and every connector (Jira, Slack…) the API key's user
-  has connected. Unlike Bora's code tools, that agent is not confined to the
-  project: it reads any repository and app that user can, whoever asks. Set
-  connector tools that write to Blocked and those that read to Allowed, as
-  nobody can approve one mid-answer. Boreas reaches the agent through the chat
-  route of Sourcebot's web app, the only one that runs connectors, so a
-  Sourcebot upgrade may break it; one chat in Sourcebot holds these questions.
-- A turn that can read code gets a 96 KiB tool budget instead of 48 KiB.
-- Code has many authors, so once Bora has read code or an answer from
-  Sourcebot's agent in a turn, it proposes nothing but start, stop and restart.
-- Files that usually hold secrets (`*.config`, `appsettings*.json`, env files,
-  keys, certificates, cloud and Terraform credentials) are never read, nor
-  shown in a comparison or a folder.
-
-### Safety and limits
-
-**Screening.** Every question is screened before it is answered, unless it
-answers Bora's own question back. When the question points at several tasks or
-at none, or asks for a change without saying to what, Bora asks back with 2 to
-4 `choices` that the app shows as replies to tap. It may also ask back after
-looking, when what it found fits several tasks or projects.
-
-**What reaches the model.**
-
-- Env values never reach it.
-- What other people wrote (logs, errors, notes, descriptions, Activity, code)
-  reaches it only as tool results or as data under the question.
-- Before that, passwords, keys and tokens in it become `[redacted]`: quoted or
-  not, in flags, in `Authorization` headers, connection strings and URLs,
-  private keys, and well-known token formats. The question and the
-  conversation so far go through the same redaction, and so does everything
-  stored from an answer: its text, spoken line, title, choices and reasons.
-- A secret in any other shape still goes to the model provider.
-- An image attached to a question goes to it as it is, with nothing redacted,
-  and again with a follow-up until a newer question carries images. Text
-  inside it counts as written by others, so after one only start, stop and
-  restart are offered. Images live in the S3 bucket, readable only by whoever
-  uploaded them, until their conversation is deleted or the bucket's
-  lifecycle rule removes them.
-
-**Load.**
-
-- Each user may have three answers running at once and the server twenty,
-  answers whose stream dropped included. Past that, a question gets 429 at once
-  instead of queueing.
-- An answer has no time limit beyond each model request's two minutes.
-- A restart drops the answers in flight.
-- Set a spending limit at the model provider too: these caps bound load, not
-  cost.
-
-With `claude-sonnet-5-5`, EVAL_RESULT. Score a model before relying on it:
-
-```bash
-BOREAS_TEST_AI_BASE_URL=https://… BOREAS_TEST_AI_MODEL=claude-sonnet-5-5 BOREAS_TEST_AI_API_KEY=… \
-  go test ./internal/infra/llm -run TestClarifyEval -v
-```
-
-### Plan a ticket
-
-A spec turns a pasted ticket into an [OpenSpec](https://github.com/Fission-AI/OpenSpec)
-change for each project that shares its key, plus a test plan. Bora reads the
-code of every project, then asks the team 1 to 7 business questions a round, at
-most three rounds, or proposes the decisions the plan rests on, each marked as
-the team's or its own assumption, and writes the plan once someone confirms
-them.
-
-- A spec shows to the members of all its projects; those who can ask Bora about
-  all of them may answer, correct, confirm or retry it.
-- A project gets at most 10 requirements, the limit `openspec validate --strict`
-  allows. API tokens may read the export, so a coding agent can fetch it itself.
-- A spec reads code only, never Sourcebot's agent, and changes nothing.
-- At most two specs run at once on a server. A restart, a stop or a model
-  failure leaves the step `failed`, and `retry` runs it again.
-
-## Deploy from a build pipeline
-
-Create a dedicated API token with a login session. The validity window may be
-scheduled in the future but cannot exceed 90 days:
-
-```bash
-curl -X POST -H "$AUTH" -H "$JSON" \
-  -d '{
-    "name":"staging-deployer",
-    "valid_from":"2026-08-18T00:00:00Z",
-    "valid_to":"2026-11-16T00:00:00Z"
-  }' \
-  http://localhost:8080/api/v1/auth/tokens
-```
-
-The plaintext token is returned only by this response. Store it immediately in
-the CI secret manager; Boreas keeps only its SHA-256 hash and cannot show it
-again. API tokens inherit their user's role, project memberships, and task
-grants, but cannot create, list, or revoke API tokens. For CI, a task grant of
-`operator` on the one task the pipeline deploys is the narrowest useful setup.
-
-A pipeline that has just pushed an image then tells Boreas to run it:
-
-```bash
-curl -X POST -H "$AUTH" -H "$JSON" \
-  -d '{"image":"ghcr.io/acme/web@sha256:'"$DIGEST"'"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web/deploy
-```
-
-The image must be immutable, of the form `repository@sha256:<64 hex digits>`, so
-the exact artifact that was built is the one that runs; a mutable tag is
-rejected because it can change between the pull and the container recreation.
-Most build tools report the digest they pushed, for example the `digest` output
-of `docker/build-push-action`.
-
-Boreas pulls the image and recreates the container, restarting a running task
-and leaving a stopped one stopped. Deploying the image a task already runs
-changes nothing, so a pipeline may retry its callback safely.
-
-Send the commit the image was built from too, and Bora reads the code the task
-runs and can say what changed since the deploy before: `repository` as
-Sourcebot names it and `revision`, the full commit hash, always together. In
-Jenkins:
-
-```bash
-repo=${GIT_URL#*://}; repo=${repo%.git}   # github.com/acme/web
-curl -X POST -H "$AUTH" -H "$JSON" \
-  -d '{"image":"ghcr.io/acme/web@sha256:'"$DIGEST"'","repository":"'"$repo"'","revision":"'"$GIT_COMMIT"'"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web/deploy
-```
-
-An image changed by hand forgets the commit.
-
-### Report build progress
-
-The same token can report the pipeline's progress, so the build shows in Boreas
-before anything is deployed. Any CI can do it with curl: call it as each stage
-starts, and once more when the run ends.
-
-```bash
-curl -X PUT -H "$AUTH" -H "$JSON" \
-  -d '{"state":"running","stage":"Test","progress":40,"url":"https://jenkins.example.com/job/web/42/"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web/build
-```
-
-- `state` is `running`, `success`, `failure` or `canceled`; `stage`, `progress`
-  (0-100, worked out by the pipeline) and `url` are optional.
-- Only the latest report is kept, shown as `build` on the task and in
-  `GET /projects`. `running` starts afresh; any other state keeps the stage,
-  progress and url it does not send, so a final hook needs only the outcome.
-- A build that turns to `failure` records a `build_failed` notification; other
-  states notify nothing, since a deploy already does.
-- Run one build per task at a time: a late report from an older run overwrites
-  the newer one until its next report.
-
-This script maps each CI's result words and never fails the build:
-
-```sh
-#!/bin/sh
-# boreas-report.sh STATE [STAGE] [PROGRESS]
-# env: BOREAS_URL BOREAS_TOKEN BOREAS_PROJECT BOREAS_TASK [BOREAS_RUN_URL]
-case "$1" in
-  running) state=running ;;
-  success|SUCCESS) state=success ;;
-  failure|failed|FAILURE|UNSTABLE) state=failure ;;
-  canceled|cancelled|ABORTED|NOT_BUILT) state=canceled ;;
-  *) echo "boreas-report: unknown state '$1'" >&2; exit 0 ;;
-esac
-curl -fsS --max-time 10 -X PUT -H "Authorization: Bearer $BOREAS_TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"state\":\"$state\",\"stage\":\"${2:-}\",\"progress\":${3:-0},\"url\":\"${BOREAS_RUN_URL:-}\"}" \
-  "$BOREAS_URL/api/v1/projects/$BOREAS_PROJECT/tasks/$BOREAS_TASK/build" >/dev/null \
-  || echo "boreas-report: $state not recorded" >&2
-```
-
-Jenkins (declarative):
-
-```groovy
-environment {
-    BOREAS_TOKEN = credentials('boreas-token')
-    BOREAS_RUN_URL = "${env.BUILD_URL}"   // with BOREAS_URL, BOREAS_PROJECT and BOREAS_TASK
-}
-stages {
-    stage('Test')   { steps { sh 'ci/boreas-report.sh running Test 0';   sh 'make test' } }
-    stage('Image')  { steps { sh 'ci/boreas-report.sh running Image 40'; sh 'make image' } }
-    stage('Deploy') { steps { sh 'ci/boreas-report.sh running Deploy 90'; sh 'ci/deploy.sh' } }
-}
-post { always { sh "ci/boreas-report.sh ${currentBuild.currentResult}" } }
-```
-
-GitHub Actions ends the job with a step that always runs. GitLab CI runs each
-stage as its own job, so `after_script` reports only a job that did not succeed
-and the last job ends its `script` with `ci/boreas-report.sh success`:
-
-```yaml
-- if: always()
-  run: ci/boreas-report.sh ${{ job.status }}
-```
-
-```yaml
-after_script: ['[ "$CI_JOB_STATUS" = success ] || ci/boreas-report.sh "$CI_JOB_STATUS"']
-```
-
-List token metadata or revoke a token by ID with the login session:
-
-```bash
-curl -H "$AUTH" http://localhost:8080/api/v1/auth/tokens
-curl -X DELETE -H "$AUTH" http://localhost:8080/api/v1/auth/tokens/<id>
-```
-
-For live logs, use an SSE-capable client. A browser reads the stream with
-`fetch`, since `EventSource` cannot send the `Authorization` header. To resume
-after a disconnect, pass the last timestamp received as `since`:
-
-```bash
-curl -N -H "Authorization: Bearer $TOKEN" \
-  'http://localhost:8080/api/v1/projects/demo/tasks/web/logs/stream?since=2026-01-02T03:04:05.123456789Z'
-```
-
-To keep a screen current without polling, hold `GET /api/v1/events/stream`
-open with the login session. It sends `{}` on connect, after every successful
-authenticated write through the API outside Bora's conversations, during a
-deploy as the task's status moves, and when a notification is recorded. It never says what changed, so
-refetch what the screen shows, such as `GET /api/v1/projects`. A burst of changes arrives as one event. A proxy
-in front of Boreas must pass streams through unbuffered; Boreas sends
-`X-Accel-Buffering: no` for nginx.
-
-The public directory has its own stream, `GET /api/v1/public/events/stream`.
-It needs no token, so a browser reads it with `EventSource`, and it carries the
-same signals: refetch `GET /api/v1/public/projects` on each one. Boreas holds at
-most 256 public streams at once and answers `503` to the next.
-
-AI agents find the API and the directory through `/llms.txt` and
-`/.well-known/ard.json`, an [ARD](https://agenticresourcediscovery.org/spec/)
-manifest built for the host asked. The pages ship precompressed with Brotli and
-gzip, and API JSON is gzipped, so a proxy in front need not compress either.
-
-## Resource metrics
-
-Boreas streams live CPU, memory, and network usage straight from the Docker
-socket, roughly one sample per task per second. Every listener of a container
-shares one Docker stream, which keeps that container's last minute in memory: a
-new stream starts with those samples, oldest first, then follows live, so a
-chart fills at once. Place and deduplicate samples by `observed_at`. A
-container's Docker stream stops five minutes after its last listener leaves, and
-nothing is written to the database.
-
-```bash
-# every running task in the project
-curl -N -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/v1/projects/demo/metrics/stream
-
-# one task
-curl -N -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/v1/projects/demo/tasks/web/metrics/stream
-```
-
-Each event carries one sample:
-
-```json
-{"task":"web","cpu_percent":12.4,"memory_bytes":52428800,"memory_limit":536870912,
- "network_rx_bytes":1024,"network_tx_bytes":2048,"observed_at":"2026-01-02T03:04:05Z"}
-```
-
-`cpu_percent` is a rate, so a container's first sample after nobody was
-listening reports `0`: Docker reports cumulative counters and that sample has
-nothing to compare against.
-`memory_bytes` excludes page cache, matching what `docker stats` shows rather
-than the larger raw cgroup figure. Tasks that are not running are omitted, and a
-grantee sees only the tasks they were granted.
-
-## Notifications
-
-Deploys and task lifecycle changes — creation, assignment, development status —
-each record a notification, and Boreas serves them newest-first for an in-app
-feed, across every project the caller reaches or for one project. To page, pass
-the id of the last notification received as `before`:
-
-```bash
-curl -H "$AUTH" 'http://localhost:8080/api/v1/notifications?limit=20'
-curl -H "$AUTH" 'http://localhost:8080/api/v1/notifications?limit=20&before=<id>'
-curl -H "$AUTH" 'http://localhost:8080/api/v1/projects/demo/notifications'
-```
-
-Every notification shares one shape across every channel (the feed, browser
-push, and team destinations): title `<emoji> <Event> • <Project>`, body
-`<task>: <detail>`. Deploy bodies carry the completion time as a local
-12-hour clock with no timezone suffix; other channels render their own
-arrival timestamp.
-
-| `type`           | `status`  | Example                                                                          |
-| ---------------- | --------- | -------------------------------------------------------------------------------- |
-| `deployed`       | `success` | `🚀 Deploy Succeeded • Shop` / `web: Task completed at 11:00PM`                  |
-| `deploy_failed`  | `failure` | `❌ Deploy Failed • Shop` / `web: Failed at 11:00PM: pull image: unavailable`    |
-| `task_created`   | `info`    | `📋 Task Created • Shop` / `web: Customer checkout service`                      |
-| `task_assigned`  | `info`    | `👤 Task Assigned • Shop` / `web: assigned to you (member)`                      |
-| `status_changed` | `info`    | `🔄 Status Changed • Shop` / `web: In Progress ➔ Ready`                          |
-| `build_failed`   | `failure` | `🔨 Build Failed • Shop` / `web: failed at Test`                                 |
-
-Route on `type` and `project` (the slug), not on the title, which is for people.
-
-An assignment goes to the assignee alone: it shows in their feed and reaches their
-devices, never anyone else's, administrators' included, nor the team destinations.
-Nobody is told about assigning themselves.
-
-A retried callback for the image a task already runs records nothing, so it
-does not repeat a notification a pipeline has already produced.
-
-Each entry carries a per-user `seen` flag, so a badge can count what the
-caller has not read without one member clearing it for everyone. Marking is
-idempotent, and an id outside the caller's visibility is a no-op:
-
-```bash
-curl -X POST -H "$AUTH" -H "$JSON" -d '{"ids":["<id>","<id>"]}' \
-  'http://localhost:8080/api/v1/notifications/seen'
-
-curl -X DELETE -H "$AUTH" \
-  'http://localhost:8080/api/v1/projects/demo/notifications/<id>/seen'
-```
-
-`DELETE` clears the caller's own mark, making the entry unread again.
-
-### Team destinations (Slack, ntfy, …)
-
-With `BOREAS_NOTIFY_URL` set, Boreas also posts each notification to the keyed
-endpoint it derives from it — `<BOREAS_NOTIFY_URL>/boreas`, so
-`http://boreas-noti:8000/notify/boreas` under Compose — and an
-[Apprise](https://github.com/caronc/apprise-api) instance fans that out to
-every service listed in its configuration. Compose runs one as `boreas-noti`,
-reachable only from `boreas-net`, so no notification port is exposed. While
-`apprise/boreas.yml` does not exist Apprise answers 204 and nothing is sent;
-list your destinations there to enable it:
-
-```yaml
-urls:
-  - slack://TokenA/TokenB/TokenC/#staging
-  - ntfy://ntfy.example.com/boreas
-```
-
-That file holds credentials and is gitignored. Adding a platform means editing
-it and restarting `boreas-noti`; Boreas itself never changes. Delivery is
-fire-and-forget: an unreachable Apprise instance is logged and never delays or
-fails a deploy, and the feed above still records the notification.
-
-### Browser push (FCM)
-
-Setting both `BOREAS_FCM_PROJECT` and `BOREAS_FCM_KEYFILE` lets users subscribe
-their own browsers instead of a destination being hand-written into
-`apprise/boreas.yml`. A device receives exactly the deploys its owner can list
-from the notification feed, so push carries no more than the API already shows:
-
-```bash
-curl -X POST -H "$AUTH" -H 'Content-Type: application/json' \
-  -d '{"token":"<FCM registration token>"}' \
-  http://localhost:8080/api/v1/push/subscriptions
-
-curl -X DELETE -H "$AUTH" \
-  "http://localhost:8080/api/v1/push/subscriptions/<FCM registration token>"
-```
-
-The client obtains the token from the Firebase SDK (web, iOS or Android). A
-device is identified by its token, so re-registering one moves the subscription
-to whoever is logged in now — a shared machine never keeps notifying the
-previous user — and a user can delete only tokens they currently own.
-
-Boreas sends each push straight to FCM HTTP v1 with the service account in
-`BOREAS_FCM_KEYFILE`, a path inside the `boreas` container; Compose mounts
-`${FCM_KEYFILE_PATH:-./apprise/fcm-keyfile.json}` there read-only. The keyfile
-is read once at startup, so a missing or invalid one stops Boreas. A push lives
-24 hours, a failure arrives at high priority and anything else at normal, and
-the body is cut to 1000 characters; the feed keeps it whole. A token FCM no
-longer knows (`UNREGISTERED`, `SENDER_ID_MISMATCH`, or an invalid
-`message.token`) is deleted on the spot. Quota, outage and payload errors are
-logged and the token is kept.
-
-Delivery follows the same rules as `GET /api/v1/projects/{slug}/notifications`:
-administrators and project members receive every task in a project, a task
-grantee receives only the tasks they hold, and everyone else receives nothing.
-Disabling a user stops their devices along with their login, and deleting the
-account removes its subscriptions.
-
-## OpenAPI specification
-
-Every route above is described by an OpenAPI 3.0 document generated from the
-same route table the server routes with, so the two cannot drift.
-
-| Location                   | Purpose                                        |
-| -------------------------- | ---------------------------------------------- |
-| `api/openapi.yaml`         | Committed contract; generate clients from this |
-| `GET /api/v1/openapi.json` | The running server's own specification         |
-| `GET /api/v1/docs`         | Browsable reference (Scalar)                   |
-
-```bash
-make openapi        # Regenerate api/openapi.yaml after changing routes or DTOs
-make openapi-check  # Fail if the committed file is stale (suitable for CI)
-```
-
-Generate a typed Angular client:
-
-```bash
-npx @openapitools/openapi-generator-cli generate \
-  -i api/openapi.yaml -g typescript-angular -o ./client
-```
-
-The generated client exposes `TaskStatus`, `UserRole`, `ProjectRole`, and
-`RegistryKind` as string-literal unions, and UUID fields as `string`.
-The documentation endpoints are always available.
-
-## Configuration
-
-Boreas is configured entirely through environment variables. Everything that is
-not deployment-specific is a built-in default, so a normal deployment only sets
-the database connection and the initial administrator.
-
-| Variable                | Default           | Purpose                                                                      |
-| ----------------------- | ----------------- | ---------------------------------------------------------------------------- |
-| `BOREAS_PORT`           | `8080`            | HTTP listen port                                                             |
-| `BOREAS_LOG_LEVEL`      | `info`            | Minimum log level: `debug`, `info`, `warn`, or `error`; logs are JSON lines  |
-| `BOREAS_DATABASE_URL`   | unset             | Full connection string; overrides the `BOREAS_DB_*` variables                |
-| `BOREAS_DB_HOST`        | `localhost`       | Database host                                                                |
-| `BOREAS_DB_PORT`        | `5432`            | Database port                                                                |
-| `BOREAS_DB_USER`        | `postgres`        | Database user                                                                |
-| `BOREAS_DB_PASSWORD`    | `postgres`        | Database password                                                            |
-| `BOREAS_DB_NAME`        | `boreas`          | Database name                                                                |
-| `BOREAS_DB_SSLMODE`     | `disable`         | `sslmode` for the connection                                                 |
-| `BOREAS_ADMIN_USERNAME` | unset             | Seed administrator username; required only on an empty database              |
-| `BOREAS_ADMIN_EMAIL`    | unset             | Seed administrator email; required only on an empty database                 |
-| `BOREAS_ADMIN_PASSWORD` | unset             | Seed administrator password; required only on an empty database              |
-| `BOREAS_NOTIFY_URL`     | unset             | Apprise endpoint (`…/notify`); team notifications go to `…/notify/boreas`     |
-| `BOREAS_FCM_PROJECT`    | unset             | Firebase project ID; with the keyfile, enables browser push subscriptions    |
-| `BOREAS_FCM_KEYFILE`    | unset             | Service-account JSON path; read once at startup                              |
-| `BOREAS_AI_BASE_URL`    | unset             | OpenAI-compatible endpoint Bora answers with, streaming and calling tools   |
-| `BOREAS_AI_MODEL`       | unset             | Model name at that endpoint                                                  |
-| `BOREAS_AI_API_KEY`     | unset             | Bearer key for that endpoint; local servers such as Ollama need none         |
-| `BOREAS_AI_PLAN_MODEL`  | `BOREAS_AI_MODEL` | Model that writes specs, with five minutes per request                       |
-| `BOREAS_SOURCEBOT_URL`  | unset             | Sourcebot that indexes the code Bora reads                                   |
-| `BOREAS_SOURCEBOT_API_KEY` | unset          | Sourcebot API key                                                            |
-| `BOREAS_S3_ENDPOINT`    | unset             | S3-compatible endpoint for images asked about and avatars, e.g. `https://<account>.r2.cloudflarestorage.com` |
-| `BOREAS_S3_BUCKET`      | unset             | Bucket the images go in, under `bora/`, and avatars, under `avatars/`; give `bora/` alone a lifecycle rule that expires them |
-| `BOREAS_S3_REGION`      | `auto`            | Signing region; R2 takes `auto`                                              |
-| `BOREAS_S3_ACCESS_KEY_ID` | unset           | Access key with read and write on that bucket                                |
-| `BOREAS_S3_SECRET_ACCESS_KEY` | unset       | Its secret                                                                   |
-
-Registry credentials are no longer configuration. Store them once through
-`/api/v1/registry-credentials` and attach one to a project; Boreas uses it when
-pulling that project's images.
-
-```bash
-curl -X POST http://localhost:8080/api/v1/registry-credentials \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"ghcr","registry":"ghcr","username":"bot","token":"..."}'
-
-curl -X PATCH http://localhost:8080/api/v1/projects/demo \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"registry_credential_id":"<id>"}'
-```
-
-## Task application subpaths
-
-Applications behind Boreas must work beneath `/{project}/{task}/` and should
-use relative URLs or a matching base path. Boreas passes the prefix to the
-container as `BASE_HREF` and rewrites `<base href>` in served HTML. Always
-retain the trailing slash, for example `/demo/web/`; requests without it are
-redirected.
-
-## Mobile tasks
-
-A task that is a mobile app served as a website (Capacitor, Ionic) sets
-`form_factor` to `mobile`; the default is `web`. A task created without one
-takes its project's `default_form_factor`, so a pipeline's new tasks match the
-rest of a mobile project. Neither change touches a running container, and a
-project's default never changes the tasks it already has.
-
-```bash
-curl -X PATCH -H "$AUTH" -H "$JSON" -d '{"form_factor":"mobile"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web
-curl -X PATCH -H "$AUTH" -H "$JSON" -d '{"default_form_factor":"mobile"}' \
-  http://localhost:8080/api/v1/projects/demo
-```
-
-Boreas then puts `/_device/shim.js` first in every HTML page of a mobile task.
-A desktop browser opening its App URL gets the app inside an iPhone 18 Pro
-Max frame at the same URL. The app sees an iPhone: Safari's user agent, 62/34
-point safe-area insets read by Ionic, and touch answers to hover and pointer
-media queries, in scripts and stylesheets alike. The mouse acts as a finger: a
-drag scrolls and glides on, and nothing hovers until pressed. Phones, tablets,
-automated browsers (`navigator.webdriver`), and pages embedded elsewhere get
-the app unchanged. To see the page without the frame on a
-desktop, turn on touch emulation in the browser's developer tools.
-
-## Password-protected tasks
-
-A task with a `password` answers everything under its App URL, routes included,
-with a lock page until the visitor enters it. The browser then stays in for 24
-hours through an HttpOnly cookie scoped to the task's path. Everyone enters it,
-members included:
-
-```bash
-curl -X PATCH -H "$AUTH" -H "$JSON" -d '{"password":"correct horse battery"}' \
-  http://localhost:8080/api/v1/projects/demo/tasks/web
-```
-
-- A password is 8 to 72 characters and kept as a bcrypt hash, so it can be
-  replaced but never read back. `has_password` says whether one is set, `""`
-  removes it, and neither touches the container.
-- The hash also signs the cookie, so setting a password again, even the same
-  one, signs every browser out.
-- After 10 tries in a row the form takes one every 30 seconds, from anyone: a
-  flood stalls new unlocks of that task, never the browsers already in. Pick a
-  passphrase, not a dictionary word.
-- The cookie never reaches the app or a route's backend, and the public
-  directory leaves a locked task's note out.
-
-It keeps outsiders out, not other tasks: every task shares one origin, so a
-task's scripts can reach another that the same browser unlocked. Webhooks, CORS
-calls and cross-site POST callbacks (SAML, OIDC `form_post`) to a locked task
-get 401, and a service worker may go on serving what it cached after the day is up.
-
-## Development commands
-
-```bash
-make build            # Static pure-Go build (CGO_ENABLED=0)
-make db               # Start only PostgreSQL
-make hooks            # Install the repository Git hooks
-make fmt              # Format Go source with the repository lint configuration
-make lint             # Run the full Go linter set
-make test             # Standard Go tests
-make test-integration # Postgres store tests; needs a running database
-make test-docker      # Docker runtime tests; needs a running Docker daemon
-make test-race        # Race detector; CGO is required by the detector itself
-make openapi          # Regenerate api/openapi.yaml
-make openapi-check    # Verify api/openapi.yaml is current
-```
+Open <http://localhost:8080> for the public directory or
+<http://localhost:8080/api/v1/docs> for the API. The first administrator is
+`admin`, with the password you set. Follow [Get started](docs/getting-started.md)
+to sign in and create a working example.
+
+Compose starts Boreas, PostgreSQL and the notification service. Use a staging
+machine: Boreas has access to its Docker socket. Before exposing it, set strong
+database credentials and configure [HTTPS](docs/configuration.md#behind-a-reverse-proxy-with-https).
+
+The web/iOS/Android team app shown above is a separate project; it is not
+included in this server's directory page.
+
+## Documentation
+
+- [Get started](docs/getting-started.md): install, sign in, and run a first task
+- [Projects and people](docs/projects-and-people.md): accounts, roles, task grants and assignees
+- [Work with tasks](docs/tasks.md): statuses, settings, shared folders, mobile apps and locks
+- [Deploy from your pipeline](docs/deploy-from-ci.md): tokens, deploys by digest and build progress
+- [Bora](docs/bora.md): what the assistant can answer and change
+- [Notifications](docs/notifications.md): the feed, Slack or ntfy, and push
+- [Configuration](docs/configuration.md): every setting with its default
+- [API](docs/api.md): authentication, live streams and the generated reference
+
+## Development
+
+Boreas is a Go server that embeds a SvelteKit directory page.
+[Development](docs/development.md) covers building and testing it, and
+[AGENTS.md](AGENTS.md) holds the repository's conventions.
 
 ## License
 
-MIT
+[MIT](LICENSE)
