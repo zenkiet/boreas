@@ -22,6 +22,7 @@ import (
 
 const (
 	tokenTTL          = 30 * 24 * time.Hour
+	sessionRenewal    = 15 * 24 * time.Hour
 	maxAPITokenTTL    = 90 * 24 * time.Hour
 	minPasswordLength = 8
 	pairingTTL        = 2 * time.Minute
@@ -59,7 +60,7 @@ func hashToken(token string) string {
 }
 
 // Login returns a plaintext token once and never stores it.
-func (s *AuthService) Login(ctx context.Context, username, password string) (string, core.User, error) {
+func (s *AuthService) Login(ctx context.Context, username, password, device string) (string, core.User, error) {
 	user, err := s.users.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, core.ErrNotFound) {
@@ -76,17 +77,18 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 		return "", core.User{}, core.ErrUnauthorized
 	}
 
-	token, err := s.session(ctx, user.ID)
+	token, err := s.session(ctx, user.ID, device)
 	return token, user, err
 }
 
-func (s *AuthService) session(ctx context.Context, userID uuid.UUID) (string, error) {
+func (s *AuthService) session(ctx context.Context, userID uuid.UUID, device string) (string, error) {
 	token := rand.Text()
 	now := time.Now().UTC()
 	if _, err := s.tokens.Create(ctx, core.AuthToken{
 		UserID:    userID,
 		Kind:      core.TokenKindSession,
 		TokenHash: hashToken(token),
+		Device:    device,
 		ValidFrom: now,
 		ExpiresAt: now.Add(tokenTTL),
 	}); err != nil {
@@ -118,7 +120,7 @@ func (s *AuthService) WatchPairing(user core.User, code string) (<-chan struct{}
 }
 
 // ClaimPairing spends a code from StartPairing on a new login session.
-func (s *AuthService) ClaimPairing(ctx context.Context, code string) (string, core.User, error) {
+func (s *AuthService) ClaimPairing(ctx context.Context, code, device string) (string, core.User, error) {
 	s.mu.Lock()
 	p, ok := s.pairings[hashToken(code)]
 	delete(s.pairings, hashToken(code))
@@ -136,7 +138,7 @@ func (s *AuthService) ClaimPairing(ctx context.Context, code string) (string, co
 	if user.Disabled() {
 		return "", core.User{}, core.ErrUnauthorized
 	}
-	token, err := s.session(ctx, user.ID)
+	token, err := s.session(ctx, user.ID, device)
 	if err == nil {
 		p.claimed <- struct{}{}
 		close(p.claimed)
@@ -169,11 +171,72 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (core.User
 	if user.Disabled() {
 		return core.User{}, "", core.ErrUnauthorized
 	}
+	s.touch(ctx, stored, now)
 	return user, stored.Kind, nil
+}
+
+func (s *AuthService) touch(ctx context.Context, token core.AuthToken, now time.Time) {
+	expires := token.ExpiresAt
+	if token.Kind == core.TokenKindSession && expires.Sub(now) < sessionRenewal {
+		expires = now.Add(tokenTTL)
+	}
+	if !expires.Equal(token.ExpiresAt) || token.LastUsedAt == nil || now.Sub(*token.LastUsedAt) >= time.Minute {
+		_ = s.tokens.Touch(ctx, token.ID, expires)
+	}
 }
 
 func (s *AuthService) Logout(ctx context.Context, token string) error {
 	return wrap("revoke token", s.tokens.Revoke(ctx, hashToken(token)))
+}
+
+type Session struct {
+	core.AuthToken
+	Current bool
+}
+
+func (s *AuthService) ListSessions(ctx context.Context, userID uuid.UUID, current string) ([]Session, error) {
+	tokens, err := s.tokens.ListSessions(ctx, userID)
+	hash := hashToken(current)
+	sessions := make([]Session, len(tokens))
+	for i, t := range tokens {
+		sessions[i] = Session{AuthToken: t, Current: t.TokenHash == hash}
+	}
+	return sessions, wrap("list sessions", err)
+}
+
+func (s *AuthService) RevokeSession(ctx context.Context, userID, id uuid.UUID) error {
+	return wrap("revoke session", s.tokens.RevokeByID(ctx, userID, id, core.TokenKindSession))
+}
+
+func (s *AuthService) RevokeOtherSessions(ctx context.Context, userID uuid.UUID, current string) error {
+	return wrap("revoke other sessions", s.tokens.RevokeSessions(ctx, userID, hashToken(current)))
+}
+
+func (s *AuthService) ChangePassword(ctx context.Context, user core.User, current, next, session string) error {
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(current)) != nil {
+		return errors.Join(core.ErrInvalidInput, errors.New("the current password is wrong"))
+	}
+	hash, err := hashPassword(next)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = hash
+	if _, err := s.users.Update(ctx, user); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	return s.RevokeOtherSessions(ctx, user.ID, session)
+}
+
+func hashPassword(password string) (string, error) {
+	if len(password) < minPasswordLength {
+		return "", errors.Join(core.ErrInvalidInput,
+			fmt.Errorf("password must be at least %d characters", minPasswordLength))
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("hash password: %w", err)
+	}
+	return string(hash), nil
 }
 
 type CreateAPITokenInput struct {
@@ -224,7 +287,7 @@ func (s *AuthService) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]co
 }
 
 func (s *AuthService) RevokeAPIToken(ctx context.Context, userID, tokenID uuid.UUID) error {
-	return wrap("revoke API token", s.tokens.RevokeByID(ctx, userID, tokenID))
+	return wrap("revoke API token", s.tokens.RevokeByID(ctx, userID, tokenID, core.TokenKindAPI))
 }
 
 func (s *AuthService) ListUsers(ctx context.Context) ([]core.User, error) {
@@ -246,20 +309,16 @@ func (s *AuthService) CreateUser(ctx context.Context, in CreateUserInput) (core.
 	if strings.TrimSpace(in.Email) == "" {
 		return core.User{}, errors.Join(core.ErrInvalidInput, errors.New("email is required"))
 	}
-	if len(in.Password) < minPasswordLength {
-		return core.User{}, errors.Join(core.ErrInvalidInput,
-			fmt.Errorf("password must be at least %d characters", minPasswordLength))
-	}
 	role := cmp.Or(in.Role, core.RoleUser)
 	if role != core.RoleAdmin && role != core.RoleUser {
 		return core.User{}, errors.Join(core.ErrInvalidInput, errors.New("role must be admin or user"))
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	hash, err := hashPassword(in.Password)
 	if err != nil {
-		return core.User{}, fmt.Errorf("hash password: %w", err)
+		return core.User{}, err
 	}
 	user, err := s.users.Create(ctx, core.User{
-		Username: in.Username, Email: in.Email, PasswordHash: string(hash), Role: role,
+		Username: in.Username, Email: in.Email, PasswordHash: hash, Role: role,
 	})
 	return user, wrap("create user", err)
 }
@@ -283,15 +342,9 @@ func (s *AuthService) UpdateUser(ctx context.Context, id uuid.UUID, in UpdateUse
 		user.Email = *in.Email
 	}
 	if in.Password != nil {
-		if len(*in.Password) < minPasswordLength {
-			return core.User{}, errors.Join(core.ErrInvalidInput,
-				fmt.Errorf("password must be at least %d characters", minPasswordLength))
+		if user.PasswordHash, err = hashPassword(*in.Password); err != nil {
+			return core.User{}, err
 		}
-		hash, hashErr := bcrypt.GenerateFromPassword([]byte(*in.Password), bcrypt.DefaultCost)
-		if hashErr != nil {
-			return core.User{}, fmt.Errorf("hash password: %w", hashErr)
-		}
-		user.PasswordHash = string(hash)
 	}
 	if in.Role != nil {
 		if *in.Role != core.RoleAdmin && *in.Role != core.RoleUser {

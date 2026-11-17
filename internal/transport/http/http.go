@@ -27,17 +27,21 @@ type TaskService interface {
 	Delete(ctx context.Context, project, name string) error
 	Logs(ctx context.Context, project, name string, opts core.LogOptions) (io.ReadCloser, error)
 	Folders(ctx context.Context, project string) ([]string, error)
-	Metrics(ctx context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error)
+	Metrics(ctx context.Context, name string, accs ...core.ProjectAccess) (<-chan core.TaskMetric, error)
 	SystemStats(context.Context) (core.SystemStats, error)
 }
 
 type AuthService interface {
-	Login(ctx context.Context, username, password string) (string, core.User, error)
+	Login(ctx context.Context, username, password, device string) (string, core.User, error)
 	StartPairing(user core.User) (string, time.Time)
-	ClaimPairing(ctx context.Context, code string) (string, core.User, error)
+	ClaimPairing(ctx context.Context, code, device string) (string, core.User, error)
 	WatchPairing(user core.User, code string) (<-chan struct{}, time.Time, error)
 	Authenticate(ctx context.Context, token string) (core.User, core.TokenKind, error)
 	Logout(ctx context.Context, token string) error
+	ListSessions(ctx context.Context, userID uuid.UUID, current string) ([]service.Session, error)
+	RevokeSession(ctx context.Context, userID, id uuid.UUID) error
+	RevokeOtherSessions(ctx context.Context, userID uuid.UUID, current string) error
+	ChangePassword(ctx context.Context, user core.User, current, next, session string) error
 	CreateAPIToken(ctx context.Context, userID uuid.UUID, in service.CreateAPITokenInput) (string, core.AuthToken, error)
 	ListAPITokens(ctx context.Context, userID uuid.UUID) ([]core.AuthToken, error)
 	RevokeAPIToken(ctx context.Context, userID, tokenID uuid.UUID) error
@@ -50,6 +54,7 @@ type AuthService interface {
 }
 
 type ProjectService interface {
+	List(ctx context.Context, actor core.User) ([]core.ProjectAccess, error)
 	Fleet(ctx context.Context, actor core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error)
 	GrantedRoles(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]core.ProjectRole, error)
 	Directory(ctx context.Context) ([]core.Project, []core.FleetTask, error)
@@ -57,6 +62,7 @@ type ProjectService interface {
 	Update(ctx context.Context, slug string, in service.UpdateProjectInput) (core.Project, error)
 	Delete(ctx context.Context, slug string) error
 	ListMembers(ctx context.Context, slug string) ([]core.ProjectMember, error)
+	FindPerson(ctx context.Context, login string) (uuid.UUID, error)
 	AddMember(ctx context.Context, slug string, userID uuid.UUID, role core.ProjectRole) error
 	RemoveMember(ctx context.Context, slug string, userID uuid.UUID) error
 	Notifications(ctx context.Context, actor core.User, projectID, before *uuid.UUID, limit int) ([]core.Notification, error)
@@ -93,11 +99,12 @@ type ProjectService interface {
 	SetAssignees(ctx context.Context, acc core.ProjectAccess, taskName string, userIDs []uuid.UUID) error
 	ListCredentials(context.Context) ([]core.RegistryCredential, error)
 	CreateCredential(ctx context.Context, actor core.User, in service.CreateCredentialInput) (core.RegistryCredential, error)
+	UpdateCredential(ctx context.Context, id uuid.UUID, in service.UpdateCredentialInput) (core.RegistryCredential, error)
 	DeleteCredential(ctx context.Context, id uuid.UUID) error
 }
 
 type PushStore interface {
-	Create(ctx context.Context, userID uuid.UUID, token string) error
+	Create(ctx context.Context, userID uuid.UUID, token string, events core.PushEvents) error
 	Delete(ctx context.Context, userID uuid.UUID, token string) error
 }
 

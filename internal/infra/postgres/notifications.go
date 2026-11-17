@@ -17,9 +17,12 @@ func NewNotificationStore(pool *pgxpool.Pool) *NotificationStore {
 
 func (s *NotificationStore) Create(ctx context.Context, n core.Notification) (core.Notification, error) {
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO notifications (project_id, task_name, type, status, title, body, user_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
-		n.ProjectID, n.TaskName, n.Type, n.Status, n.Title, n.Body, n.UserID).Scan(&n.ID, &n.CreatedAt)
+		WITH n AS (
+			INSERT INTO notifications (project_id, task_name, type, status, title, body, user_id, actor_id, spec_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, created_at),
+		seen AS (INSERT INTO notification_seen (notification_id, user_id) SELECT id, $8 FROM n WHERE $8::uuid IS NOT NULL)
+		SELECT id, created_at FROM n`,
+		n.ProjectID, n.TaskName, n.Type, n.Status, n.Title, n.Body, n.UserID, n.ActorID, n.SpecID).Scan(&n.ID, &n.CreatedAt)
 	if err != nil {
 		return core.Notification{}, mapError("create notification", err)
 	}
@@ -36,13 +39,15 @@ const visible = `(n.user_id = $1 OR n.user_id IS NULL AND ($2
 // selectNotifications takes $1 as the user and $2 as whether they are an admin.
 const selectNotifications = `
 	SELECT n.id, n.project_id, p.slug, n.task_name, n.type, n.status, n.title, n.body, n.created_at,
-		EXISTS (SELECT 1 FROM notification_seen s WHERE s.notification_id = n.id AND s.user_id = $1)
-	FROM notifications n JOIN projects p ON p.id = n.project_id
+		EXISTS (SELECT 1 FROM notification_seen s WHERE s.notification_id = n.id AND s.user_id = $1),
+		coalesce(a.username, ''), n.spec_id
+	FROM notifications n JOIN projects p ON p.id = n.project_id LEFT JOIN users a ON a.id = n.actor_id
 	WHERE ` + visible
 
 func scanNotification(row pgx.CollectableRow) (core.Notification, error) {
 	var n core.Notification
-	err := row.Scan(&n.ID, &n.ProjectID, &n.Project, &n.TaskName, &n.Type, &n.Status, &n.Title, &n.Body, &n.CreatedAt, &n.Seen)
+	err := row.Scan(&n.ID, &n.ProjectID, &n.Project, &n.TaskName, &n.Type, &n.Status, &n.Title, &n.Body, &n.CreatedAt, &n.Seen,
+		&n.Actor, &n.SpecID)
 	return n, err
 }
 

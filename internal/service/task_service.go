@@ -88,6 +88,14 @@ func (s *TaskService) get(ctx context.Context, slug, name string) (core.Task, co
 	return getTask(ctx, s.projects, s.tasks, slug, name)
 }
 
+func (s *TaskService) pull(ctx context.Context, project core.Project, image string) error {
+	credential, err := s.credential(ctx, project)
+	if err != nil {
+		return err
+	}
+	return s.runtime.Pull(ctx, image, credential)
+}
+
 func (s *TaskService) credential(ctx context.Context, project core.Project) (*core.RegistryCredential, error) {
 	if project.RegistryCredentialID == nil {
 		return nil, nil
@@ -158,14 +166,10 @@ func (s *TaskService) Create(ctx context.Context, slug string, in CreateTaskInpu
 		return core.Task{}, fmt.Errorf("reserve task %q: %w", in.Name, err)
 	}
 	detail := cmp.Or(strings.TrimSpace(in.Description), spec.Image)
-	s.cfg.Notify(ctx, notification(project, in.Name, core.NotificationTaskCreated, "📋 Task Created", detail))
+	s.cfg.Notify(ctx, notification(ctx, project, in.Name, core.NotificationTaskCreated, "📋 Task Created", detail))
 
-	credential, err := s.credential(ctx, project)
-	if err != nil {
+	if err := s.pull(ctx, project, spec.Image); err != nil {
 		return s.failTask(ctx, task, err)
-	}
-	if err := s.runtime.Pull(ctx, spec.Image, credential); err != nil {
-		return s.failTask(ctx, task, fmt.Errorf("pull image: %w", err))
 	}
 	containerID, err := s.runtime.Create(ctx, spec)
 	if err != nil {
@@ -197,6 +201,9 @@ func (s *TaskService) Start(ctx context.Context, slug, name string) (core.Task, 
 		return core.Task{}, fmt.Errorf("mark starting: %w", err)
 	}
 	if task.PendingRecreate || task.ContainerID == "" {
+		if err := s.pull(ctx, project, task.Image); err != nil {
+			return s.failTask(ctx, task, err)
+		}
 		newID, recreateErr := s.runtime.Recreate(ctx, task.ContainerID, task.Spec(project.Slug))
 		if recreateErr != nil {
 			return s.failTask(ctx, task, fmt.Errorf("recreate container: %w", recreateErr))
@@ -245,12 +252,8 @@ func (s *TaskService) Restart(ctx context.Context, slug, name string) (core.Task
 	if task.Status == core.StatusCreating || task.Status == core.StatusStarting {
 		return core.Task{}, fmt.Errorf("task %q is transitioning: %w", name, core.ErrConflict)
 	}
-	credential, err := s.credential(ctx, project)
-	if err != nil {
-		return core.Task{}, err
-	}
-	if err := s.runtime.Pull(ctx, task.Image, credential); err != nil {
-		return core.Task{}, fmt.Errorf("pull image: %w", err)
+	if err := s.pull(ctx, project, task.Image); err != nil {
+		return s.failTask(ctx, task, err)
 	}
 	_ = s.routes.Unregister(ctx, project.Slug, name)
 	newID, recreateErr := s.runtime.Recreate(ctx, task.ContainerID, task.Spec(project.Slug))
@@ -294,6 +297,7 @@ func (s *TaskService) Delete(ctx context.Context, slug, name string) error {
 type UpdateTaskInput struct {
 	Description *string
 	Note        *string
+	NoteWas     *string
 	DevStatus   *core.DevStatus
 	FormFactor  *core.FormFactor
 	Password    *string
@@ -324,7 +328,7 @@ func (s *TaskService) Update(ctx context.Context, slug, name string, in UpdateTa
 		s.routes.SetLock(project.Slug, name, updated.PasswordHash)
 	}
 	if err == nil && updated.DevStatus != task.DevStatus {
-		s.cfg.Notify(ctx, notification(project, name, core.NotificationStatusChanged, "🔄 Status Changed",
+		s.cfg.Notify(ctx, notification(ctx, project, name, core.NotificationStatusChanged, "🔄 Status Changed",
 			devLabel(task.DevStatus)+" ➔ "+devLabel(updated.DevStatus)))
 	}
 	return updated, err
@@ -360,25 +364,26 @@ func (s *TaskService) Deploy(ctx context.Context, slug, name, image string, rev 
 		}
 	}
 	deployed, err := s.update(ctx, task, project, UpdateTaskInput{Image: &trimmed, Revision: rev}, true)
-	s.cfg.Notify(ctx, deployNotification(project, name, time.Now(), err))
+	s.cfg.Notify(ctx, deployNotification(ctx, project, name, time.Now(), err))
 	return deployed, err
 }
 
-func notification(project core.Project, task string, kind core.NotificationType, event, detail string) core.Notification {
+func notification(ctx context.Context, project core.Project, task string, kind core.NotificationType, event, detail string) core.Notification {
 	return core.Notification{
 		ProjectID: project.ID, TaskName: task, Type: kind, Status: kind.Status(),
-		Title: event + " • " + project.Name,
-		Body:  task + ": " + detail,
+		Title:   event + " • " + project.Name,
+		Body:    task + ": " + detail,
+		ActorID: core.ActorFrom(ctx),
 	}
 }
 
-func deployNotification(project core.Project, name string, completedAt time.Time, cause error) core.Notification {
+func deployNotification(ctx context.Context, project core.Project, name string, completedAt time.Time, cause error) core.Notification {
 	completed := completedAt.Format("3:04PM")
 	if cause != nil {
-		return notification(project, name, core.NotificationDeployFailed, "❌ Deploy Failed",
+		return notification(ctx, project, name, core.NotificationDeployFailed, "❌ Deploy Failed",
 			fmt.Sprintf("Failed at %s: %v", completed, cause))
 	}
-	return notification(project, name, core.NotificationDeployed, "🚀 Deploy Succeeded", "Task completed at "+completed)
+	return notification(ctx, project, name, core.NotificationDeployed, "🚀 Deploy Succeeded", "Task completed at "+completed)
 }
 
 var devStatusLabels = map[core.DevStatus]string{
@@ -440,6 +445,9 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	routesChanged := !slices.Equal(routes, task.Routes)
 	descriptionChanged := in.Description != nil && *in.Description != task.Description
 	noteChanged := in.Note != nil && *in.Note != task.Note
+	if noteChanged && in.NoteWas != nil && *in.NoteWas != task.Note {
+		return core.Task{}, fmt.Errorf("someone changed the note since you opened it: %w", core.ErrConflict)
+	}
 	devStatusChanged := in.DevStatus != nil && *in.DevStatus != task.DevStatus
 	formFactorChanged := in.FormFactor != nil && *in.FormFactor != task.FormFactor
 	passwordChanged := hash != task.PasswordHash
@@ -470,12 +478,8 @@ func (s *TaskService) update(ctx context.Context, task core.Task, project core.P
 	}
 
 	if spec.Image != task.Image && recreate {
-		credential, err := s.credential(ctx, project)
-		if err != nil {
+		if err := s.pull(ctx, project, spec.Image); err != nil {
 			return core.Task{}, err
-		}
-		if err := s.runtime.Pull(ctx, spec.Image, credential); err != nil {
-			return core.Task{}, fmt.Errorf("pull image: %w", err)
 		}
 	}
 
@@ -565,7 +569,7 @@ func (s *TaskService) ReportBuild(ctx context.Context, slug, name string, build 
 		if build.Stage != "" {
 			detail = "failed at " + build.Stage
 		}
-		s.cfg.Notify(ctx, notification(project, name, core.NotificationBuildFailed, "🔨 Build Failed", detail))
+		s.cfg.Notify(ctx, notification(ctx, project, name, core.NotificationBuildFailed, "🔨 Build Failed", detail))
 	}
 	return nil
 }
@@ -610,28 +614,17 @@ func (s *TaskService) Logs(ctx context.Context, slug, name string, opts core.Log
 	return r, wrap("read logs", err)
 }
 
-// Metrics streams samples for one task, or for every running task when name is empty.
+// Metrics streams samples for one task, or for every running task each access reaches when name is empty.
 // The channel closes once ctx is done and every source has drained.
-func (s *TaskService) Metrics(ctx context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error) {
+func (s *TaskService) Metrics(ctx context.Context, name string, accs ...core.ProjectAccess) (<-chan core.TaskMetric, error) {
 	var sources []core.Task
-	if name != "" {
-		task, _, err := s.get(ctx, acc.Project.Slug, name)
+	slugs := map[uuid.UUID]string{}
+	for _, acc := range accs {
+		tasks, err := s.metricSources(ctx, acc, name)
 		if err != nil {
 			return nil, err
 		}
-		if task.ContainerID == "" {
-			return nil, fmt.Errorf("task has no container: %w", core.ErrConflict)
-		}
-		sources = []core.Task{task}
-	} else {
-		tasks, err := s.tasks.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks)
-		if err != nil {
-			return nil, fmt.Errorf("list tasks for metrics: %w", err)
-		}
-		// Skipped rather than refused, so a project streams while some tasks are down.
-		sources = slices.DeleteFunc(tasks, func(t core.Task) bool {
-			return t.ContainerID == "" || t.Status != core.StatusRunning
-		})
+		sources, slugs[acc.Project.ID] = append(sources, tasks...), acc.Project.Slug
 	}
 
 	out := make(chan core.TaskMetric)
@@ -645,22 +638,45 @@ func (s *TaskService) Metrics(ctx context.Context, acc core.ProjectAccess, name 
 			}
 			return nil, fmt.Errorf("stream metrics: %w", err)
 		}
-		wg.Go(func() {
-			for sample := range samples {
-				sample.TaskName = task.Name
-				select {
-				case out <- sample:
-				case <-ctx.Done():
-					return
-				}
-			}
-		})
+		wg.Go(func() { forward(ctx, out, samples, slugs[task.ProjectID], task.Name) })
 	}
 	go func() {
 		wg.Wait()
 		close(out)
 	}()
 	return out, nil
+}
+
+func forward(ctx context.Context, out chan<- core.TaskMetric, samples <-chan core.TaskMetric, project, task string) {
+	for sample := range samples {
+		sample.Project, sample.TaskName = project, task
+		select {
+		case out <- sample:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *TaskService) metricSources(ctx context.Context, acc core.ProjectAccess, name string) ([]core.Task, error) {
+	if name != "" {
+		task, _, err := s.get(ctx, acc.Project.Slug, name)
+		if err != nil {
+			return nil, err
+		}
+		if task.ContainerID == "" {
+			return nil, fmt.Errorf("task has no container: %w", core.ErrConflict)
+		}
+		return []core.Task{task}, nil
+	}
+	tasks, err := s.tasks.List(ctx, acc.Project.ID, acc.UserID, acc.AllTasks)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks for metrics: %w", err)
+	}
+	// Skipped rather than refused, so a project streams while some tasks are down.
+	return slices.DeleteFunc(tasks, func(t core.Task) bool {
+		return t.ContainerID == "" || t.Status != core.StatusRunning
+	}), nil
 }
 
 const (
@@ -820,12 +836,12 @@ func (s *TaskService) SystemStats(ctx context.Context) (core.SystemStats, error)
 	if err != nil {
 		return core.SystemStats{}, fmt.Errorf("count projects: %w", err)
 	}
-	totalMemory, err := s.runtime.TotalMemory(ctx)
+	totalMemory, cpus, err := s.runtime.Host(ctx)
 	if err != nil {
 		return core.SystemStats{}, fmt.Errorf("runtime stats: %w", err)
 	}
 	stats := core.SystemStats{
-		TotalTasks: len(tasks), TotalProjects: projectCount, TotalMemoryBytes: totalMemory,
+		TotalTasks: len(tasks), TotalProjects: projectCount, TotalMemoryBytes: totalMemory, CPUs: cpus,
 	}
 	for _, task := range tasks {
 		switch task.Status {
@@ -836,6 +852,25 @@ func (s *TaskService) SystemStats(ctx context.Context) (core.SystemStats, error)
 		}
 	}
 	return stats, nil
+}
+
+func (s *TaskService) ContainerExited(ctx context.Context, exit core.ContainerExit) error {
+	unlock := s.lockTask(exit.Project, exit.Task)
+	defer unlock()
+	task, project, err := s.get(ctx, exit.Project, exit.Task)
+	if err != nil || task.ContainerID != exit.ID || task.Status != core.StatusRunning {
+		return nil
+	}
+	reason := fmt.Sprintf("the container exited with code %d", exit.Code)
+	if exit.OOM {
+		reason += ", out of memory"
+	}
+	task.Status, task.Error = core.StatusError, reason
+	if _, err := s.tasks.Update(ctx, task); err != nil {
+		return fmt.Errorf("mark %s/%s down: %w", exit.Project, exit.Task, err)
+	}
+	s.cfg.Notify(ctx, notification(ctx, project, task.Name, core.NotificationContainerDown, "💥 Container Down", reason))
+	return nil
 }
 
 func (s *TaskService) finishStart(ctx context.Context, task core.Task, slug string) (core.Task, error) {
@@ -855,7 +890,8 @@ func (s *TaskService) finishStart(ctx context.Context, task core.Task, slug stri
 }
 
 func (s *TaskService) waitReady(ctx context.Context, containerID string, port int) (core.ContainerState, error) {
-	readyCtx, cancel := context.WithTimeout(ctx, s.cfg.ReadinessTimeout)
+	readyCtx, cancel := context.WithTimeoutCause(ctx, s.cfg.ReadinessTimeout,
+		fmt.Errorf("nothing answered on port %d within %s", port, s.cfg.ReadinessTimeout))
 	defer cancel()
 	ticker := time.NewTicker(s.cfg.PollInterval)
 	defer ticker.Stop()
@@ -863,7 +899,7 @@ func (s *TaskService) waitReady(ctx context.Context, containerID string, port in
 		state, err := s.runtime.Inspect(readyCtx, containerID)
 		if err == nil {
 			if state.Status == core.StatusError || state.Status == core.StatusStopped {
-				return state, fmt.Errorf("container became %s: %w", state.Status, core.ErrConflict)
+				return state, errors.New("the container stopped right after it started")
 			}
 			if state.Status == core.StatusRunning && state.IP != "" {
 				if s.ready == nil || s.ready(readyCtx, net.JoinHostPort(state.IP, strconv.Itoa(port))) == nil {
@@ -873,7 +909,7 @@ func (s *TaskService) waitReady(ctx context.Context, containerID string, port in
 		}
 		select {
 		case <-readyCtx.Done():
-			return core.ContainerState{}, fmt.Errorf("container readiness: %w", readyCtx.Err())
+			return core.ContainerState{}, context.Cause(readyCtx)
 		case <-ticker.C:
 		}
 	}
@@ -884,7 +920,7 @@ func (s *TaskService) failTask(ctx context.Context, task core.Task, cause error)
 	if updated, err := s.tasks.Update(ctx, task); err == nil {
 		task = updated
 	}
-	return task.Clone(), cause
+	return task.Clone(), fmt.Errorf("%w: %w", cause, core.ErrConflict)
 }
 
 func (s *TaskService) lockTask(slug, name string) func() {

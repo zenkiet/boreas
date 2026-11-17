@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/zenkiet/boreas/internal/core"
 )
@@ -158,4 +159,65 @@ func TestFolders(t *testing.T) {
 	if missing, err := folders(filepath.Join(dir, "absent")); err != nil || len(missing) != 0 {
 		t.Fatalf("a project without a folder must list none: %v, %v", missing, err)
 	}
+}
+
+func TestOfflinePullAndExits(t *testing.T) {
+	r := newRuntime(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	local := "boreas-test.invalid/offline:latest"
+	if err := r.client.ImageTag(ctx, testImage, local); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = r.client.ImageRemove(context.Background(), local, image.RemoveOptions{}) })
+	if err := r.Pull(ctx, local, nil); err != nil {
+		t.Fatalf("the local copy did not stand in: %v", err)
+	}
+	if err := r.Pull(ctx, "boreas-test.invalid/missing:latest", nil); err == nil {
+		t.Fatal("an image nobody has pulled")
+	}
+
+	id, err := r.Create(ctx, testSpec("exits"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Remove(context.Background(), id) })
+	exits := make(chan core.ContainerExit, 8)
+	go r.Exits(ctx, func(exit core.ContainerExit) { exits <- exit })
+	exitsOnItsOwn := func() {
+		t.Helper()
+		for {
+			if err := r.Start(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case exit := <-exits:
+				if exit != (core.ContainerExit{ID: id, Project: "boreastest", Task: "exits"}) {
+					t.Fatalf("exit %+v", exit)
+				}
+				return
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				t.Fatal("no exit reported")
+			}
+		}
+	}
+	exitsOnItsOwn()
+
+	sleeper, err := r.client.ContainerCreate(ctx, &container.Config{
+		Image: testImage, Cmd: []string{"sleep", "60"},
+		Labels: map[string]string{"managed-by": "boreas", "project": "boreastest", "task": "sleeper"},
+	}, nil, nil, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Remove(context.Background(), sleeper.ID) })
+	if err := r.Start(ctx, sleeper.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.client.ContainerKill(ctx, sleeper.ID, "KILL"); err != nil {
+		t.Fatal(err)
+	}
+	exitsOnItsOwn()
 }

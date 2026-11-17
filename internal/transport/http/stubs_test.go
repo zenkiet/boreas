@@ -28,7 +28,7 @@ type stubTasks struct {
 	logs    func(context.Context, string, string, core.LogOptions) (io.ReadCloser, error)
 	stats   func(context.Context) (core.SystemStats, error)
 	list    func(context.Context, core.ProjectAccess) ([]core.Task, error)
-	metrics func(context.Context, core.ProjectAccess, string) (<-chan core.TaskMetric, error)
+	metrics func(context.Context, string, ...core.ProjectAccess) (<-chan core.TaskMetric, error)
 }
 
 func (s stubTasks) List(c context.Context, acc core.ProjectAccess) ([]core.Task, error) {
@@ -86,9 +86,9 @@ func (s stubTasks) Logs(c context.Context, project, name string, opts core.LogOp
 	return io.NopCloser(strings.NewReader("")), nil
 }
 
-func (s stubTasks) Metrics(c context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error) {
+func (s stubTasks) Metrics(c context.Context, name string, accs ...core.ProjectAccess) (<-chan core.TaskMetric, error) {
 	if s.metrics != nil {
-		return s.metrics(c, acc, name)
+		return s.metrics(c, name, accs...)
 	}
 	closed := make(chan core.TaskMetric)
 	close(closed)
@@ -116,7 +116,7 @@ type stubAuth struct {
 	avatars   []string
 }
 
-func (s *stubAuth) Login(c context.Context, username, password string) (string, core.User, error) {
+func (s *stubAuth) Login(c context.Context, username, password, _ string) (string, core.User, error) {
 	if s.login != nil {
 		return s.login(c, username, password)
 	}
@@ -127,7 +127,7 @@ func (*stubAuth) StartPairing(core.User) (string, time.Time) {
 	return "pair-code", time.Now().Add(time.Minute)
 }
 
-func (s *stubAuth) ClaimPairing(_ context.Context, code string) (string, core.User, error) {
+func (s *stubAuth) ClaimPairing(_ context.Context, code, _ string) (string, core.User, error) {
 	if code != "pair-code" {
 		return "", core.User{}, core.ErrUnauthorized
 	}
@@ -153,6 +153,18 @@ func (s *stubAuth) Authenticate(_ context.Context, token string) (core.User, cor
 
 func (s *stubAuth) Logout(_ context.Context, token string) error {
 	s.loggedOut = append(s.loggedOut, token)
+	return nil
+}
+
+func (*stubAuth) ListSessions(context.Context, uuid.UUID, string) ([]service.Session, error) {
+	return nil, nil
+}
+
+func (*stubAuth) RevokeSession(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+
+func (*stubAuth) RevokeOtherSessions(context.Context, uuid.UUID, string) error { return nil }
+
+func (*stubAuth) ChangePassword(context.Context, core.User, string, string, string) error {
 	return nil
 }
 
@@ -344,6 +356,11 @@ func (s *stubProjects) Fleet(c context.Context, actor core.User) ([]core.Project
 	return nil, nil, nil
 }
 
+func (s *stubProjects) List(c context.Context, actor core.User) ([]core.ProjectAccess, error) {
+	accesses, _, err := s.Fleet(c, actor)
+	return accesses, err
+}
+
 func (s *stubProjects) GrantedRoles(context.Context, uuid.UUID) (map[uuid.UUID]core.ProjectRole, error) {
 	return s.grantedRoles, nil
 }
@@ -393,6 +410,10 @@ func (s *stubProjects) ListMembers(context.Context, string) ([]core.ProjectMembe
 	return s.members, nil
 }
 
+func (*stubProjects) FindPerson(context.Context, string) (uuid.UUID, error) {
+	return uuid.Nil, core.ErrInvalidInput
+}
+
 func (*stubProjects) AddMember(context.Context, string, uuid.UUID, core.ProjectRole) error {
 	return nil
 }
@@ -419,16 +440,20 @@ func (s *stubProjects) SetAssignees(_ context.Context, acc core.ProjectAccess, t
 func (*stubProjects) CreateCredential(context.Context, core.User, service.CreateCredentialInput) (core.RegistryCredential, error) {
 	return core.RegistryCredential{}, nil
 }
+
+func (*stubProjects) UpdateCredential(context.Context, uuid.UUID, service.UpdateCredentialInput) (core.RegistryCredential, error) {
+	return core.RegistryCredential{}, nil
+}
 func (*stubProjects) DeleteCredential(context.Context, uuid.UUID) error { return nil }
 
 type stubPush struct {
-	create func(context.Context, uuid.UUID, string) error
+	create func(context.Context, uuid.UUID, string, core.PushEvents) error
 	delete func(context.Context, uuid.UUID, string) error
 }
 
-func (s *stubPush) Create(c context.Context, userID uuid.UUID, token string) error {
+func (s *stubPush) Create(c context.Context, userID uuid.UUID, token string, events core.PushEvents) error {
 	if s.create != nil {
-		return s.create(c, userID, token)
+		return s.create(c, userID, token, events)
 	}
 	return nil
 }

@@ -7,7 +7,8 @@ info:
 paths:
   /api/v1/auth/login:
     post:
-      description: The token is returned once and expires in 30 days.
+      description: The token is returned once. It lasts 30 days and renews itself
+        to 30 more days while in use, once fewer than 15 are left.
       operationId: post-auth-login
       requestBody:
         content:
@@ -148,6 +149,53 @@ paths:
       summary: Set your avatar
       tags:
       - auth
+  /api/v1/auth/me/password:
+    patch:
+      description: Takes the current password as proof, so a device left signed in
+        cannot change it. Every other device is signed out; this session and your
+        API tokens keep working. A wrong current password is 400, never 401.
+      operationId: patch-auth-me-password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Change your password
+      tags:
+      - auth
   /api/v1/auth/pairing:
     post:
       description: A code that signs you in on another device, once, within 2 minutes.
@@ -185,8 +233,8 @@ paths:
       - auth
   /api/v1/auth/pairing/claim:
     post:
-      description: The token is returned once and expires in 30 days. The code travels
-        in the body so request logs never hold it.
+      description: The token is returned once and lasts as a login's does. The code
+        travels in the body so request logs never hold it.
       operationId: post-auth-pairing-claim
       requestBody:
         content:
@@ -276,9 +324,131 @@ paths:
       summary: Wait for a pairing code to sign a device in
       tags:
       - auth
+  /api/v1/auth/sessions:
+    delete:
+      description: Revokes every login session but the one asking. API tokens keep
+        working.
+      operationId: delete-auth-sessions
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Sign out your other devices
+      tags:
+      - auth
+    get:
+      description: Your login sessions still signed in, most recently used first;
+        current is the one asking. device is named from the User-Agent at sign-in,
+        and last_used_at is kept to the minute.
+      operationId: get-auth-sessions
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: List the devices you are signed in on
+      tags:
+      - auth
+  /api/v1/auth/sessions/{id}:
+    delete:
+      operationId: delete-auth-sessions-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Sign out one of your devices
+      tags:
+      - auth
   /api/v1/auth/tokens:
     get:
-      description: Metadata only; tokens and hashes are never returned.
+      description: Metadata only; tokens and hashes are never returned. last_used_at
+        is kept to the minute, null until the token is first used.
       operationId: get-auth-tokens
       responses:
         "200":
@@ -1223,8 +1393,10 @@ paths:
       tags:
       - bora
     get:
-      description: state is failed when the step it was on stopped or broke off, and
-        stopped then names that step, researching or writing; retry runs it again.
+      description: 'state is failed when the step it was on stopped or broke off,
+        and stopped then names that step, researching or writing; retry runs it again.
+        stop_reason says why: stopped by stopped_by_name, failed for the model or
+        a tool, or restarted for a server that went down mid-step.'
       operationId: get-bora-specs-id
       parameters:
       - in: path
@@ -1473,8 +1645,8 @@ paths:
       - bora
   /api/v1/bora/specs/{id}/stop:
     post:
-      description: The spec keeps what it held and shows failed until the step runs
-        again. Also 204 when no step runs.
+      description: For its author or an administrator. The spec keeps what it held
+        and shows failed until the step runs again. Also 204 when no step runs.
       operationId: post-bora-specs-id-stop
       parameters:
       - in: path
@@ -1650,10 +1822,10 @@ paths:
     get:
       description: 'Server-Sent Events carrying {} once on connect and after any successful
         authenticated write outside Bora''s conversations, a deploy''s interim task
-        states and each recorded notification, with nothing about what changed: refetch
-        what you show, such as GET /api/v1/projects. Bursts arrive as one event, and
-        a comment heartbeat fills idle time. Read it with fetch and a stream reader:
-        EventSource cannot send the Authorization header.'
+        states, each recorded notification and each spec step that ends, with nothing
+        about what changed: refetch what you show, such as GET /api/v1/projects. Bursts
+        arrive as one event, and a comment heartbeat fills idle time. Read it with
+        fetch and a stream reader: EventSource cannot send the Authorization header.'
       operationId: get-events-stream
       responses:
         "200":
@@ -1704,10 +1876,45 @@ paths:
       summary: Health check
       tags:
       - system
+  /api/v1/metrics/stream:
+    get:
+      description: 'GET /api/v1/projects/{project}/metrics/stream for every project
+        GET /api/v1/projects lists, in one connection. It follows the tasks running
+        when it opens and ends once none is left: reopen it when another starts. Read
+        it with fetch and a stream reader: EventSource cannot send the Authorization
+        header.'
+      operationId: get-metrics-stream
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Stream resource metrics for every project you reach
+      tags:
+      - projects
   /api/v1/notifications:
     get:
-      description: Newest first, from every project and task the caller reaches. To
-        page, pass the id of the last notification received as before.
+      description: 'Newest first, from every project and task the caller reaches.
+        To page, pass the id of the last notification received as before. actor is
+        who did it when a person signed in to the app did: their own devices get no
+        push, and it reads as seen to them. spec_id is the spec a spec_ notification
+        is about.'
       operationId: get-notifications
       parameters:
       - in: query
@@ -1795,10 +2002,10 @@ paths:
     get:
       description: 'Administrators see every project, others their memberships and
         grants. my_role is the caller''s role, per project and per task, where a grant
-        can raise it; last_deploy is the newest deploy; bora is whether the caller
-        may ask Bora about the project: a member may, and when the server reads code
-        through Sourcebot, only about a project Sourcebot has a search context for,
-        named after its slug.'
+        can raise it; last_deploy is the newest deploy; a task''s error says why its
+        container last failed; bora is whether the caller may ask Bora about the project:
+        a member may, and when the server reads code through Sourcebot, only about
+        a project Sourcebot has a search context for, named after its slug.'
       operationId: get-projects
       responses:
         "200":
@@ -2130,7 +2337,9 @@ paths:
       tags:
       - projects
     post:
-      description: Also changes a member's role. Demoting the last owner is refused.
+      description: 'Also changes a member''s role. Demoting the last owner is refused.
+        Name the person by user_id, or by user, the exact username or email of an
+        active account, for owners who cannot list users: 400 when none has it.'
       operationId: post-projects-project-members
       parameters:
       - in: path
@@ -2259,12 +2468,13 @@ paths:
   /api/v1/projects/{project}/metrics/stream:
     get:
       description: 'Server-Sent Events, roughly one per task per second, each carrying
-        {"task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit":
-        integer, "network_rx_bytes": integer, "network_tx_bytes": integer, "observed_at":
-        string}. Each task starts with up to its last minute of samples, oldest first;
-        place and deduplicate them by observed_at. Tasks that are not running are
-        omitted, and a comment heartbeat fills idle time. Read it with fetch and a
-        stream reader: EventSource cannot send the Authorization header.'
+        {"project": string, "task": string, "cpu_percent": number, "memory_bytes":
+        integer, "memory_limit": integer, "network_rx_bytes": integer, "network_tx_bytes":
+        integer, "observed_at": string}. Each task starts with up to its last minute
+        of samples, oldest first; place and deduplicate them by observed_at. Tasks
+        that are not running are omitted, and a comment heartbeat fills idle time.
+        Read it with fetch and a stream reader: EventSource cannot send the Authorization
+        header.'
       operationId: get-projects-project-metrics-stream
       parameters:
       - in: path
@@ -2718,7 +2928,8 @@ paths:
         tracks the code, not the container: in_progress on create, blocked is not
         fit for QA, ready is. routes replaces the whole list and applies at once,
         container or not: <App URL><path>/… is forwarded to url/…, so the browser
-        never calls the address itself.'
+        never calls the address itself. note_was, the note as it was opened, refuses
+        with 409 a note someone changed since.'
       operationId: patch-projects-project-tasks-name
       parameters:
       - in: path
@@ -3455,6 +3666,10 @@ paths:
       - tasks
   /api/v1/projects/{project}/tasks/{name}/state:
     put:
+      description: restart pulls the image again first, and so does a start that needs
+        a new container; when the registry fails, the copy the server already has
+        runs. A start that fails leaves the task in error with the reason, which the
+        409 carries.
       operationId: put-projects-project-tasks-name-state
       parameters:
       - in: path
@@ -3505,6 +3720,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
         "500":
           content:
             application/json:
@@ -3572,9 +3793,11 @@ paths:
       - system
   /api/v1/push/subscriptions:
     post:
-      description: Takes an FCM registration token. The device receives the deploys
-        the caller can list; re-registering moves the subscription to the current
-        caller.
+      description: 'Takes an FCM registration token. The device receives the notifications
+        the caller can list: with events important (the default) only failed deploys
+        and builds and those addressed to the caller, such as a task assigned to them;
+        with all, every one. Registering again moves the subscription to the current
+        caller and takes its events.'
       operationId: post-push-subscriptions
       requestBody:
         content:
@@ -3798,8 +4021,67 @@ paths:
       summary: Delete a registry credential
       tags:
       - registry-credentials
+    patch:
+      description: Sets a new username or token in place, so every project using the
+        credential pulls with it from its next pull. Omitted fields stay as they are.
+      operationId: patch-registry-credentials-id
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCredentialRequest'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Internal Server Error
+      security:
+      - bearerAuth: []
+      summary: Replace a registry credential's login
+      tags:
+      - registry-credentials
   /api/v1/stats:
     get:
+      description: 'cpus is the host''s CPU count: a metric''s cpu_percent counts
+        each of them as 100.'
       operationId: get-stats
       responses:
         "200":
@@ -3967,7 +4249,7 @@ paths:
       - users
     patch:
       description: Changing password or role, or disabling the account, revokes that
-        user's tokens.
+        user's tokens, API tokens included.
       operationId: patch-users-id
       parameters:
       - in: path
@@ -4076,6 +4358,10 @@ components:
           type: string
         id:
           $ref: '#/components/schemas/UUID'
+        last_used_at:
+          format: date-time
+          nullable: true
+          type: string
         name:
           example: staging-deployer
           type: string
@@ -4098,6 +4384,7 @@ components:
       - valid_to
       - created_at
       - revoked_at
+      - last_used_at
       - status
       type: object
     APITokenStatus:
@@ -4124,10 +4411,11 @@ components:
       properties:
         role:
           $ref: '#/components/schemas/ProjectRole'
+        user:
+          example: linh
+          type: string
         user_id:
           $ref: '#/components/schemas/UUID'
-      required:
-      - user_id
       type: object
     AskConversationRequest:
       properties:
@@ -4379,6 +4667,19 @@ components:
       - failure
       - canceled
       type: string
+    ChangePasswordRequest:
+      properties:
+        current_password:
+          format: password
+          type: string
+        new_password:
+          format: password
+          minLength: 8
+          type: string
+      required:
+      - current_password
+      - new_password
+      type: object
     ChatRole:
       enum:
       - user
@@ -4742,6 +5043,8 @@ components:
           type: string
         dev_status:
           $ref: '#/components/schemas/DevStatus'
+        error:
+          type: string
         image:
           example: nginx:alpine
           type: string
@@ -4918,6 +5221,9 @@ components:
       type: object
     Notification:
       properties:
+        actor:
+          example: linh
+          type: string
         body:
           type: string
         created_at:
@@ -4930,6 +5236,8 @@ components:
           type: string
         seen:
           type: boolean
+        spec_id:
+          $ref: '#/components/schemas/UUID'
         status:
           $ref: '#/components/schemas/NotificationStatus'
         task_name:
@@ -4964,6 +5272,11 @@ components:
       - task_created
       - task_assigned
       - build_failed
+      - container_down
+      - spec_asking
+      - spec_confirming
+      - spec_ready
+      - spec_failed
       type: string
     NotificationsResponse:
       properties:
@@ -5185,8 +5498,15 @@ components:
       - form_factor
       - has_password
       type: object
+    PushEvents:
+      enum:
+      - important
+      - all
+      type: string
     PushSubscriptionRequest:
       properties:
+        events:
+          $ref: '#/components/schemas/PushEvents'
         token:
           example: fJ9x2Qk7RtqB:APA91bH-x9Kd2QwErTyUiOp
           type: string
@@ -5278,6 +5598,46 @@ components:
       required:
       - query
       type: object
+    Session:
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        current:
+          type: boolean
+        device:
+          example: Safari on Mac
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        id:
+          $ref: '#/components/schemas/UUID'
+        last_used_at:
+          format: date-time
+          nullable: true
+          type: string
+      required:
+      - id
+      - device
+      - created_at
+      - last_used_at
+      - expires_at
+      - current
+      type: object
+    SessionsResponse:
+      properties:
+        sessions:
+          items:
+            $ref: '#/components/schemas/Session'
+          nullable: true
+          type: array
+        total:
+          type: integer
+      required:
+      - sessions
+      - total
+      type: object
     Spec:
       properties:
         capabilities:
@@ -5336,8 +5696,16 @@ components:
           type: array
         state:
           $ref: '#/components/schemas/SpecState'
+        stop_reason:
+          enum:
+          - stopped
+          - failed
+          - restarted
+          type: string
         stopped:
           $ref: '#/components/schemas/SpecState'
+        stopped_by_name:
+          type: string
         ticket:
           type: string
         title:
@@ -5497,8 +5865,16 @@ components:
           type: integer
         state:
           $ref: '#/components/schemas/SpecState'
+        stop_reason:
+          enum:
+          - stopped
+          - failed
+          - restarted
+          type: string
         stopped:
           $ref: '#/components/schemas/SpecState'
+        stopped_by_name:
+          type: string
         title:
           type: string
         updated_at:
@@ -5681,6 +6057,9 @@ components:
       type: object
     SystemStats:
       properties:
+        cpus:
+          example: 8
+          type: integer
         running_tasks:
           type: integer
         stopped_tasks:
@@ -5698,6 +6077,7 @@ components:
       - stopped_tasks
       - total_projects
       - total_memory_mb
+      - cpus
       type: object
     Task:
       properties:
@@ -5840,6 +6220,18 @@ components:
     UUID:
       format: uuid
       type: string
+    UpdateCredentialRequest:
+      properties:
+        token:
+          format: password
+          minLength: 1
+          nullable: true
+          type: string
+        username:
+          minLength: 1
+          nullable: true
+          type: string
+      type: object
     UpdateProjectRequest:
       properties:
         default_env:
@@ -5902,6 +6294,9 @@ components:
           nullable: true
           type: object
         note:
+          nullable: true
+          type: string
+        note_was:
           nullable: true
           type: string
         password:

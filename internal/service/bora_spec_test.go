@@ -406,3 +406,85 @@ func TestSpecQuestionsEval(t *testing.T) {
 		t.Errorf("passed %d/%d, want at least 7/8", passed, runs)
 	}
 }
+
+func TestSpecStopAndNews(t *testing.T) {
+	svc, tasks := newProjects(t)
+	users := newFakeUserStore()
+	svc.Users, svc.Specs, svc.Conversations = users, newFakeSpecStore(), newFakeBoraStore()
+	svc.Code = fakeCode{contexts: map[string]string{"shop": "github.com/acme/web"}}
+	ended := make(chan struct{}, 1)
+	svc.Changed = func() { ended <- struct{}{} }
+	var news []core.Notification
+	svc.Notify = func(_ context.Context, n core.Notification) { news = append(news, n) }
+	var script func(context.Context, core.Ask) error
+	svc.Plan = func(ctx context.Context, _ uuid.UUID, ask core.Ask) (string, []string, error) {
+		return "", nil, script(ctx, ask)
+	}
+	ctx := context.Background()
+	owner, _ := users.Create(ctx, core.User{Username: "linh"})
+	dev, _ := users.Create(ctx, core.User{Username: "an"})
+	viewer, _ := users.Create(ctx, core.User{Username: "qa"})
+	project, err := svc.Create(ctx, owner, CreateProjectInput{Slug: "shop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tasks.Create(ctx, core.Task{ProjectID: project.ID, Name: "wo-718", Assignees: []core.Assignee{
+		{UserID: dev.ID, Role: core.ProjectRoleMember}, {UserID: viewer.ID, Role: core.ProjectRoleViewer},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	step := func(start func() (core.BoraSpec, error)) core.BoraSpec {
+		t.Helper()
+		news = nil
+		spec, err := start()
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-ended
+		if spec, err = svc.BoraSpec(ctx, owner, spec.ID); err != nil {
+			t.Fatal(err)
+		}
+		return spec
+	}
+
+	script = func(ctx context.Context, _ core.Ask) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	spec := step(func() (core.BoraSpec, error) {
+		spec, err := svc.StartSpec(ctx, owner, "wo-718", []string{"shop"}, "Export invoices")
+		if err == nil {
+			if err := svc.StopSpec(ctx, member(), spec.ID); !errors.Is(err, core.ErrForbidden) {
+				t.Errorf("a stranger stopped the spec: %v", err)
+			}
+			err = svc.StopSpec(ctx, owner, spec.ID)
+		}
+		return spec, err
+	})
+	if spec.Status() != core.SpecFailed || spec.Stop != core.SpecStopped || spec.StoppedBy == nil || *spec.StoppedBy != owner.ID ||
+		len(news) != 2 || *news[0].UserID != dev.ID || *news[1].UserID != owner.ID {
+		t.Fatalf("stopped %+v, news %+v", spec, news)
+	}
+	if n := news[1]; n.Type != core.NotificationSpecFailed || *n.ActorID != owner.ID || *n.SpecID != spec.ID ||
+		n.ProjectID != project.ID || n.Body != "wo-718: someone stopped Bora while it read the code" {
+		t.Errorf("stop news %+v", n)
+	}
+
+	script = func(context.Context, core.Ask) error { return errors.New("model down") }
+	spec = step(func() (core.BoraSpec, error) { return svc.RetrySpec(ctx, owner, spec.ID) })
+	if spec.Stop != core.SpecStepFailed || spec.StoppedBy != nil || len(news) != 2 ||
+		news[0].ActorID != nil || news[0].Body != "wo-718: the model failed while Bora read the code" {
+		t.Fatalf("failed %+v, news %+v", spec, news)
+	}
+
+	script = func(ctx context.Context, ask core.Ask) error {
+		i := slices.IndexFunc(ask.Tools, func(tool core.Tool) bool { return tool.Name == "ask_questions" })
+		ask.Tools[i].Run(ctx, `{"findings":"f","questions":[{"text":"Who?","why":"w","multi":false,"options":[{"label":"A","detail":""},{"label":"B","detail":""}]}]}`)
+		return nil
+	}
+	spec = step(func() (core.BoraSpec, error) { return svc.RetrySpec(ctx, owner, spec.ID) })
+	if spec.Status() != core.SpecAsking || spec.Stop != "" || len(news) != 2 ||
+		news[0].Type != core.NotificationSpecAsking || news[0].Body != "wo-718: 1 question for the team" {
+		t.Fatalf("asking %+v, news %+v", spec, news)
+	}
+}

@@ -40,7 +40,7 @@ func TestLoginAndAuthenticate(t *testing.T) {
 		t.Fatal("password was stored in plaintext")
 	}
 
-	token, user, err := auth.Login(context.Background(), "ALICE", "correct-horse")
+	token, user, err := auth.Login(context.Background(), "ALICE", "correct-horse", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,10 +60,10 @@ func TestLoginAndAuthenticate(t *testing.T) {
 func TestLoginRejectsBadCredentials(t *testing.T) {
 	auth, _, _ := newAuth(t)
 	newUser(t, auth, "bob")
-	if _, _, err := auth.Login(context.Background(), "bob", "wrong"); !errors.Is(err, core.ErrUnauthorized) {
+	if _, _, err := auth.Login(context.Background(), "bob", "wrong", ""); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("got %v, want ErrUnauthorized", err)
 	}
-	if _, _, err := auth.Login(context.Background(), "nobody", "password123"); !errors.Is(err, core.ErrUnauthorized) {
+	if _, _, err := auth.Login(context.Background(), "nobody", "password123", ""); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("got %v, want ErrUnauthorized", err)
 	}
 }
@@ -72,7 +72,7 @@ func TestAuthenticateRejectsRevokedExpiredAndDisabled(t *testing.T) {
 	auth, users, tokens := newAuth(t)
 	user := newUser(t, auth, "dave")
 
-	revoked, _, err := auth.Login(context.Background(), "dave", "password123")
+	revoked, _, err := auth.Login(context.Background(), "dave", "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestAuthenticateRejectsRevokedExpiredAndDisabled(t *testing.T) {
 		t.Fatalf("revoked token accepted: %v", err)
 	}
 
-	expired, _, err := auth.Login(context.Background(), "dave", "password123")
+	expired, _, err := auth.Login(context.Background(), "dave", "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestAuthenticateRejectsRevokedExpiredAndDisabled(t *testing.T) {
 		t.Fatalf("expired token accepted: %v", err)
 	}
 
-	active, _, err := auth.Login(context.Background(), "dave", "password123")
+	active, _, err := auth.Login(context.Background(), "dave", "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestAuthenticateRejectsRevokedExpiredAndDisabled(t *testing.T) {
 	if _, _, err := auth.Authenticate(context.Background(), active); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("token for a disabled user accepted: %v", err)
 	}
-	if _, _, err := auth.Login(context.Background(), "dave", "password123"); !errors.Is(err, core.ErrUnauthorized) {
+	if _, _, err := auth.Login(context.Background(), "dave", "password123", ""); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("disabled user could log in: %v", err)
 	}
 }
@@ -113,7 +113,7 @@ func TestAuthenticateRejectsRevokedExpiredAndDisabled(t *testing.T) {
 func TestPasswordChangeRevokesExistingTokens(t *testing.T) {
 	auth, _, _ := newAuth(t)
 	user := newUser(t, auth, "erin")
-	token, _, err := auth.Login(context.Background(), "erin", "password123")
+	token, _, err := auth.Login(context.Background(), "erin", "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +123,128 @@ func TestPasswordChangeRevokesExistingTokens(t *testing.T) {
 	}
 	if _, _, err := auth.Authenticate(context.Background(), token); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("old token still valid after a password change: %v", err)
+	}
+}
+
+func TestAuthenticateRenewsSessionsAndMarksUse(t *testing.T) {
+	auth, _, tokens := newAuth(t)
+	user := newUser(t, auth, "frank")
+	ctx := context.Background()
+	session, _, err := auth.Login(ctx, "frank", "password123", "iPhone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := hashToken(session)
+	if tokens.tokens[hash].Device != "iPhone" {
+		t.Fatalf("the session lost its device: %+v", tokens.tokens[hash])
+	}
+	stored := tokens.tokens[hash]
+	stored.ExpiresAt = time.Now().Add(10 * 24 * time.Hour)
+	tokens.tokens[hash] = stored
+	if _, _, err := auth.Authenticate(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	renewed := tokens.tokens[hash]
+	if renewed.LastUsedAt == nil || time.Until(renewed.ExpiresAt) < tokenTTL-time.Minute {
+		t.Fatalf("a session with 10 days left was not renewed: %+v", renewed)
+	}
+
+	recent := time.Now().Add(-30 * time.Second)
+	renewed.LastUsedAt, renewed.ExpiresAt = &recent, time.Now().Add(20*24*time.Hour)
+	tokens.tokens[hash] = renewed
+	if _, _, err := auth.Authenticate(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	if got := tokens.tokens[hash]; !got.LastUsedAt.Equal(recent) || !got.ExpiresAt.Equal(renewed.ExpiresAt) {
+		t.Fatalf("a token used within the minute was written again: %+v", got)
+	}
+
+	now := time.Now().UTC()
+	raw, created, err := auth.CreateAPIToken(ctx, user.ID, CreateAPITokenInput{Name: "ci", ValidFrom: now, ValidTo: now.Add(72 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := auth.Authenticate(ctx, raw); err != nil {
+		t.Fatal(err)
+	}
+	if got := tokens.tokens[hashToken(raw)]; got.LastUsedAt == nil || !got.ExpiresAt.Equal(created.ExpiresAt) {
+		t.Fatalf("API token after use: %+v", got)
+	}
+}
+
+func TestChangePasswordSignsOutOtherDevices(t *testing.T) {
+	auth, users, _ := newAuth(t)
+	user := newUser(t, auth, "gina")
+	ctx := context.Background()
+	here, _, _ := auth.Login(ctx, "gina", "password123", "Safari on Mac")
+	there, _, _ := auth.Login(ctx, "gina", "password123", "iPhone")
+	now := time.Now().UTC()
+	ci, _, err := auth.CreateAPIToken(ctx, user.ID, CreateAPITokenInput{Name: "ci", ValidFrom: now, ValidTo: now.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := auth.ChangePassword(ctx, users.users[user.ID], "wrong-password", "new-password-1", here); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("a wrong current password: got %v, want ErrInvalidInput (401 would sign the app out)", err)
+	}
+	if err := auth.ChangePassword(ctx, users.users[user.ID], "password123", "short", here); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("a short new password: got %v, want ErrInvalidInput", err)
+	}
+	if err := auth.ChangePassword(ctx, users.users[user.ID], "password123", "new-password-1", here); err != nil {
+		t.Fatal(err)
+	}
+	for token, want := range map[string]bool{here: true, ci: true, there: false} {
+		if _, _, err := auth.Authenticate(ctx, token); (err == nil) != want {
+			t.Errorf("after the change, token works = %v, want %v", err == nil, want)
+		}
+	}
+	if _, _, err := auth.Login(ctx, "gina", "new-password-1", ""); err != nil {
+		t.Fatalf("the new password does not sign in: %v", err)
+	}
+}
+
+func TestSessionsListAndSignOut(t *testing.T) {
+	auth, _, _ := newAuth(t)
+	user := newUser(t, auth, "hal")
+	other := newUser(t, auth, "ivy")
+	ctx := context.Background()
+	here, _, _ := auth.Login(ctx, "hal", "password123", "Chrome on Windows")
+	there, _, _ := auth.Login(ctx, "hal", "password123", "Android")
+	third, _, _ := auth.Login(ctx, "hal", "password123", "iPad")
+
+	sessions, err := auth.ListSessions(ctx, user.ID, here)
+	if err != nil || len(sessions) != 3 {
+		t.Fatalf("sessions = %+v, %v", sessions, err)
+	}
+	var current, android Session
+	for _, s := range sessions {
+		if s.Current {
+			current = s
+		}
+		if s.Device == "Android" {
+			android = s
+		}
+	}
+	if current.Device != "Chrome on Windows" {
+		t.Fatalf("current = %+v", current)
+	}
+	if err := auth.RevokeSession(ctx, other.ID, android.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("another user signed out hal's device: %v", err)
+	}
+	if err := auth.RevokeSession(ctx, user.ID, android.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := auth.Authenticate(ctx, there); !errors.Is(err, core.ErrUnauthorized) {
+		t.Fatalf("a signed-out device still works: %v", err)
+	}
+	if err := auth.RevokeOtherSessions(ctx, user.ID, here); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := auth.Authenticate(ctx, third); !errors.Is(err, core.ErrUnauthorized) {
+		t.Fatalf("another device survived signing out the others: %v", err)
+	}
+	if sessions, _ := auth.ListSessions(ctx, user.ID, here); len(sessions) != 1 || !sessions[0].Current {
+		t.Fatalf("left signed in: %+v", sessions)
 	}
 }
 
@@ -299,17 +421,17 @@ func TestPairingSignsInOnceWithinTTL(t *testing.T) {
 	ctx := context.Background()
 
 	code, _ := auth.StartPairing(alice)
-	token, user, err := auth.ClaimPairing(ctx, code)
+	token, user, err := auth.ClaimPairing(ctx, code, "")
 	if err != nil || user.ID != alice.ID || tokens.tokens[hashToken(token)].Kind != core.TokenKindSession {
 		t.Fatalf("claim = %+v, %v", user, err)
 	}
-	if _, _, err := auth.ClaimPairing(ctx, code); !errors.Is(err, core.ErrUnauthorized) {
+	if _, _, err := auth.ClaimPairing(ctx, code, ""); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("a spent code = %v", err)
 	}
 
 	late, _ := auth.StartPairing(alice)
 	auth.pairings[hashToken(late)] = pairing{userID: alice.ID, expires: time.Now().Add(-time.Second)}
-	if _, _, err := auth.ClaimPairing(ctx, late); !errors.Is(err, core.ErrUnauthorized) {
+	if _, _, err := auth.ClaimPairing(ctx, late, ""); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("an expired code = %v", err)
 	}
 
@@ -317,7 +439,7 @@ func TestPairingSignsInOnceWithinTTL(t *testing.T) {
 	disabled, now := users.users[alice.ID], time.Now()
 	disabled.DisabledAt = &now
 	users.users[alice.ID] = disabled
-	if _, _, err := auth.ClaimPairing(ctx, gone); !errors.Is(err, core.ErrUnauthorized) {
+	if _, _, err := auth.ClaimPairing(ctx, gone, ""); !errors.Is(err, core.ErrUnauthorized) {
 		t.Fatalf("a disabled user's code = %v", err)
 	}
 }
@@ -333,7 +455,7 @@ func TestWatchPairingHearsItsClaimOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := auth.ClaimPairing(context.Background(), code); err != nil {
+	if _, _, err := auth.ClaimPairing(context.Background(), code, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, heard := <-claimed; !heard {

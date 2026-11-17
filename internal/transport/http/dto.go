@@ -44,13 +44,14 @@ func (apiTokenStatus) Enum() []any {
 }
 
 type apiTokenDTO struct {
-	ID        uuid.UUID      `json:"id"`
-	Name      string         `json:"name" example:"staging-deployer"`
-	ValidFrom time.Time      `json:"valid_from"`
-	ValidTo   time.Time      `json:"valid_to"`
-	CreatedAt time.Time      `json:"created_at"`
-	RevokedAt *time.Time     `json:"revoked_at"`
-	Status    apiTokenStatus `json:"status"`
+	ID         uuid.UUID      `json:"id"`
+	Name       string         `json:"name" example:"staging-deployer"`
+	ValidFrom  time.Time      `json:"valid_from"`
+	ValidTo    time.Time      `json:"valid_to"`
+	CreatedAt  time.Time      `json:"created_at"`
+	RevokedAt  *time.Time     `json:"revoked_at"`
+	LastUsedAt *time.Time     `json:"last_used_at"`
+	Status     apiTokenStatus `json:"status"`
 }
 
 func apiTokenFromCore(token core.AuthToken, now time.Time) apiTokenDTO {
@@ -66,8 +67,27 @@ func apiTokenFromCore(token core.AuthToken, now time.Time) apiTokenDTO {
 	return apiTokenDTO{
 		ID: token.ID, Name: token.Name, ValidFrom: token.ValidFrom,
 		ValidTo: token.ExpiresAt, CreatedAt: token.CreatedAt,
-		RevokedAt: token.RevokedAt, Status: status,
+		RevokedAt: token.RevokedAt, LastUsedAt: token.LastUsedAt, Status: status,
 	}
+}
+
+type sessionDTO struct {
+	ID         uuid.UUID  `json:"id"`
+	Device     string     `json:"device" example:"Safari on Mac"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	Current    bool       `json:"current"`
+}
+
+type sessionsResponse struct {
+	Sessions []sessionDTO `json:"sessions"`
+	Total    int          `json:"total"`
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password" format:"password"`
+	NewPassword     string `json:"new_password" format:"password" minLength:"8"`
 }
 
 type createAPITokenRequest struct {
@@ -188,6 +208,7 @@ type updateTaskRequest struct {
 	Name        string             `json:"-" path:"name" example:"web"`
 	Description *string            `json:"description,omitempty"`
 	Note        *string            `json:"note,omitempty"`
+	NoteWas     *string            `json:"note_was,omitempty"`
 	DevStatus   *core.DevStatus    `json:"dev_status,omitempty"`
 	FormFactor  *core.FormFactor   `json:"form_factor,omitempty"`
 	Password    *string            `json:"password,omitempty" example:"correct horse battery"`
@@ -323,7 +344,8 @@ type updateProjectRequest struct {
 
 type addMemberRequest struct {
 	Project string           `json:"-" path:"project" example:"demo"`
-	UserID  uuid.UUID        `json:"user_id"`
+	UserID  uuid.UUID        `json:"user_id,omitzero"`
+	User    string           `json:"user,omitempty" example:"linh"`
 	Role    core.ProjectRole `json:"role,omitempty"`
 }
 
@@ -423,6 +445,7 @@ type fleetTaskDTO struct {
 	Description string           `json:"description,omitempty"`
 	Image       string           `json:"image" example:"nginx:alpine"`
 	Status      core.TaskStatus  `json:"status"`
+	Error       string           `json:"error,omitempty"`
 	DevStatus   core.DevStatus   `json:"dev_status"`
 	MyRole      core.ProjectRole `json:"my_role"`
 	LastDeploy  *lastDeployDTO   `json:"last_deploy,omitempty"`
@@ -573,6 +596,8 @@ type notificationDTO struct {
 	Status    core.NotificationStatus `json:"status"`
 	Title     string                  `json:"title" example:"🚀 Deploy Succeeded • Demo"`
 	Body      string                  `json:"body,omitempty"`
+	Actor     string                  `json:"actor,omitempty" example:"linh"`
+	SpecID    *uuid.UUID              `json:"spec_id,omitempty"`
 	Seen      bool                    `json:"seen"`
 	CreatedAt time.Time               `json:"created_at"`
 }
@@ -588,7 +613,8 @@ type notificationsResponse struct {
 }
 
 type pushSubscriptionRequest struct {
-	Token string `json:"token" example:"fJ9x2Qk7RtqB:APA91bH-x9Kd2QwErTyUiOp"`
+	Token  string          `json:"token" example:"fJ9x2Qk7RtqB:APA91bH-x9Kd2QwErTyUiOp"`
+	Events core.PushEvents `json:"events,omitempty"`
 }
 
 type pushSubscriptionPath struct {
@@ -678,6 +704,12 @@ type createCredentialRequest struct {
 	Token    string            `json:"token" format:"password"`
 }
 
+type updateCredentialRequest struct {
+	ID       uuid.UUID `json:"-" path:"id"`
+	Username *string   `json:"username,omitempty" minLength:"1"`
+	Token    *string   `json:"token,omitempty" format:"password" minLength:"1"`
+}
+
 type credentialResponse struct {
 	Credential credentialDTO `json:"credential"`
 }
@@ -699,4 +731,5 @@ type systemStatsDTO struct {
 	StoppedTasks  int     `json:"stopped_tasks"`
 	TotalProjects int     `json:"total_projects"`
 	TotalMemoryMB float64 `json:"total_memory_mb"`
+	CPUs          int     `json:"cpus" example:"8"`
 }

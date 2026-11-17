@@ -62,12 +62,21 @@ func errorStatus(err error) (status int, message string) {
 		return http.StatusForbidden, "forbidden"
 	case errors.Is(err, core.ErrNotFound):
 		return http.StatusNotFound, "not found"
-	case errors.Is(err, core.ErrAlreadyExists), errors.Is(err, core.ErrConflict):
-		return http.StatusConflict, "conflict"
+	case errors.Is(err, core.ErrAlreadyExists):
+		return http.StatusConflict, "that name is already taken"
+	case errors.Is(err, core.ErrConflict):
+		return http.StatusConflict, conflictReason(err)
 	case errors.Is(err, core.ErrTooMany):
 		return http.StatusTooManyRequests, "too many requests"
 	}
 	return http.StatusInternalServerError, "internal server error"
+}
+
+func conflictReason(err error) string {
+	if reason, ok := strings.CutSuffix(err.Error(), ": "+core.ErrConflict.Error()); ok && !strings.Contains(reason, "\n") {
+		return reason
+	}
+	return core.ErrConflict.Error()
 }
 
 // errorKind names a status as the app's ApiErrorKind does.

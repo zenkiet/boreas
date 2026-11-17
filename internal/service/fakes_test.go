@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -241,6 +242,14 @@ func (f *fakeCredentialStore) Create(_ context.Context, credential core.Registry
 	return credential, nil
 }
 
+func (f *fakeCredentialStore) Update(_ context.Context, credential core.RegistryCredential) (core.RegistryCredential, error) {
+	if _, ok := f.credentials[credential.ID]; !ok {
+		return core.RegistryCredential{}, core.ErrNotFound
+	}
+	f.credentials[credential.ID] = credential
+	return credential, nil
+}
+
 func (f *fakeCredentialStore) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := f.credentials[id]; !ok {
 		return core.ErrNotFound
@@ -357,7 +366,9 @@ type fakeUserStore struct{ users map[uuid.UUID]core.User }
 
 func newFakeUserStore() *fakeUserStore { return &fakeUserStore{users: map[uuid.UUID]core.User{}} }
 
-func (*fakeUserStore) List(context.Context) ([]core.User, error) { return nil, nil }
+func (f *fakeUserStore) List(context.Context) ([]core.User, error) {
+	return slices.Collect(maps.Values(f.users)), nil
+}
 
 func (f *fakeUserStore) Get(_ context.Context, id uuid.UUID) (core.User, error) {
 	user, ok := f.users[id]
@@ -450,9 +461,40 @@ func (f *fakeTokenStore) Revoke(_ context.Context, hash string) error {
 	return nil
 }
 
-func (f *fakeTokenStore) RevokeByID(_ context.Context, userID, tokenID uuid.UUID) error {
+func (f *fakeTokenStore) ListSessions(_ context.Context, userID uuid.UUID) ([]core.AuthToken, error) {
+	var result []core.AuthToken
+	for _, token := range f.tokens {
+		if token.UserID == userID && token.Kind == core.TokenKindSession && token.RevokedAt == nil && token.ExpiresAt.After(time.Now()) {
+			result = append(result, token)
+		}
+	}
+	return result, nil
+}
+
+func (f *fakeTokenStore) Touch(_ context.Context, id uuid.UUID, expiresAt time.Time) error {
 	for hash, token := range f.tokens {
-		if token.ID == tokenID && token.UserID == userID && token.Kind == core.TokenKindAPI {
+		if token.ID == id {
+			token.LastUsedAt, token.ExpiresAt = new(time.Now()), expiresAt
+			f.tokens[hash] = token
+		}
+	}
+	return nil
+}
+
+func (f *fakeTokenStore) RevokeSessions(_ context.Context, userID uuid.UUID, keepHash string) error {
+	now := time.Now()
+	for hash, token := range f.tokens {
+		if token.UserID == userID && token.Kind == core.TokenKindSession && token.RevokedAt == nil && hash != keepHash {
+			token.RevokedAt = &now
+			f.tokens[hash] = token
+		}
+	}
+	return nil
+}
+
+func (f *fakeTokenStore) RevokeByID(_ context.Context, userID, tokenID uuid.UUID, kind core.TokenKind) error {
+	for hash, token := range f.tokens {
+		if token.ID == tokenID && token.UserID == userID && token.Kind == kind {
 			now := time.Now()
 			token.RevokedAt = &now
 			f.tokens[hash] = token
@@ -546,7 +588,7 @@ func (f *fakeRuntime) Logs(context.Context, string, core.LogOptions) (io.ReadClo
 	return io.NopCloser(strings.NewReader("log")), nil
 }
 
-func (f *fakeRuntime) TotalMemory(context.Context) (int64, error) { return f.totalMemory, nil }
+func (f *fakeRuntime) Host(context.Context) (int64, int, error) { return f.totalMemory, 0, nil }
 
 func (f *fakeRuntime) Stats(ctx context.Context, containerID string) (<-chan core.TaskMetric, error) {
 	samples, ok := f.statsFor[containerID]
@@ -743,9 +785,22 @@ func (f *fakeSpecStore) Save(ctx context.Context, s core.BoraSpec, from core.Spe
 	if from != "" && (err != nil || old.State != from) {
 		return core.ErrConflict
 	}
+	s.Stop, s.StoppedBy = "", nil
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.specs[s.ID], err = json.Marshal(s)
+	return err
+}
+
+func (f *fakeSpecStore) Halt(ctx context.Context, id uuid.UUID, stop core.SpecStop, by *uuid.UUID) error {
+	s, err := f.Get(ctx, uuid.Nil, false, id)
+	if err != nil {
+		return err
+	}
+	s.Stop, s.StoppedBy = stop, by
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.specs[id], err = json.Marshal(s)
 	return err
 }
 

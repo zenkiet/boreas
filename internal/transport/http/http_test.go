@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -267,7 +268,7 @@ func TestProjectListIsTheFleet(t *testing.T) {
 				{Project: bare, Role: core.ProjectRoleMember, AllTasks: true},
 			},
 			map[uuid.UUID][]core.FleetTask{project.ID: {{
-				Task: core.Task{Name: "web", Env: map[string]string{"SECRET": "s3cret"}},
+				Name: "web", Error: "pull image: denied", Env: map[string]string{"SECRET": "s3cret"},
 				Role: core.ProjectRoleOperator,
 				LastDeploy: &core.Notification{
 					Status: core.NotificationSuccess, CreatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
@@ -277,7 +278,7 @@ func TestProjectListIsTheFleet(t *testing.T) {
 	body := do(testHandler(stubTasks{}, nil, projects), authed(http.MethodGet, "/api/v1/projects", nil)).Body.String()
 	for _, want := range []string{
 		`"my_role":"viewer","tasks":[{"name":"web"`, `"my_role":"operator"`,
-		`"last_deploy":{"status":"success","at":"2026-01-02T03:04:05Z"}`,
+		`"last_deploy":{"status":"success","at":"2026-01-02T03:04:05Z"}`, `"error":"pull image: denied"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("fleet body missing %s: %s", want, body)
@@ -304,17 +305,15 @@ func TestPublicDirectoryShowsProgressButNotLockedPeople(t *testing.T) {
 	project := core.Project{ID: uuid.New(), Slug: "qrcode-dinein", Name: "QRCode DineIn"}
 	at := time.Date(2026, 11, 7, 14, 28, 0, 0, time.UTC)
 	open := core.FleetTask{
-		Task: core.Task{
-			ProjectID: project.ID, Name: "wo-715", Description: "Improve Menu Scheduler logic", Note: "seeded",
-			Status: core.StatusRunning, DevStatus: core.DevInProgress, FormFactor: core.FormFactorWeb, UpdatedAt: at,
-			Assignees: []core.Assignee{
-				{Username: "kiet.le", Role: core.ProjectRoleViewer},
-				{UserID: uuid.MustParse("7c9e6679-7425-40de-944b-e07fc1f90ae7"), Username: "phuong.nam", AvatarAt: &at, Role: core.ProjectRoleMember},
-				{Username: "qui.nguyen", Role: core.ProjectRoleMember},
-			},
-			Build:    core.Build{State: core.BuildRunning, Stage: "Lint", Progress: 20, URL: "https://ci.example.com/1", At: at},
-			Revision: core.Revision{Repo: "github.com/org/dinein", Commit: "c81f0d6", Previous: "9b31e07"},
+		ProjectID: project.ID, Name: "wo-715", Description: "Improve Menu Scheduler logic", Note: "seeded",
+		Status: core.StatusRunning, DevStatus: core.DevInProgress, FormFactor: core.FormFactorWeb, UpdatedAt: at,
+		Assignees: []core.Assignee{
+			{Username: "kiet.le", Role: core.ProjectRoleViewer},
+			{UserID: uuid.MustParse("7c9e6679-7425-40de-944b-e07fc1f90ae7"), Username: "phuong.nam", AvatarAt: &at, Role: core.ProjectRoleMember},
+			{Username: "qui.nguyen", Role: core.ProjectRoleMember},
 		},
+		Build:      core.Build{State: core.BuildRunning, Stage: "Lint", Progress: 20, URL: "https://ci.example.com/1", At: at},
+		Revision:   core.Revision{Repo: "github.com/org/dinein", Commit: "c81f0d6", Previous: "9b31e07"},
 		LastDeploy: &core.Notification{Status: core.NotificationSuccess, CreatedAt: at},
 	}
 	locked := open
@@ -377,8 +376,10 @@ func TestServiceErrorMapping(t *testing.T) {
 	}{
 		{"invalid", errors.Join(core.ErrInvalidInput, errors.New("detail")), 400, "detail"},
 		{"missing", core.ErrNotFound, 404, "not found"},
-		{"exists", core.ErrAlreadyExists, 409, "conflict"},
+		{"exists", core.ErrAlreadyExists, 409, "that name is already taken"},
 		{"conflict", core.ErrConflict, 409, "conflict"},
+		{"conflict reason", fmt.Errorf("task %q is transitioning: %w", "web", core.ErrConflict), 409, `task \"web\" is transitioning`},
+		{"conflict internals hidden", errors.Join(core.ErrConflict, errors.New("pq: secret detail")), 409, `{"error":"conflict"}`},
 		{"forbidden", core.ErrForbidden, 403, "forbidden"},
 		{"internal hidden", errors.New("database password is secret"), 500, "internal server error"},
 	}
@@ -469,15 +470,18 @@ func TestCreateTaskAssignsWhatItWasGiven(t *testing.T) {
 		}
 		return nil
 	}}
+	failed := core.Task{ID: uuid.New(), Name: "web", Status: core.StatusError, Error: "pull image: manifest unknown"}
 	h := testHandler(stubTasks{
 		create: func(context.Context, string, service.CreateTaskInput) (core.Task, error) {
-			return core.Task{ID: uuid.New(), Name: "web"}, errors.New("pull failed")
+			return failed, errors.New("pull image: manifest unknown")
 		},
+		get: func(context.Context, string, string) (core.Task, error) { return failed, nil },
 	}, nil, projects)
 	rr := do(h, authed(http.MethodPost, "/api/v1/projects/team/tasks",
 		strings.NewReader(`{"name":"web","image":"nginx","assignees":["`+nam.String()+`"]}`)))
-	if rr.Code == http.StatusCreated || !slices.Equal(assigned, []uuid.UUID{nam}) {
-		t.Fatalf("status = %d, assigned %v; want the error and nam assigned", rr.Code, assigned)
+	if rr.Code != http.StatusCreated || !slices.Equal(assigned, []uuid.UUID{nam}) ||
+		!strings.Contains(rr.Body.String(), `"error":"pull image: manifest unknown"`) {
+		t.Fatalf("status = %d, assigned %v, body %s", rr.Code, assigned, rr.Body.String())
 	}
 }
 
@@ -826,11 +830,11 @@ func TestProjectDTOAlwaysIncludesTaskDefaults(t *testing.T) {
 func TestSSEMetricEntries(t *testing.T) {
 	gotTask := "unset"
 	h := testHandler(stubTasks{
-		metrics: func(_ context.Context, acc core.ProjectAccess, name string) (<-chan core.TaskMetric, error) {
+		metrics: func(_ context.Context, name string, accs ...core.ProjectAccess) (<-chan core.TaskMetric, error) {
 			gotTask = name
 			// Must forward what the middleware resolved, not re-derive it.
-			if acc.Role != core.ProjectRoleOwner || !acc.AllTasks {
-				t.Fatalf("handler passed the wrong access: %+v", acc)
+			if len(accs) != 1 || accs[0].Role != core.ProjectRoleOwner || !accs[0].AllTasks {
+				t.Fatalf("handler passed the wrong access: %+v", accs)
 			}
 			out := make(chan core.TaskMetric, 1)
 			out <- core.TaskMetric{
@@ -871,7 +875,7 @@ func TestSSEMetricEntries(t *testing.T) {
 
 func TestMetricsStreamPropagatesServiceErrors(t *testing.T) {
 	h := testHandler(stubTasks{
-		metrics: func(_ context.Context, _ core.ProjectAccess, _ string) (<-chan core.TaskMetric, error) {
+		metrics: func(context.Context, string, ...core.ProjectAccess) (<-chan core.TaskMetric, error) {
 			return nil, errors.Join(core.ErrConflict, errors.New("task has no container"))
 		},
 	}, nil, nil)
@@ -882,6 +886,33 @@ func TestMetricsStreamPropagatesServiceErrors(t *testing.T) {
 	}
 	if ct := rr.Header().Get("Content-Type"); strings.Contains(ct, "event-stream") {
 		t.Fatalf("a failed stream must not claim to be SSE: %q", ct)
+	}
+}
+
+func TestFleetMetricsMergesEveryReachedProject(t *testing.T) {
+	reached := []core.ProjectAccess{
+		{Project: core.Project{Slug: "shop"}, AllTasks: true},
+		{Project: core.Project{Slug: "crm"}},
+	}
+	var opened []core.ProjectAccess
+	h := testHandler(stubTasks{
+		metrics: func(_ context.Context, name string, accs ...core.ProjectAccess) (<-chan core.TaskMetric, error) {
+			if name != "" {
+				t.Fatalf("fleet stream asked for task %q, want every running one", name)
+			}
+			opened = accs
+			out := make(chan core.TaskMetric, 1)
+			out <- core.TaskMetric{Project: "crm", TaskName: "web"}
+			close(out)
+			return out, nil
+		},
+	}, nil, &stubProjects{fleet: func(context.Context, core.User) ([]core.ProjectAccess, map[uuid.UUID][]core.FleetTask, error) {
+		return reached, nil, nil
+	}})
+
+	body := do(h, authed(http.MethodGet, "/api/v1/metrics/stream", nil)).Body.String()
+	if !reflect.DeepEqual(opened, reached) || !strings.Contains(body, `"project":"crm","task":"web"`) {
+		t.Fatalf("opened %+v, body %q", opened, body)
 	}
 }
 
@@ -1176,5 +1207,22 @@ func TestJSONIsGzippedButStreamsAreNot(t *testing.T) {
 	}
 	if rr := do(h, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)); rr.Header().Get("Content-Encoding") != "" {
 		t.Fatalf("plain client got %q", rr.Header().Get("Content-Encoding"))
+	}
+}
+
+func TestOnlySessionsAct(t *testing.T) {
+	for kind, want := range map[core.TokenKind]bool{core.TokenKindSession: true, core.TokenKindAPI: false} {
+		var actor *uuid.UUID
+		tasks := stubTasks{update: func(ctx context.Context, _, _ string, _ service.UpdateTaskInput, _ bool) (core.Task, error) {
+			actor = core.ActorFrom(ctx)
+			return core.Task{}, nil
+		}}
+		h := testHandler(tasks, &stubAuth{user: testAdmin, kind: kind}, nil)
+		if rr := do(h, authed(http.MethodPatch, "/api/v1/projects/demo/tasks/web", strings.NewReader(`{"description":"x"}`))); rr.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", kind, rr.Code, rr.Body.String())
+		}
+		if (actor != nil && *actor == testAdmin.ID) != want {
+			t.Errorf("%s acted as %v", kind, actor)
+		}
 	}
 }

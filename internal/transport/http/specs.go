@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"cmp"
 	"io"
 	"net/http"
 	"time"
@@ -44,6 +45,8 @@ type specItemDTO struct {
 	CreatedBy *uuid.UUID     `json:"created_by"`
 	Author    string         `json:"created_by_name,omitempty"`
 	Stopped   core.SpecState `json:"stopped,omitempty"`
+	StopWhy   string         `json:"stop_reason,omitempty" enum:"stopped,failed,restarted"`
+	StoppedBy string         `json:"stopped_by_name,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 }
@@ -67,7 +70,7 @@ func specItemFromCore(s core.BoraSpec) specItemDTO {
 		CreatedBy: s.CreatedBy, Author: s.CreatedByName, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
 	if item.State == core.SpecFailed {
-		item.Stopped = s.State
+		item.Stopped, item.StopWhy, item.StoppedBy = s.State, cmp.Or(string(s.Stop), "restarted"), s.StoppedByName
 	}
 	if n := len(s.Body.Rounds); item.State == core.SpecAsking && n > 0 {
 		item.Questions = len(s.Body.Rounds[n-1].Questions)

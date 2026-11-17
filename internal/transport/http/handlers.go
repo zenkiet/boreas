@@ -38,7 +38,7 @@ func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 	h.reply(w, http.StatusOK, systemStatsDTO{
 		TotalTasks: stats.TotalTasks, RunningTasks: stats.RunningTasks,
 		StoppedTasks: stats.StoppedTasks, TotalProjects: stats.TotalProjects,
-		TotalMemoryMB: float64(stats.TotalMemoryBytes) / (1024 * 1024),
+		TotalMemoryMB: float64(stats.TotalMemoryBytes) / (1024 * 1024), CPUs: stats.CPUs,
 	}, err)
 }
 
@@ -47,7 +47,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	token, user, err := h.auth.Login(r.Context(), req.Username, req.Password)
+	token, user, err := h.auth.Login(r.Context(), req.Username, req.Password, deviceLabel(r.UserAgent()))
 	h.reply(w, http.StatusOK, loginResponse{Token: token, User: userFromCore(user)}, err)
 }
 
@@ -61,7 +61,7 @@ func (h *Handler) claimPairing(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	token, user, err := h.auth.ClaimPairing(r.Context(), req.Code)
+	token, user, err := h.auth.ClaimPairing(r.Context(), req.Code, deviceLabel(r.UserAgent()))
 	h.reply(w, http.StatusOK, loginResponse{Token: token, User: userFromCore(user)}, err)
 }
 
@@ -86,6 +86,36 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userResponse{User: userFromCore(userFrom(r.Context()))})
+}
+
+func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
+	var req changePasswordRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	err := h.auth.ChangePassword(r.Context(), userFrom(r.Context()), req.CurrentPassword, req.NewPassword, bearerToken(r))
+	h.reply(w, http.StatusOK, succeeded, err)
+}
+
+func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
+	sessions, err := h.auth.ListSessions(r.Context(), userFrom(r.Context()).ID, bearerToken(r))
+	result := convert(sessions, func(s service.Session) sessionDTO {
+		return sessionDTO{
+			ID: s.ID, Device: s.Device, CreatedAt: s.CreatedAt, LastUsedAt: s.LastUsedAt,
+			ExpiresAt: s.ExpiresAt, Current: s.Current,
+		}
+	})
+	h.reply(w, http.StatusOK, sessionsResponse{Sessions: result, Total: len(result)}, err)
+}
+
+func (h *Handler) revokeSession(w http.ResponseWriter, r *http.Request) {
+	if id, ok := pathID(w, r); ok {
+		h.reply(w, http.StatusOK, succeeded, h.auth.RevokeSession(r.Context(), userFrom(r.Context()).ID, id))
+	}
+}
+
+func (h *Handler) revokeOtherSessions(w http.ResponseWriter, r *http.Request) {
+	h.reply(w, http.StatusOK, succeeded, h.auth.RevokeOtherSessions(r.Context(), userFrom(r.Context()).ID, bearerToken(r)))
 }
 
 func (h *Handler) setAvatar(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +167,12 @@ func (h *Handler) subscribePush(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, h.logger, err)
 		return
 	}
-	h.reply(w, http.StatusCreated, succeeded, h.push.Create(r.Context(), userFrom(r.Context()).ID, req.Token))
+	events := cmp.Or(req.Events, core.PushImportant)
+	if events != core.PushImportant && events != core.PushAll {
+		writeServiceError(w, h.logger, errors.Join(core.ErrInvalidInput, errors.New("events must be important or all")))
+		return
+	}
+	h.reply(w, http.StatusCreated, succeeded, h.push.Create(r.Context(), userFrom(r.Context()).ID, req.Token, events))
 }
 
 func (h *Handler) unsubscribePush(w http.ResponseWriter, r *http.Request) {
@@ -210,6 +245,21 @@ func (h *Handler) createCredential(w http.ResponseWriter, r *http.Request) {
 	h.reply(w, http.StatusCreated, credentialResponse{Credential: credentialFromCore(credential)}, err)
 }
 
+func (h *Handler) updateCredential(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req updateCredentialRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	credential, err := h.projects.UpdateCredential(r.Context(), id, service.UpdateCredentialInput{
+		Username: req.Username, Token: req.Token,
+	})
+	h.reply(w, http.StatusOK, credentialResponse{Credential: credentialFromCore(credential)}, err)
+}
+
 func (h *Handler) deleteCredential(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
@@ -228,7 +278,7 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 		for j, task := range fleet[acc.Project.ID] {
 			tasks[j] = fleetTaskDTO{
 				Name: task.Name, Description: task.Description, Image: task.Image,
-				Status: task.Status, DevStatus: task.DevStatus, MyRole: task.Role, Build: task.Build,
+				Status: task.Status, Error: task.Error, DevStatus: task.DevStatus, MyRole: task.Role, Build: task.Build,
 				Assignees: task.Assignees,
 			}
 			if task.LastDeploy != nil {
@@ -334,7 +384,7 @@ func (h *Handler) listNotifications(w http.ResponseWriter, r *http.Request) {
 	result := convert(notifications, func(n core.Notification) notificationDTO {
 		return notificationDTO{
 			ID: n.ID, Project: n.Project, TaskName: n.TaskName, Type: n.Type, Status: n.Status,
-			Title: n.Title, Body: n.Body, Seen: n.Seen, CreatedAt: n.CreatedAt,
+			Title: n.Title, Body: n.Body, Actor: n.Actor, SpecID: n.SpecID, Seen: n.Seen, CreatedAt: n.CreatedAt,
 		}
 	})
 	h.reply(w, http.StatusOK, notificationsResponse{Notifications: result, Total: len(result)}, err)
@@ -374,8 +424,14 @@ func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	h.reply(w, http.StatusOK, succeeded, h.projects.AddMember(r.Context(), r.PathValue("project"),
-		req.UserID, cmp.Or(req.Role, core.ProjectRoleMember)))
+	userID, err := req.UserID, error(nil)
+	if userID == uuid.Nil {
+		userID, err = h.projects.FindPerson(r.Context(), req.User)
+	}
+	if err == nil {
+		err = h.projects.AddMember(r.Context(), r.PathValue("project"), userID, cmp.Or(req.Role, core.ProjectRoleMember))
+	}
+	h.reply(w, http.StatusOK, succeeded, err)
 }
 
 func (h *Handler) removeMember(w http.ResponseWriter, r *http.Request) {
@@ -613,13 +669,12 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 		Name: req.Name, Description: req.Description, Note: req.Note, Image: req.Image,
 		Port: req.Port, FormFactor: req.FormFactor, Labels: req.Labels, Env: req.Env, Volumes: req.Volumes,
 	})
-	// A container that failed still leaves its row, so the people picked land either way.
-	if task.ID != uuid.Nil && len(req.Assignees) > 0 {
-		assignErr := h.projects.SetAssignees(ctx, acc, task.Name, req.Assignees)
-		if err == nil {
-			err = assignErr
-		}
-		if err == nil {
+	// A container that failed still leaves its task, whose error says why: the create stands, people picked included.
+	if task.ID != uuid.Nil {
+		err = nil
+	}
+	if err == nil && len(req.Assignees) > 0 {
+		if err = h.projects.SetAssignees(ctx, acc, task.Name, req.Assignees); err == nil {
 			task, err = h.tasks.Get(ctx, project, task.Name)
 		}
 	}
@@ -652,7 +707,7 @@ func (h *Handler) updateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	task, err := h.tasks.Update(r.Context(), r.PathValue("project"), r.PathValue("name"),
 		service.UpdateTaskInput{
-			Description: req.Description, Note: req.Note, DevStatus: req.DevStatus, FormFactor: req.FormFactor,
+			Description: req.Description, Note: req.Note, NoteWas: req.NoteWas, DevStatus: req.DevStatus, FormFactor: req.FormFactor,
 			Password: req.Password, Image: req.Image, Port: req.Port, Labels: req.Labels, Env: req.Env,
 			Volumes: req.Volumes, Routes: req.Routes,
 		}, req.AutoRestart == nil || *req.AutoRestart)

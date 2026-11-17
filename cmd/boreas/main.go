@@ -168,6 +168,14 @@ func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	go runtime.Exits(ctx, func(exit core.ContainerExit) {
+		go func() {
+			if err := tasks.ContainerExited(ctx, exit); err != nil {
+				logger.Error("container exit", "error", err)
+			}
+		}()
+	})
+
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("listening", "addr", cfg.ListenAddr())

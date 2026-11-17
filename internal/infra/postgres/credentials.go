@@ -33,6 +33,13 @@ func (s *CredentialStore) Create(ctx context.Context, credential core.RegistryCr
 		credential.Name, credential.Registry, credential.Username, credential.Token, credential.CreatedBy)
 }
 
+func (s *CredentialStore) Update(ctx context.Context, credential core.RegistryCredential) (core.RegistryCredential, error) {
+	return one(ctx, s.pool, scanCredential, "update credential", `
+		UPDATE registry_credentials SET username = $2, token = $3 WHERE id = $1
+		RETURNING `+credentialColumns,
+		credential.ID, credential.Username, credential.Token)
+}
+
 func (s *CredentialStore) Delete(ctx context.Context, id uuid.UUID) error {
 	return deleteRow(ctx, s.pool, "delete credential", `DELETE FROM registry_credentials WHERE id = $1`, id)
 }

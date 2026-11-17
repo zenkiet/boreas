@@ -612,7 +612,7 @@ func TestBoraScope(t *testing.T) {
 		logOptions = opts
 		return "a line\n", nil
 	}
-	svc.Metrics = func(ctx context.Context, _ core.ProjectAccess, _ string) (<-chan core.TaskMetric, error) {
+	svc.Metrics = func(ctx context.Context, _ string, _ ...core.ProjectAccess) (<-chan core.TaskMetric, error) {
 		// Two replayed samples from the last minute come before the live one Bora must report.
 		ago := time.Now().Add(-30 * time.Second)
 		samples := make(chan core.TaskMetric, 3)

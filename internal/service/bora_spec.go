@@ -155,11 +155,17 @@ func (s *ProjectService) FollowSpec(ctx context.Context, actor core.User, id uui
 }
 
 func (s *ProjectService) StopSpec(ctx context.Context, actor core.User, id uuid.UUID) error {
-	_, err := s.BoraSpec(ctx, actor, id)
-	if t := s.specTurn(id); err == nil && t != nil {
-		t.cancel()
+	spec, err := s.BoraSpec(ctx, actor, id)
+	switch {
+	case err != nil:
+		return err
+	case !owns(actor, spec):
+		return core.ErrForbidden
 	}
-	return err
+	if t := s.specTurn(id); t != nil {
+		t.stop(actor.ID)
+	}
+	return nil
 }
 
 func (s *ProjectService) DeleteSpec(ctx context.Context, actor core.User, id uuid.UUID) error {
@@ -167,13 +173,20 @@ func (s *ProjectService) DeleteSpec(ctx context.Context, actor core.User, id uui
 	switch {
 	case err != nil:
 		return err
-	case !actor.IsAdmin() && (spec.CreatedBy == nil || *spec.CreatedBy != actor.ID):
+	case !owns(actor, spec):
 		return core.ErrForbidden
+	}
+	if err := s.Specs.Delete(ctx, id); err != nil {
+		return wrap("delete spec", err)
 	}
 	if t := s.specTurn(id); t != nil {
 		t.cancel()
 	}
-	return wrap("delete spec", s.Specs.Delete(ctx, id))
+	return nil
+}
+
+func owns(actor core.User, spec core.BoraSpec) bool {
+	return actor.IsAdmin() || spec.CreatedBy != nil && *spec.CreatedBy == actor.ID
 }
 
 func (s *ProjectService) ExportSpec(ctx context.Context, actor core.User, id uuid.UUID, project, origin string) (string, error) {
@@ -248,17 +261,105 @@ func (s *ProjectService) runSpec(ctx context.Context, b *bora, spec core.BoraSpe
 	}
 	spec.Running = true
 	r := &specRun{t: t, b: b, spec: spec}
-	go s.runTurn(turnCtx, t, func(ctx context.Context) (BoraEvent, error) {
-		err := work(r, ctx)
-		if err == nil {
-			err = wrap("save spec", s.Specs.Save(context.WithoutCancel(ctx), r.spec, to))
-		}
-		if s.Changed != nil {
-			s.Changed()
-		}
-		return BoraEvent{Name: "done"}, err
-	})
+	go func() {
+		var err error
+		canceled := false
+		s.runTurn(turnCtx, t, func(ctx context.Context) (BoraEvent, error) {
+			if err = work(r, ctx); err == nil {
+				err = wrap("save spec", s.Specs.Save(context.WithoutCancel(ctx), r.spec, to))
+			}
+			canceled = ctx.Err() != nil
+			return BoraEvent{Name: "done"}, err
+		})
+		s.specEnded(context.WithoutCancel(turnCtx), t, err, canceled)
+	}()
 	return spec, nil
+}
+
+func (s *ProjectService) specEnded(ctx context.Context, t *boraTurn, err error, canceled bool) {
+	by := t.stopper.Load()
+	switch {
+	case err != nil && by != nil:
+		_ = s.Specs.Halt(ctx, t.id, core.SpecStopped, by)
+	case err != nil && !canceled:
+		_ = s.Specs.Halt(ctx, t.id, core.SpecStepFailed, nil)
+	}
+	if spec, err := s.Specs.Get(ctx, uuid.Nil, true, t.id); err == nil && s.Notify != nil {
+		s.tellSpec(ctx, spec, by)
+	}
+	if s.Changed != nil {
+		s.Changed()
+	}
+}
+
+func (s *ProjectService) tellSpec(ctx context.Context, spec core.BoraSpec, stopper *uuid.UUID) {
+	kind, event, detail := specNews(spec)
+	told := map[uuid.UUID]bool{}
+	tell := func(slug string, id uuid.UUID) {
+		if told[id] {
+			return
+		}
+		told[id] = true
+		if project, err := s.Get(ctx, slug); err == nil && s.seesSpec(ctx, id, spec.ID) {
+			n := notification(ctx, project, spec.Key, kind, event, detail)
+			n.UserID, n.ActorID, n.SpecID = &id, stopper, &spec.ID
+			s.Notify(ctx, n)
+		}
+	}
+	for i, projectID := range spec.Projects {
+		task, _ := s.tasks.GetByName(ctx, projectID, spec.Key)
+		for _, a := range task.Assignees {
+			if a.Role == core.ProjectRoleMember {
+				tell(spec.Slugs[i], a.UserID)
+			}
+		}
+	}
+	if spec.CreatedBy != nil {
+		tell(spec.Slugs[0], *spec.CreatedBy)
+	}
+}
+
+func (s *ProjectService) seesSpec(ctx context.Context, userID, id uuid.UUID) bool {
+	admin := false
+	if s.Users != nil {
+		user, err := s.Users.Get(ctx, userID)
+		admin = err == nil && user.IsAdmin()
+	}
+	_, err := s.Specs.Get(ctx, userID, admin, id)
+	return err == nil
+}
+
+func specNews(spec core.BoraSpec) (kind core.NotificationType, event, detail string) {
+	switch spec.Status() {
+	case core.SpecAsking:
+		return core.NotificationSpecAsking, "❓ Bora Has Questions", count(len(spec.Body.Rounds[len(spec.Body.Rounds)-1].Questions), "question") + " for the team"
+	case core.SpecConfirming:
+		return core.NotificationSpecConfirming, "🧭 Decisions to Confirm", count(len(spec.Body.Decisions), "decision") + " to confirm"
+	case core.SpecReady:
+		return core.NotificationSpecReady, "📋 Plan Ready", "the plan and the tests are written"
+	}
+	return core.NotificationSpecFailed, "⚠️ Bora Stopped", stoppedWhy(spec)
+}
+
+func stoppedWhy(spec core.BoraSpec) string {
+	step := "read the code"
+	if spec.State == core.SpecWriting {
+		step = "wrote the plan"
+	}
+	switch spec.Stop {
+	case core.SpecStopped:
+		return cmp.Or(spec.StoppedByName, "someone") + " stopped Bora while it " + step
+	case core.SpecStepFailed:
+		return "the model failed while Bora " + step
+	}
+	return "the server restarted while Bora " + step
+}
+
+func count(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return strconv.Itoa(n) + " " + noun + "s"
 }
 
 func (r *specRun) interview(ctx context.Context) error {

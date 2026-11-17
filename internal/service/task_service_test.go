@@ -418,14 +418,14 @@ func TestDeployNotificationMessages(t *testing.T) {
 
 	completedAt := time.Date(2026, time.August, 25, 23, 0, 0, 0, time.UTC)
 
-	success := deployNotification(project, "wo-705", completedAt, nil)
+	success := deployNotification(context.Background(), project, "wo-705", completedAt, nil)
 	if success.Status != core.NotificationSuccess ||
 		success.Title != "🚀 Deploy Succeeded • Online Ordering" ||
 		success.Body != "wo-705: Task completed at 11:00PM" {
 		t.Fatalf("unexpected success message: %+v", success)
 	}
 
-	failure := deployNotification(project, "wo-705", completedAt, errors.New("registry unavailable"))
+	failure := deployNotification(context.Background(), project, "wo-705", completedAt, errors.New("registry unavailable"))
 	if failure.Status != core.NotificationFailure ||
 		failure.Title != "❌ Deploy Failed • Online Ordering" ||
 		failure.Body != "wo-705: Failed at 11:00PM: registry unavailable" {
@@ -719,15 +719,15 @@ func TestReconcileReportsOrphanedProject(t *testing.T) {
 	}
 }
 
-func metricsFor(t *testing.T, h *harness, acc core.ProjectAccess, name string) map[string]int {
+func metricsFor(t *testing.T, h *harness, accs ...core.ProjectAccess) map[string]int {
 	t.Helper()
-	stream, err := h.svc.Metrics(context.Background(), acc, name)
+	stream, err := h.svc.Metrics(context.Background(), "", accs...)
 	if err != nil {
 		t.Fatalf("Metrics: %v", err)
 	}
 	seen := map[string]int{}
 	for sample := range stream {
-		seen[sample.TaskName]++
+		seen[sample.Project+"/"+sample.TaskName]++
 	}
 	return seen
 }
@@ -748,21 +748,28 @@ func TestMetricsFansInRunningTasksTheCallerReaches(t *testing.T) {
 		"c-web": {{CPUPercent: 1}}, "c-api": {{CPUPercent: 2}, {CPUPercent: 3}}, "c-db": {{CPUPercent: 9}},
 	}
 
-	full := metricsFor(t, h, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
-	if !maps.Equal(full, map[string]int{"web": 1, "api": 2}) {
+	full := metricsFor(t, h, core.ProjectAccess{Project: h.project, AllTasks: true})
+	if !maps.Equal(full, map[string]int{"team/web": 1, "team/api": 2}) {
 		t.Fatalf("member stream = %v, want every running task", full)
 	}
-	scoped := metricsFor(t, h, core.ProjectAccess{Project: h.project, UserID: grantee}, "")
-	if !maps.Equal(scoped, map[string]int{"web": 1}) {
+	scoped := metricsFor(t, h, core.ProjectAccess{Project: h.project, UserID: grantee})
+	if !maps.Equal(scoped, map[string]int{"team/web": 1}) {
 		t.Fatalf("grantee stream = %v, want the granted task only", scoped)
+	}
+
+	shop := h.projects.add("shop")
+	seedTask(t, h.tasks, core.Task{ProjectID: shop.ID, Name: "web", Status: core.StatusRunning, ContainerID: "c-shop"})
+	h.runtime.statsFor["c-shop"] = []core.TaskMetric{{CPUPercent: 4}}
+	fleet := metricsFor(t, h, core.ProjectAccess{Project: h.project, UserID: grantee}, core.ProjectAccess{Project: shop, AllTasks: true})
+	if !maps.Equal(fleet, map[string]int{"team/web": 1, "shop/web": 1}) {
+		t.Fatalf("fleet stream = %v, want each project's tasks under its own slug", fleet)
 	}
 }
 
 func TestMetricsForOneTaskRequiresAContainer(t *testing.T) {
 	h := newHarness(t)
 	seedTask(t, h.tasks, core.Task{ProjectID: h.project.ID, Name: "web", Status: core.StatusStopped})
-	_, err := h.svc.Metrics(context.Background(),
-		core.ProjectAccess{Project: h.project, AllTasks: true}, "web")
+	_, err := h.svc.Metrics(context.Background(), "web", core.ProjectAccess{Project: h.project, AllTasks: true})
 	if !errors.Is(err, core.ErrConflict) {
 		t.Fatalf("got %v, want ErrConflict", err)
 	}
@@ -832,7 +839,7 @@ func TestMetricsStopsWhenTheClientLeaves(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 	ctx, cancel := context.WithCancel(context.Background())
-	stream, err := h.svc.Metrics(ctx, core.ProjectAccess{Project: h.project, AllTasks: true}, "")
+	stream, err := h.svc.Metrics(ctx, "", core.ProjectAccess{Project: h.project, AllTasks: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -900,5 +907,76 @@ func TestReportBuild(t *testing.T) {
 	}
 	if err := h.svc.ReportBuild(context.Background(), "team", "absent", running); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("unknown task: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestContainerExitedReportsACrashOnce(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	task := h.create(t, CreateTaskInput{Name: "web", Image: "img"})
+	h.notified = nil
+	exit := core.ContainerExit{ID: task.ContainerID, Project: "team", Task: "web", Code: 137, OOM: true}
+	if err := h.svc.ContainerExited(ctx, exit); err != nil {
+		t.Fatal(err)
+	}
+	down, err := h.svc.Get(ctx, "team", "web")
+	if err != nil || down.Status != core.StatusError || down.Error != "the container exited with code 137, out of memory" ||
+		len(h.notified) != 1 || h.notified[0].Type != core.NotificationContainerDown || h.notified[0].Status != core.NotificationFailure ||
+		h.notified[0].Body != "web: the container exited with code 137, out of memory" {
+		t.Fatalf("crash not reported: %+v %+v %v", down, h.notified, err)
+	}
+	if err := h.svc.ContainerExited(ctx, exit); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Restart(ctx, "team", "web"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.svc.ContainerExited(ctx, exit); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Stop(ctx, "team", "web"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.svc.ContainerExited(ctx, core.ContainerExit{ID: "recreated", Project: "team", Task: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := h.svc.Get(ctx, "team", "web")
+	if err != nil || len(h.notified) != 1 || stopped.Status != core.StatusStopped {
+		t.Fatalf("an expected exit was reported: %+v %+v %v", stopped, h.notified, err)
+	}
+}
+
+func TestStartAndRestartWithoutTheirImageFailTheTask(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.create(t, CreateTaskInput{Name: "web", Image: "img"})
+	h.runtime.calls = nil
+	h.runtime.pullErr = errors.New(`pull image "img": manifest unknown`)
+	task, err := h.svc.Restart(ctx, "team", "web")
+	if !errors.Is(err, core.ErrConflict) || task.Status != core.StatusError || task.Error != `pull image "img": manifest unknown` ||
+		slices.Contains(h.runtime.calls, "recreate") {
+		t.Fatalf("restart: %+v, %v, calls %v", task, err, h.runtime.calls)
+	}
+	if _, err := h.svc.Update(ctx, "team", "web", UpdateTaskInput{Image: new("img:2")}, false); err != nil {
+		t.Fatal(err)
+	}
+	if task, err := h.svc.Start(ctx, "team", "web"); !errors.Is(err, core.ErrConflict) || task.Status != core.StatusError ||
+		h.runtime.pulledImages[len(h.runtime.pulledImages)-1] != "img:2" {
+		t.Fatalf("start: %+v, %v, pulled %v", task, err, h.runtime.pulledImages)
+	}
+}
+
+func TestNoteFromAStaleCopyConflicts(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.create(t, CreateTaskInput{Name: "web", Image: "img", Note: "theirs"})
+	if _, err := h.svc.Update(ctx, "team", "web", UpdateTaskInput{Note: new("mine"), NoteWas: new("")}, false); !errors.Is(err, core.ErrConflict) {
+		t.Fatalf("a stale note was saved: %v", err)
+	}
+	if task, err := h.svc.Update(ctx, "team", "web", UpdateTaskInput{Note: new("mine")}, false); err != nil || task.Note != "mine" {
+		t.Fatalf("replace: %q, %v", task.Note, err)
+	}
+	if task, err := h.svc.Update(ctx, "team", "web", UpdateTaskInput{Note: new("next"), NoteWas: new("mine")}, false); err != nil || task.Note != "next" {
+		t.Fatalf("a current note was refused: %q, %v", task.Note, err)
 	}
 }

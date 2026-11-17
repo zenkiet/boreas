@@ -21,7 +21,7 @@ type ProjectService struct {
 	grants        core.GrantStore
 	tasks         core.TaskStore
 	folder        func(ctx context.Context, project string) error
-	// Optional wiring: Notify reports task assignments; Users, when also set, names the grantee.
+	// Optional wiring: Notify reports task assignments and spec steps; Users finds people by name.
 	Notify func(context.Context, core.Notification)
 	Users  core.UserStore
 	// Bora answers with Assist and keeps Conversations and their Images; Code, Logs and Metrics feed its tools.
@@ -30,7 +30,7 @@ type ProjectService struct {
 	Images        core.ObjectStore
 	Code          core.CodeIndex
 	Logs          func(ctx context.Context, project, task string, opts core.LogOptions) (string, error)
-	Metrics       func(ctx context.Context, acc core.ProjectAccess, task string) (<-chan core.TaskMetric, error)
+	Metrics       func(ctx context.Context, task string, accs ...core.ProjectAccess) (<-chan core.TaskMetric, error)
 	Plan          func(ctx context.Context, userID uuid.UUID, ask core.Ask) (string, []string, error)
 	Specs         core.SpecStore
 	Changed       func()
@@ -292,6 +292,22 @@ func (s *ProjectService) AddMember(ctx context.Context, slug string, userID uuid
 	}))
 }
 
+func (s *ProjectService) FindPerson(ctx context.Context, login string) (uuid.UUID, error) {
+	login = strings.TrimSpace(login)
+	if s.Users != nil && login != "" {
+		users, err := s.Users.List(ctx)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("list users: %w", err)
+		}
+		for _, u := range users {
+			if !u.Disabled() && (strings.EqualFold(u.Username, login) || strings.EqualFold(u.Email, login)) {
+				return u.ID, nil
+			}
+		}
+	}
+	return uuid.Nil, errors.Join(core.ErrInvalidInput, errors.New("no active account has that username or email"))
+}
+
 func (s *ProjectService) RemoveMember(ctx context.Context, slug string, userID uuid.UUID) error {
 	project, err := s.Get(ctx, slug)
 	if err != nil {
@@ -469,7 +485,7 @@ func (s *ProjectService) tellAssignee(ctx context.Context, project core.Project,
 	if s.Notify == nil {
 		return
 	}
-	n := notification(project, task, core.NotificationTaskAssigned, "👤 Task Assigned",
+	n := notification(ctx, project, task, core.NotificationTaskAssigned, "👤 Task Assigned",
 		"assigned to you ("+string(role)+")")
 	n.UserID = &userID
 	s.Notify(ctx, n)
@@ -500,6 +516,29 @@ func (s *ProjectService) CreateCredential(ctx context.Context, actor core.User, 
 		Name: in.Name, Registry: in.Registry, Username: in.Username, Token: in.Token, CreatedBy: &actor.ID,
 	})
 	return credential, wrap("create credential", err)
+}
+
+type UpdateCredentialInput struct {
+	Username *string
+	Token    *string
+}
+
+func (s *ProjectService) UpdateCredential(ctx context.Context, id uuid.UUID, in UpdateCredentialInput) (core.RegistryCredential, error) {
+	if in.Username != nil && strings.TrimSpace(*in.Username) == "" || in.Token != nil && strings.TrimSpace(*in.Token) == "" {
+		return core.RegistryCredential{}, errors.Join(core.ErrInvalidInput, errors.New("username and token must not be empty"))
+	}
+	credential, err := s.credentials.Get(ctx, id)
+	if err != nil {
+		return core.RegistryCredential{}, wrap("get credential", err)
+	}
+	if in.Username != nil {
+		credential.Username = *in.Username
+	}
+	if in.Token != nil {
+		credential.Token = *in.Token
+	}
+	updated, err := s.credentials.Update(ctx, credential)
+	return updated, wrap("update credential", err)
 }
 
 func (s *ProjectService) DeleteCredential(ctx context.Context, id uuid.UUID) error {

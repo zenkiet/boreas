@@ -14,8 +14,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
@@ -79,6 +81,16 @@ func (r *Runtime) EnsureRestartPolicy(ctx context.Context) error {
 }
 
 func (r *Runtime) Pull(ctx context.Context, imageName string, credential *core.RegistryCredential) error {
+	err := r.pull(ctx, imageName, credential)
+	if err != nil && !errors.Is(err, core.ErrInvalidInput) {
+		if _, inspectErr := r.client.ImageInspect(ctx, imageName); inspectErr == nil {
+			return nil
+		}
+	}
+	return err
+}
+
+func (r *Runtime) pull(ctx context.Context, imageName string, credential *core.RegistryCredential) error {
 	if strings.TrimSpace(imageName) == "" {
 		return errors.Join(core.ErrInvalidInput, errors.New("image is required"))
 	}
@@ -302,12 +314,52 @@ func (r *Runtime) Logs(ctx context.Context, id string, options core.LogOptions) 
 	return stream, mapError("read logs for container "+id, err)
 }
 
-func (r *Runtime) TotalMemory(ctx context.Context) (int64, error) {
+func (r *Runtime) Host(ctx context.Context) (int64, int, error) {
 	info, err := r.client.Info(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("docker info: %w", err)
+		return 0, 0, fmt.Errorf("docker info: %w", err)
 	}
-	return info.MemTotal, nil
+	return info.MemTotal, info.NCPU, nil
+}
+
+func (r *Runtime) Exits(ctx context.Context, exited func(core.ContainerExit)) {
+	before := map[string]events.Action{}
+	for {
+		r.follow(ctx, before, exited)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(3 * time.Second):
+		}
+	}
+}
+
+func (r *Runtime) follow(ctx context.Context, before map[string]events.Action, exited func(core.ContainerExit)) {
+	messages, errs := r.client.Events(ctx, events.ListOptions{Filters: filters.NewArgs(
+		filters.Arg("type", string(events.ContainerEventType)), filters.Arg("label", "managed-by=boreas"),
+		filters.Arg("event", string(events.ActionKill)), filters.Arg("event", string(events.ActionOOM)),
+		filters.Arg("event", string(events.ActionDie)))})
+	for {
+		select {
+		case m := <-messages:
+			if m.Action != events.ActionDie {
+				before[m.Actor.ID] = m.Action
+				continue
+			}
+			why := before[m.Actor.ID]
+			delete(before, m.Actor.ID)
+			if why == events.ActionKill {
+				continue
+			}
+			code, _ := strconv.Atoi(m.Actor.Attributes["exitCode"])
+			exited(core.ContainerExit{
+				ID: m.Actor.ID, Project: m.Actor.Attributes["project"], Task: m.Actor.Attributes["task"],
+				Code: code, OOM: why == events.ActionOOM,
+			})
+		case <-errs:
+			return
+		}
+	}
 }
 
 func registryAuth(credential *core.RegistryCredential) string {

@@ -145,24 +145,44 @@ const (
 	NotificationTaskCreated   NotificationType = "task_created"
 	NotificationTaskAssigned  NotificationType = "task_assigned"
 	NotificationBuildFailed   NotificationType = "build_failed"
+	NotificationContainerDown NotificationType = "container_down"
+
+	NotificationSpecAsking     NotificationType = "spec_asking"
+	NotificationSpecConfirming NotificationType = "spec_confirming"
+	NotificationSpecReady      NotificationType = "spec_ready"
+	NotificationSpecFailed     NotificationType = "spec_failed"
 )
 
 func (NotificationType) Enum() []any {
 	return []any{
 		NotificationDeployed, NotificationDeployFailed, NotificationStatusChanged,
-		NotificationTaskCreated, NotificationTaskAssigned, NotificationBuildFailed,
+		NotificationTaskCreated, NotificationTaskAssigned, NotificationBuildFailed, NotificationContainerDown,
+		NotificationSpecAsking, NotificationSpecConfirming, NotificationSpecReady, NotificationSpecFailed,
 	}
 }
 
-// Status is the delivery severity: deploys succeed or fail, builds can fail, everything else informs.
+// Status is the delivery severity: deploys and plans succeed or fail, builds and containers fail, everything else informs.
 func (t NotificationType) Status() NotificationStatus {
 	switch t {
-	case NotificationDeployed:
+	case NotificationDeployed, NotificationSpecReady:
 		return NotificationSuccess
-	case NotificationDeployFailed, NotificationBuildFailed:
+	case NotificationDeployFailed, NotificationBuildFailed, NotificationContainerDown, NotificationSpecFailed:
 		return NotificationFailure
 	}
 	return NotificationInfo
+}
+
+type actorKey struct{}
+
+func WithActor(ctx context.Context, userID uuid.UUID) context.Context {
+	return context.WithValue(ctx, actorKey{}, userID)
+}
+
+func ActorFrom(ctx context.Context) *uuid.UUID {
+	if id, ok := ctx.Value(actorKey{}).(uuid.UUID); ok {
+		return &id
+	}
+	return nil
 }
 
 var (
@@ -190,6 +210,15 @@ func ValidateEnv(env map[string]string) error {
 	}
 	return nil
 }
+
+type PushEvents string
+
+const (
+	PushImportant PushEvents = "important"
+	PushAll       PushEvents = "all"
+)
+
+func (PushEvents) Enum() []any { return []any{PushImportant, PushAll} }
 
 func ValidatePushToken(token string) error {
 	if token == "" || len(token) > 4096 || strings.ContainsAny(token, ",/? \t\r\n") {
@@ -226,15 +255,17 @@ func (u User) IsAdmin() bool  { return u.Role == RoleAdmin }
 func (u User) Disabled() bool { return u.DisabledAt != nil }
 
 type AuthToken struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Name      string
-	Kind      TokenKind
-	TokenHash string
-	ValidFrom time.Time
-	ExpiresAt time.Time
-	RevokedAt *time.Time
-	CreatedAt time.Time
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Name       string
+	Kind       TokenKind
+	TokenHash  string
+	Device     string
+	ValidFrom  time.Time
+	ExpiresAt  time.Time
+	RevokedAt  *time.Time
+	LastUsedAt *time.Time
+	CreatedAt  time.Time
 }
 
 type TokenKind string
@@ -419,6 +450,9 @@ type Notification struct {
 	Title     string
 	Body      string
 	UserID    *uuid.UUID // its one recipient; nil reaches everyone who sees the task
+	ActorID   *uuid.UUID
+	Actor     string
+	SpecID    *uuid.UUID
 	Seen      bool
 	CreatedAt time.Time
 }
@@ -534,6 +568,12 @@ type ContainerState struct {
 	Error  string
 }
 
+type ContainerExit struct {
+	ID, Project, Task string
+	Code              int
+	OOM               bool
+}
+
 type LogOptions struct {
 	Tail   int
 	Follow bool
@@ -546,11 +586,13 @@ type SystemStats struct {
 	StoppedTasks     int
 	TotalProjects    int
 	TotalMemoryBytes int64
+	CPUs             int
 }
 
 // TaskMetric is one live sample. CPUPercent is a rate, so the first sample of a stream
 // reports 0; MemoryBytes excludes page cache to match `docker stats`.
 type TaskMetric struct {
+	Project        string    `json:"project"`
 	TaskName       string    `json:"task"`
 	CPUPercent     float64   `json:"cpu_percent"`
 	MemoryBytes    int64     `json:"memory_bytes"`
@@ -745,6 +787,13 @@ type SpecBody struct {
 	Cases        []SpecCase       `json:"cases"`
 }
 
+type SpecStop string
+
+const (
+	SpecStopped    SpecStop = "stopped"
+	SpecStepFailed SpecStop = "failed"
+)
+
 type BoraSpec struct {
 	ID                   uuid.UUID
 	Key, Title           string
@@ -755,6 +804,9 @@ type BoraSpec struct {
 	CreatedByName        string
 	Body                 SpecBody
 	Running              bool
+	Stop                 SpecStop
+	StoppedBy            *uuid.UUID
+	StoppedByName        string
 	CreatedAt, UpdatedAt time.Time
 }
 
@@ -769,6 +821,7 @@ type SpecStore interface {
 	Get(ctx context.Context, userID uuid.UUID, admin bool, id uuid.UUID) (BoraSpec, error)
 	List(ctx context.Context, userID uuid.UUID, admin bool, project, key string) ([]BoraSpec, error)
 	Save(ctx context.Context, s BoraSpec, from SpecState) error
+	Halt(ctx context.Context, id uuid.UUID, stop SpecStop, by *uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -924,7 +977,7 @@ type ContainerRuntime interface {
 	Folders(ctx context.Context, project string) ([]string, error)
 	Inspect(context.Context, string) (ContainerState, error)
 	Logs(context.Context, string, LogOptions) (io.ReadCloser, error)
-	TotalMemory(context.Context) (int64, error)
+	Host(context.Context) (memory int64, cpus int, err error)
 	Stats(ctx context.Context, containerID string) (<-chan TaskMetric, error)
 }
 
@@ -953,9 +1006,12 @@ type UserStore interface {
 type TokenStore interface {
 	Create(context.Context, AuthToken) (AuthToken, error)
 	ListAPITokens(ctx context.Context, userID uuid.UUID) ([]AuthToken, error)
+	ListSessions(ctx context.Context, userID uuid.UUID) ([]AuthToken, error)
 	GetByHash(ctx context.Context, hash string) (AuthToken, error)
+	Touch(ctx context.Context, id uuid.UUID, expiresAt time.Time) error
 	Revoke(ctx context.Context, hash string) error
-	RevokeByID(ctx context.Context, userID, tokenID uuid.UUID) error
+	RevokeByID(ctx context.Context, userID, tokenID uuid.UUID, kind TokenKind) error
+	RevokeSessions(ctx context.Context, userID uuid.UUID, keepHash string) error
 	RevokeAllForUser(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -996,6 +1052,7 @@ type CredentialStore interface {
 	List(context.Context) ([]RegistryCredential, error)
 	Get(ctx context.Context, id uuid.UUID) (RegistryCredential, error)
 	Create(context.Context, RegistryCredential) (RegistryCredential, error)
+	Update(context.Context, RegistryCredential) (RegistryCredential, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 

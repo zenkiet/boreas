@@ -391,7 +391,7 @@ func (b *bora) metrics(ctx context.Context, in args) (string, error) {
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, metricsWindow)
 	defer cancel()
-	samples, err := b.s.Metrics(ctx, acc, in.Task)
+	samples, err := b.s.Metrics(ctx, in.Task, acc)
 	switch {
 	case errors.Is(err, core.ErrConflict):
 		return "no metrics: the task has no container yet", nil

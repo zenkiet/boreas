@@ -61,13 +61,14 @@ var routeTable = [...]route{
 	{
 		method: http.MethodGet, path: "/api/v1/stats", access: accessAuthed, handler: (*Handler).stats,
 		tag: "system", summary: "Service statistics",
-		resp: new(systemStatsDTO),
+		description: "cpus is the host's CPU count: a metric's cpu_percent counts each of them as 100.",
+		resp:        new(systemStatsDTO),
 	},
 	{
 		method: http.MethodGet, path: "/api/v1/events/stream", access: accessSession, handler: (*Handler).streamEvents,
 		tag: "system", summary: "Stream change signals",
 		description: "Server-Sent Events carrying {} once on connect and after any successful authenticated write outside Bora's conversations, " +
-			"a deploy's interim task states and each recorded notification, " +
+			"a deploy's interim task states, each recorded notification and each spec step that ends, " +
 			"with nothing about what changed: refetch what you show, such as GET /api/v1/projects. " +
 			"Bursts arrive as one event, and a comment heartbeat fills idle time. " + readSSE,
 		resp: new(string), contentType: "text/event-stream",
@@ -76,8 +77,9 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/auth/login", access: accessPublic, handler: (*Handler).login,
 		tag: "auth", summary: "Exchange credentials for a token",
-		description: "The token is returned once and expires in 30 days.",
-		req:         new(loginRequest), resp: new(loginResponse),
+		description: "The token is returned once. It lasts 30 days and renews itself to 30 more days while in use, " +
+			"once fewer than 15 are left.",
+		req: new(loginRequest), resp: new(loginResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusUnauthorized},
 	},
 	{
@@ -90,7 +92,7 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/auth/pairing/claim", access: accessPublic, handler: (*Handler).claimPairing,
 		tag: "auth", summary: "Exchange a pairing code for a token",
-		description: "The token is returned once and expires in 30 days. " +
+		description: "The token is returned once and lasts as a login's does. " +
 			"The code travels in the body so request logs never hold it.",
 		req: new(pairingCodeRequest), resp: new(loginResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusUnauthorized},
@@ -115,6 +117,34 @@ var routeTable = [...]route{
 		resp: new(userResponse),
 	},
 	{
+		method: http.MethodPatch, path: "/api/v1/auth/me/password", access: accessSession, handler: (*Handler).changePassword,
+		tag: "auth", summary: "Change your password",
+		description: "Takes the current password as proof, so a device left signed in cannot change it. " +
+			"Every other device is signed out; this session and your API tokens keep working. " +
+			"A wrong current password is 400, never 401.",
+		req: new(changePasswordRequest), resp: new(successResponse),
+		extraErrors: []int{http.StatusBadRequest}, quiet: true,
+	},
+	{
+		method: http.MethodGet, path: "/api/v1/auth/sessions", access: accessSession, handler: (*Handler).listSessions,
+		tag: "auth", summary: "List the devices you are signed in on",
+		description: "Your login sessions still signed in, most recently used first; current is the one asking. " +
+			"device is named from the User-Agent at sign-in, and last_used_at is kept to the minute.",
+		resp: new(sessionsResponse),
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/auth/sessions", access: accessSession, handler: (*Handler).revokeOtherSessions,
+		tag: "auth", summary: "Sign out your other devices",
+		description: "Revokes every login session but the one asking. API tokens keep working.",
+		resp:        new(successResponse), quiet: true,
+	},
+	{
+		method: http.MethodDelete, path: "/api/v1/auth/sessions/{id}", access: accessSession, handler: (*Handler).revokeSession,
+		tag: "auth", summary: "Sign out one of your devices",
+		req: new(idPath), resp: new(successResponse),
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound}, quiet: true,
+	},
+	{
 		method: http.MethodPut, path: "/api/v1/auth/me/avatar", access: accessSession, handler: (*Handler).setAvatar,
 		tag: "auth", summary: "Set your avatar",
 		description: "The body is the image itself, JPEG, PNG, WebP or GIF, at most 5 MiB; it replaces the one before. " +
@@ -125,8 +155,9 @@ var routeTable = [...]route{
 	{
 		method: http.MethodGet, path: "/api/v1/auth/tokens", access: accessSession, handler: (*Handler).listAPITokens,
 		tag: "auth", summary: "List your API tokens",
-		description: "Metadata only; tokens and hashes are never returned.",
-		resp:        new(apiTokensResponse),
+		description: "Metadata only; tokens and hashes are never returned. last_used_at is kept to the minute, " +
+			"null until the token is first used.",
+		resp: new(apiTokensResponse),
 	},
 	{
 		method: http.MethodPost, path: "/api/v1/auth/tokens", access: accessSession, handler: (*Handler).createAPIToken,
@@ -147,8 +178,10 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/push/subscriptions", access: accessAuthed, handler: (*Handler).subscribePush,
 		tag: "push", summary: "Subscribe this device to deploy notifications",
-		description: "Takes an FCM registration token. The device receives the deploys the caller can list; " +
-			"re-registering moves the subscription to the current caller.",
+		description: "Takes an FCM registration token. The device receives the notifications the caller can list: " +
+			"with events important (the default) only failed deploys and builds and those addressed to the caller, " +
+			"such as a task assigned to them; with all, every one. " +
+			"Registering again moves the subscription to the current caller and takes its events.",
 		req: new(pushSubscriptionRequest), resp: new(successResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest}, quiet: true,
 	},
@@ -174,7 +207,7 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPatch, path: "/api/v1/users/{id}", access: accessAdmin, handler: (*Handler).updateUser,
 		tag: "users", summary: "Update a user",
-		description: "Changing password or role, or disabling the account, revokes that user's tokens.",
+		description: "Changing password or role, or disabling the account, revokes that user's tokens, API tokens included.",
 		req:         new(updateUserRequest), resp: new(userResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict},
 	},
@@ -203,6 +236,14 @@ var routeTable = [...]route{
 		tag: "registry-credentials", summary: "Create a registry credential",
 		req: new(createCredentialRequest), resp: new(credentialResponse), status: http.StatusCreated,
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
+	},
+	{
+		method: http.MethodPatch, path: "/api/v1/registry-credentials/{id}", access: accessAdmin, handler: (*Handler).updateCredential,
+		tag: "registry-credentials", summary: "Replace a registry credential's login",
+		description: "Sets a new username or token in place, so every project using the credential pulls with it " +
+			"from its next pull. Omitted fields stay as they are.",
+		req: new(updateCredentialRequest), resp: new(credentialResponse),
+		extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 	{
 		method: http.MethodDelete, path: "/api/v1/registry-credentials/{id}", access: accessAdmin, handler: (*Handler).deleteCredential,
@@ -235,6 +276,7 @@ var routeTable = [...]route{
 		tag: "projects", summary: "List reachable projects with their tasks",
 		description: "Administrators see every project, others their memberships and grants. my_role is the " +
 			"caller's role, per project and per task, where a grant can raise it; last_deploy is the newest deploy; " +
+			"a task's error says why its container last failed; " +
 			"bora is whether the caller may ask Bora about the project: a member may, and when the server reads code " +
 			"through Sourcebot, only about a project Sourcebot has a search context for, named after its slug.",
 		resp: new(projectsResponse),
@@ -276,8 +318,9 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/projects/{project}/members", access: accessOwner, handler: (*Handler).addMember,
 		tag: "projects", summary: "Add or promote a member",
-		description: "Also changes a member's role. Demoting the last owner is refused.",
-		req:         new(addMemberRequest), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
+		description: "Also changes a member's role. Demoting the last owner is refused. Name the person by user_id, " +
+			"or by user, the exact username or email of an active account, for owners who cannot list users: 400 when none has it.",
+		req: new(addMemberRequest), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
 		method: http.MethodDelete, path: "/api/v1/projects/{project}/members/{userID}", access: accessOwner, handler: (*Handler).removeMember,
@@ -291,7 +334,8 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/notifications", access: accessAuthed, handler: (*Handler).listNotifications,
 		tag: "notifications", summary: "List notifications across projects",
 		description: "Newest first, from every project and task the caller reaches. To page, pass the id " +
-			"of the last notification received as before.",
+			"of the last notification received as before. actor is who did it when a person signed in to the app did: " +
+			"their own devices get no push, and it reads as seen to them. spec_id is the spec a spec_ notification is about.",
 		req: new(notificationsPage), resp: new(notificationsResponse),
 		extraErrors: []int{http.StatusBadRequest},
 	},
@@ -434,7 +478,8 @@ var routeTable = [...]route{
 		method: http.MethodGet, path: "/api/v1/bora/specs/{id}", access: accessSession, handler: (*Handler).getSpec,
 		tag: "bora", summary: "Get a spec",
 		description: "state is failed when the step it was on stopped or broke off, and stopped then names that step, " +
-			"researching or writing; retry runs it again.",
+			"researching or writing; retry runs it again. stop_reason says why: stopped by stopped_by_name, failed for the model or a tool, " +
+			"or restarted for a server that went down mid-step.",
 		req: new(idPath), resp: new(specResponse), extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 	{
@@ -474,8 +519,9 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPost, path: "/api/v1/bora/specs/{id}/stop", access: accessSession, handler: (*Handler).stopSpec,
 		tag: "bora", summary: "Stop a spec's running step",
-		description: "The spec keeps what it held and shows failed until the step runs again. Also 204 when no step runs.",
-		req:         new(idPath), status: http.StatusNoContent, extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+		description: "For its author or an administrator. The spec keeps what it held and shows failed until the step runs again. " +
+			"Also 204 when no step runs.",
+		req: new(idPath), status: http.StatusNoContent, extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
 	},
 	{
 		method: http.MethodDelete, path: "/api/v1/bora/specs/{id}", access: accessSession, handler: (*Handler).deleteSpec,
@@ -527,7 +573,8 @@ var routeTable = [...]route{
 			"and setting one again signs every browser out; \"\" removes it. It is never returned: has_password says whether one is set. " +
 			"dev_status tracks the code, not the container: in_progress on create, blocked is not " +
 			"fit for QA, ready is. routes replaces the whole list and applies at once, container or not: " +
-			"<App URL><path>/… is forwarded to url/…, so the browser never calls the address itself.",
+			"<App URL><path>/… is forwarded to url/…, so the browser never calls the address itself. note_was, the note as it was opened, " +
+			"refuses with 409 a note someone changed since.",
 		req: new(updateTaskRequest), resp: new(taskResponse),
 		extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
@@ -562,7 +609,9 @@ var routeTable = [...]route{
 	{
 		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/state", access: accessOperator, handler: (*Handler).updateState,
 		tag: "tasks", summary: "Start, stop, or restart a task",
-		req: new(updateStateRequest), resp: new(taskStateResponse), extraErrors: []int{http.StatusBadRequest},
+		description: "restart pulls the image again first, and so does a start that needs a new container; when the registry fails, " +
+			"the copy the server already has runs. A start that fails leaves the task in error with the reason, which the 409 carries.",
+		req: new(updateStateRequest), resp: new(taskStateResponse), extraErrors: []int{http.StatusBadRequest, http.StatusConflict},
 	},
 	{
 		method: http.MethodPut, path: "/api/v1/projects/{project}/tasks/{name}/build", access: accessOperator, handler: (*Handler).reportBuild,
@@ -590,10 +639,17 @@ var routeTable = [...]route{
 	},
 
 	{
+		method: http.MethodGet, path: "/api/v1/metrics/stream", access: accessAuthed, handler: (*Handler).streamFleetMetrics,
+		tag: "projects", summary: "Stream resource metrics for every project you reach",
+		description: "GET /api/v1/projects/{project}/metrics/stream for every project GET /api/v1/projects lists, in one connection. " +
+			"It follows the tasks running when it opens and ends once none is left: reopen it when another starts. " + readSSE,
+		resp: new(string), contentType: "text/event-stream",
+	},
+	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/metrics/stream", access: accessViewer, handler: (*Handler).streamMetrics,
 		tag: "projects", summary: "Stream resource metrics for every running task",
 		description: "Server-Sent Events, roughly one per task per second, each carrying " +
-			`{"task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit": integer, ` +
+			`{"project": string, "task": string, "cpu_percent": number, "memory_bytes": integer, "memory_limit": integer, ` +
 			`"network_rx_bytes": integer, "network_tx_bytes": integer, "observed_at": string}. ` +
 			"Each task starts with up to its last minute of samples, oldest first; place and deduplicate them by observed_at. " +
 			"Tasks that are not running are omitted, and a comment heartbeat fills idle time. " + readSSE,

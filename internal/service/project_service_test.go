@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/zenkiet/boreas/internal/core"
@@ -530,6 +531,17 @@ func TestCredentialLifecycleAndValidation(t *testing.T) {
 		t.Fatalf("empty name: got %v, want ErrInvalidInput", err)
 	}
 
+	if replaced, err := svc.UpdateCredential(context.Background(), credential.ID, UpdateCredentialInput{Token: new("rotated")}); err != nil ||
+		replaced.Token != "rotated" || replaced.Username != "bot" || replaced.Name != "ghcr-bot" {
+		t.Fatalf("replace token = %+v, %v", replaced, err)
+	}
+	if _, err := svc.UpdateCredential(context.Background(), credential.ID, UpdateCredentialInput{Token: new(" ")}); !errors.Is(err, core.ErrInvalidInput) {
+		t.Fatalf("blank token: got %v, want ErrInvalidInput", err)
+	}
+	if _, err := svc.UpdateCredential(context.Background(), uuid.New(), UpdateCredentialInput{Token: new("rotated")}); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("unknown credential: got %v, want ErrNotFound", err)
+	}
+
 	if err := svc.DeleteCredential(context.Background(), credential.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -610,4 +622,23 @@ func (f fakeCode) Ask(_ context.Context, project, question string) (string, erro
 		return "", err
 	}
 	return project + " was asked: " + question, nil
+}
+
+func TestFindPerson(t *testing.T) {
+	svc, _ := newProjects(t)
+	users := newFakeUserStore()
+	svc.Users = users
+	ctx := context.Background()
+	linh, _ := users.Create(ctx, core.User{Username: "linh", Email: "Linh@Example.com"})
+	gone, _ := users.Create(ctx, core.User{Username: "gone", Email: "gone@example.com", DisabledAt: new(time.Now())})
+	for _, login := range []string{"linh", " LINH ", "linh@example.com"} {
+		if id, err := svc.FindPerson(ctx, login); err != nil || id != linh.ID {
+			t.Errorf("%q = %v, %v", login, id, err)
+		}
+	}
+	for _, login := range []string{gone.Username, gone.Email, "nobody", "nobody@example.com", ""} {
+		if _, err := svc.FindPerson(ctx, login); !errors.Is(err, core.ErrInvalidInput) {
+			t.Errorf("%q: %v, want invalid input", login, err)
+		}
+	}
 }

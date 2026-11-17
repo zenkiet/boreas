@@ -45,6 +45,9 @@ func (h *Handler) authorize(required access, next http.HandlerFunc) http.Handler
 			return
 		}
 		ctx := context.WithValue(r.Context(), userContextKey, user)
+		if kind == core.TokenKindSession {
+			ctx = core.WithActor(ctx, user.ID)
+		}
 		if need := projectRoles[required]; need != "" {
 			acc, err := h.projects.Access(ctx, user, r.PathValue("project"), r.PathValue("name"))
 			if err == nil && acc.Role.Rank() < need.Rank() {
@@ -58,4 +61,42 @@ func (h *Handler) authorize(required access, next http.HandlerFunc) http.Handler
 		}
 		next(w, r.WithContext(ctx))
 	}
+}
+
+func deviceLabel(ua string) string {
+	system := firstKnown(ua, [][2]string{
+		{"iPhone", "iPhone"},
+		{"iPad", "iPad"},
+		{"Android", "Android"},
+		{"CrOS", "ChromeOS"},
+		{"Macintosh", "Mac"},
+		{"Windows", "Windows"},
+		{"Linux", "Linux"},
+	})
+	browser := firstKnown(ua, [][2]string{
+		{"Edg/", "Edge"},
+		{"Firefox/", "Firefox"},
+		{"FxiOS/", "Firefox"},
+		{"CriOS/", "Chrome"},
+		{"Chrome/", "Chrome"},
+		{"Safari/", "Safari"},
+	})
+	switch {
+	case strings.Contains(ua, "AppleWebKit") && browser == "" && system == "Mac":
+		return "iPad"
+	case browser == "" || strings.Contains(ua, "; wv)"):
+		return system
+	case system == "":
+		return browser
+	}
+	return browser + " on " + system
+}
+
+func firstKnown(ua string, known [][2]string) string {
+	for _, k := range known {
+		if strings.Contains(ua, k[0]) {
+			return k[1]
+		}
+	}
+	return ""
 }

@@ -226,6 +226,29 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 	}); err == nil {
 		t.Fatal("the database must reject an unknown type")
 	}
+
+	actor := seedUser(t, pool, "actor", core.RoleUser)
+	spec := core.BoraSpec{
+		ID: uuid.New(), Key: "web", Title: "t", Projects: []uuid.UUID{project.ID}, Slugs: []string{project.Slug},
+		State: core.SpecAsking, Body: core.SpecBody{Ticket: "t"},
+	}
+	if err := NewSpecStore(pool).Save(ctx, spec, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = NewSpecStore(pool).Delete(context.Background(), spec.ID) })
+	if _, err := store.Create(ctx, core.Notification{
+		ProjectID: project.ID, TaskName: "web", Type: core.NotificationSpecAsking, Status: core.NotificationInfo, Title: "asking",
+		ActorID: &actor.ID, SpecID: &spec.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if listed, err = store.List(ctx, uuid.Nil, true, &project.ID, nil, 1); err != nil || listed[0].Actor != actor.Username ||
+		listed[0].SpecID == nil || *listed[0].SpecID != spec.ID || listed[0].Type != core.NotificationSpecAsking || listed[0].Seen {
+		t.Fatalf("actor and spec: %+v, %v", listed, err)
+	}
+	if mine, err := store.List(ctx, actor.ID, true, &project.ID, nil, 1); err != nil || !mine[0].Seen {
+		t.Fatalf("the actor's own doing reads as news to them: %+v, %v", mine, err)
+	}
 }
 
 func TestNotificationSeenPerUser(t *testing.T) {
@@ -491,10 +514,10 @@ func TestUserAndTokenStores(t *testing.T) {
 	if len(listed) != 1 || listed[0].ID != apiToken.ID || listed[0].Name != "ci" {
 		t.Fatalf("listed API tokens = %+v", listed)
 	}
-	if err := tokens.RevokeByID(ctx, otherUser.ID, apiToken.ID); !errors.Is(err, core.ErrNotFound) {
+	if err := tokens.RevokeByID(ctx, otherUser.ID, apiToken.ID, core.TokenKindAPI); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("another user revoked the token: %v", err)
 	}
-	if err := tokens.RevokeByID(ctx, user.ID, apiToken.ID); err != nil {
+	if err := tokens.RevokeByID(ctx, user.ID, apiToken.ID, core.TokenKindAPI); err != nil {
 		t.Fatal(err)
 	}
 	revokedAPI, err := tokens.GetByHash(ctx, apiHash)
@@ -506,6 +529,36 @@ func TestUserAndTokenStores(t *testing.T) {
 	}
 	if stored, err = tokens.GetByHash(ctx, hash); err != nil || stored.RevokedAt == nil {
 		t.Fatalf("token was not revoked: %+v %v", stored, err)
+	}
+
+	session := func(device string) core.AuthToken {
+		token, err := tokens.Create(ctx, core.AuthToken{
+			UserID: user.ID, Kind: core.TokenKindSession, TokenHash: uuid.New().String(),
+			Device: device, ValidFrom: now, ExpiresAt: now.Add(time.Hour),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	here, there := session("Safari on Mac"), session("iPhone")
+	renewed := now.Add(30 * 24 * time.Hour).Truncate(time.Microsecond)
+	if err := tokens.Touch(ctx, there.ID, renewed); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = tokens.ListSessions(ctx, user.ID)
+	if err != nil || len(listed) != 2 || listed[0].ID != there.ID || listed[0].LastUsedAt == nil ||
+		!listed[0].ExpiresAt.Equal(renewed) || listed[1].Device != "Safari on Mac" {
+		t.Fatalf("sessions = %+v, %v", listed, err)
+	}
+	if err := tokens.RevokeSessions(ctx, user.ID, here.TokenHash); err != nil {
+		t.Fatal(err)
+	}
+	if listed, err = tokens.ListSessions(ctx, user.ID); err != nil || len(listed) != 1 || listed[0].ID != here.ID {
+		t.Fatalf("after signing out the others: %+v, %v", listed, err)
+	}
+	if err := tokens.RevokeByID(ctx, user.ID, here.ID, core.TokenKindAPI); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("a session was revoked as an API token: %v", err)
 	}
 
 	if err := users.Delete(ctx, user.ID); err != nil {
@@ -713,6 +766,13 @@ func TestCredentialStore(t *testing.T) {
 	if _, err := store.Get(ctx, uuid.New()); !errors.Is(err, core.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
 	}
+	fetched.Token = "rotated"
+	if updated, err := store.Update(ctx, fetched); err != nil || updated.Token != "rotated" || updated.Name != credential.Name {
+		t.Fatalf("update = %+v, %v", updated, err)
+	}
+	if _, err := store.Update(ctx, core.RegistryCredential{ID: uuid.New()}); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("update of nothing: got %v, want ErrNotFound", err)
+	}
 }
 
 func TestAPITokenSchemaConstraints(t *testing.T) {
@@ -796,7 +856,7 @@ func TestPushTokensMatchNotificationAudience(t *testing.T) {
 		"outsider": outsider, "disabled": disabled,
 	} {
 		token[name] = "tok-" + uuid.New().String()
-		if err := push.Create(ctx, user.ID, token[name]); err != nil {
+		if err := push.Create(ctx, user.ID, token[name], core.PushAll); err != nil {
 			t.Fatalf("subscribe %s: %v", name, err)
 		}
 	}
@@ -854,6 +914,36 @@ func TestPushTokensMatchNotificationAudience(t *testing.T) {
 		}
 	}
 
+	quiet := seedUser(t, pool, "push-quiet", core.RoleAdmin)
+	token["quiet"] = "tok-" + uuid.New().String()
+	if err := push.Create(ctx, quiet.ID, token["quiet"], core.PushImportant); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		n    core.Notification
+		want bool
+	}{
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationInfo}, false},
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationSuccess}, false},
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationFailure}, true},
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationInfo, UserID: &quiet.ID}, true},
+	} {
+		if tokens, err = push.Tokens(ctx, c.n); err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(tokens, token["quiet"]) != c.want || !slices.Contains(tokens, token["admin"]) && c.n.UserID == nil {
+			t.Errorf("%s notification (personal %v): reached the important-only device %v, want %v",
+				c.n.Status, c.n.UserID != nil, !c.want, c.want)
+		}
+	}
+
+	if tokens, err = push.Tokens(ctx, core.Notification{ProjectID: project.ID, TaskName: web.Name, ActorID: &member.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(tokens, token["member"]) || !slices.Contains(tokens, token["admin"]) {
+		t.Errorf("a notification member did reached %v", tokens)
+	}
+
 	// The subscription dies with its user, so a deleted account leaves no target behind.
 	if err := users.Delete(ctx, admin.ID); err != nil {
 		t.Fatal(err)
@@ -875,7 +965,7 @@ func TestPushSubscriptionMovesToItsLatestOwner(t *testing.T) {
 	second := seedUser(t, pool, "push-second", core.RoleAdmin)
 	shared := "tok-" + uuid.New().String()
 
-	if err := push.Create(ctx, first.ID, shared); err != nil {
+	if err := push.Create(ctx, first.ID, shared, core.PushImportant); err != nil {
 		t.Fatal(err)
 	}
 	var createdAt time.Time
@@ -885,7 +975,7 @@ func TestPushSubscriptionMovesToItsLatestOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A browser handed to another user must stop notifying the previous one.
-	if err := push.Create(ctx, second.ID, shared); err != nil {
+	if err := push.Create(ctx, second.ID, shared, core.PushAll); err != nil {
 		t.Fatalf("re-registering a device must not conflict: %v", err)
 	}
 	var movedAt time.Time
@@ -1088,6 +1178,18 @@ func TestSpecStore(t *testing.T) {
 			n == 1 && (list[0].Body.Ticket != "" || list[0].Body.Plans != nil || len(list[0].Body.Decisions) != 1 || list[0].CreatedByName != both.Username) {
 			t.Errorf("list %q %q: %+v, %v", tc.project, tc.key, list, err)
 		}
+	}
+	if err := store.Halt(ctx, spec.ID, core.SpecStopped, &one.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Get(ctx, both.ID, false, spec.ID); err != nil || got.Stop != core.SpecStopped || got.StoppedByName != one.Username {
+		t.Errorf("halted %+v, %v", got, err)
+	}
+	if err := store.Save(ctx, spec, core.SpecConfirming); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Get(ctx, both.ID, false, spec.ID); err != nil || got.Stop != "" || got.StoppedBy != nil {
+		t.Errorf("a new step kept the old stop: %+v, %v", got, err)
 	}
 	if err := projects.Delete(ctx, crm.ID); err != nil {
 		t.Fatal(err)

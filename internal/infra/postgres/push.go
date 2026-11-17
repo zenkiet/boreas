@@ -15,10 +15,10 @@ func NewPushStore(pool *pgxpool.Pool) *PushStore { return &PushStore{pool: pool}
 
 // Create claims a token for the caller, taking it over from whoever registered it
 // before: a browser handed to a new user must not keep notifying the old one.
-func (s *PushStore) Create(ctx context.Context, userID uuid.UUID, token string) error {
+func (s *PushStore) Create(ctx context.Context, userID uuid.UUID, token string, events core.PushEvents) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO push_subscriptions (token, user_id) VALUES ($1, $2)
-		ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id`, token, userID)
+		INSERT INTO push_subscriptions (token, user_id, events) VALUES ($1, $2, $3)
+		ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, events = EXCLUDED.events`, token, userID, events)
 	return mapError("create push subscription", err)
 }
 
@@ -35,19 +35,21 @@ func (s *PushStore) DeleteTokens(ctx context.Context, tokens []string) error {
 }
 
 // Tokens mirrors NotificationStore.List: a notification with a recipient reaches only them;
-// otherwise administrators and project members see every task, grantees only what they hold.
-// Disabled accounts see nothing, so revoking a user stops their devices along with their login.
+// otherwise administrators and project members see every task, grantees only what they hold,
+// and a device that asked for the important ones gets only failures. The actor's own devices
+// get nothing: they just did it. Disabled accounts see nothing, so revoking a user stops their
+// devices along with their login.
 func (s *PushStore) Tokens(ctx context.Context, n core.Notification) ([]string, error) {
 	return many(ctx, s.pool, pgx.RowTo[string], "list push subscriptions", "scan push subscriptions", `
 		SELECT p.token FROM push_subscriptions p
 		JOIN users u ON u.id = p.user_id AND u.disabled_at IS NULL
-		WHERE p.user_id = $3 OR $3::uuid IS NULL AND (u.role = 'admin'
+		WHERE p.user_id IS DISTINCT FROM $5 AND (p.user_id = $3 OR $3::uuid IS NULL AND (p.events = 'all' OR $4 = 'failure') AND (u.role = 'admin'
 		   OR EXISTS (
 			SELECT 1 FROM project_members m
 			WHERE m.project_id = $1 AND m.user_id = p.user_id)
 		   OR EXISTS (
 			SELECT 1 FROM task_grants g
 			JOIN tasks t ON t.id = g.task_id
-			WHERE g.user_id = p.user_id AND t.project_id = $1 AND t.name = $2))`,
-		n.ProjectID, n.TaskName, n.UserID)
+			WHERE g.user_id = p.user_id AND t.project_id = $1 AND t.name = $2)))`,
+		n.ProjectID, n.TaskName, n.UserID, n.Status, n.ActorID)
 }

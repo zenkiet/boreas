@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -107,11 +108,17 @@ type boraTurn struct {
 	pending  core.BoraPending
 	images   []core.Image // the question's, read before the turn starts
 	cancel   context.CancelFunc
+	stopper  atomic.Pointer[uuid.UUID]
 
 	mu     sync.Mutex
 	events []BoraEvent
 	wake   chan struct{} // closed and replaced at each event
 	over   bool
+}
+
+func (t *boraTurn) stop(by uuid.UUID) {
+	t.stopper.Store(&by)
+	t.cancel()
 }
 
 func (t *boraTurn) publish(e BoraEvent) {
