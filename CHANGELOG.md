@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.35.0 - 2026-11-17
+#### 🚀 Features
+- ✨ add device sessions, crash alerts, push filters and fleet metrics - (9d8ef47) - *zenkiet*
+#### 📝 Documentation
+- 📝 rewrite the README and turn the reference into user guides - (bd8d8eb) - *zenkiet*
+
+- - -
+
 ## v1.34.1 - 2026-11-10
 #### ♻️ Code Refactoring
 - (**bora**) ♻️ share code tools and tidy specs - (c3eabbf) - *zenkiet*
