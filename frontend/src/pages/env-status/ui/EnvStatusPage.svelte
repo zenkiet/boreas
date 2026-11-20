@@ -60,9 +60,7 @@
 </svelte:head>
 
 {#snippet checkingLine()}
-	<p role="status" class={['text-footnote text-label-3', !checking && 'sr-only']}>
-		{checking ? 'Checking…' : ''}
-	</p>
+	{#if checking}<p class="text-footnote text-label-3">Checking…</p>{/if}
 {/snippet}
 
 {#snippet serverError()}

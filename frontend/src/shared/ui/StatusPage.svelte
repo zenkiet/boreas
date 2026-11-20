@@ -40,7 +40,7 @@
 			<div class="flex flex-col items-center gap-2">
 				<span class="font-mono text-caption tracking-[0.12em] text-label-3">{code}</span>
 				<h1 class="text-title1 wrap-anywhere max-sm:text-[1.5rem]/[1.875rem]">{title}</h1>
-				<p class="max-w-120 text-subhead/[22px] text-label-2">{body}</p>
+				<p class="max-w-120 text-subhead/[1.467] text-label-2">{body}</p>
 			</div>
 			{#if path}
 				<code

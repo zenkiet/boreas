@@ -174,7 +174,12 @@ const docsPage = `<!DOCTYPE html>
 </head>
 <body>
 <div id="docs"></div>
-<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.77.0/dist/browser/standalone.js"
+  integrity="sha384-+7ESN8b9Ljg46TCYKedZUlhF/wfZbOt78aV/DtoU3anEElh8Q2eXsyhQ9W5lAZD4"
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+></script>
 <script>
 Scalar.createApiReference("#docs", {
   url: "/api/v1/openapi.json",

@@ -1,5 +1,6 @@
 /* The device is drawn at 1 CSS px per point, then scaled to fit: Apple's bezel is 1470×3000 px at 3×. */
 :root {
+	color-scheme: light dark;
 	--bg: #eceef2;
 	--scale: 1;
 }
@@ -12,7 +13,7 @@
 
 body {
 	margin: 0;
-	height: 100vh;
+	block-size: 100dvh;
 	display: grid;
 	place-items: center;
 	overflow: hidden;
@@ -28,7 +29,7 @@ body {
 	position: relative;
 	width: 490px;
 	height: 1000px;
-	transform: scale(var(--scale));
+	scale: var(--scale);
 	transform-origin: 0 0;
 	--status: #000;
 	--indicator: #000;
@@ -111,10 +112,10 @@ body {
 .indicator {
 	position: absolute;
 	bottom: 8px;
-	left: 50%;
+	inset-inline: 0;
 	width: 144px;
 	height: 5px;
-	margin-left: -72px;
+	margin-inline: auto;
 	border-radius: 3px;
 	background: var(--indicator);
 	pointer-events: none;

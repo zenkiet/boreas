@@ -1,5 +1,3 @@
-@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
-
 @theme inline {
 	--font-sans: var(--app-font-text);
 	--font-mono: var(--app-font-mono);
@@ -95,7 +93,7 @@
 }
 
 :root {
-	color-scheme: light;
+	color-scheme: light dark;
 
 	--app-font-text:
 		-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto,
@@ -147,14 +145,19 @@
 	--app-thumb-shadow:
 		0 1px 3px light-dark(rgba(15, 23, 42, 0.14), transparent),
 		0 0 0 0.5px light-dark(rgba(15, 23, 42, 0.06), transparent);
-	--app-shadow-1: 0 0 0 0.5px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.05);
-	--app-shadow-2: 0 0 0 0.5px rgba(15, 23, 42, 0.1), 0 24px 56px -12px rgba(15, 23, 42, 0.28);
-	--app-scrollbar-thumb: light-dark(rgba(15, 23, 42, 0.18), rgba(120, 120, 128, 0.4));
-}
+	--app-shadow-1:
+		0 0 0 0.5px light-dark(rgba(15, 23, 42, 0.08), rgba(235, 235, 245, 0.1)),
+		0 1px 2px light-dark(rgba(15, 23, 42, 0.05), transparent);
+	--app-shadow-2:
+		0 0 0 0.5px light-dark(rgba(15, 23, 42, 0.1), rgba(235, 235, 245, 0.16)),
+		0 24px 56px -12px light-dark(rgba(15, 23, 42, 0.28), rgba(0, 0, 0, 0.8));
+	--app-scrollbar-thumb: var(--app-neutral);
 
-[data-theme='dark'] {
-	color-scheme: dark;
+	&:has(> head > meta[name='color-scheme'][content='dark']) {
+		color-scheme: dark;
+	}
 
-	--app-shadow-1: 0 0 0 0.5px rgba(235, 235, 245, 0.1);
-	--app-shadow-2: 0 0 0 0.5px rgba(235, 235, 245, 0.16), 0 28px 64px -12px rgba(0, 0, 0, 0.8);
+	&:has(> head > meta[name='color-scheme'][content='light']) {
+		color-scheme: light;
+	}
 }

@@ -193,17 +193,23 @@
 			addEventListener(kind + type, (event) => event.buttons || event.stopImmediatePropagation(), true);
 
 	const report = () => device.route(location.href, document.title);
-	for (const name of ['pushState', 'replaceState']) {
-		const original = History.prototype[name];
-		History.prototype[name] = function (...args) {
-			const result = original.apply(this, args);
-			report();
-			setTimeout(report, 500); // a router retitles the page after the route changes
-			return result;
-		};
+	const moved = () => {
+		report();
+		setTimeout(report, 500); // a router retitles the page after the route changes
+	};
+	if ('navigation' in window) navigation.addEventListener('currententrychange', moved);
+	else {
+		for (const name of ['pushState', 'replaceState']) {
+			const original = History.prototype[name];
+			History.prototype[name] = function (...args) {
+				const result = original.apply(this, args);
+				moved();
+				return result;
+			};
+		}
+		addEventListener('popstate', report);
+		addEventListener('hashchange', report);
 	}
-	addEventListener('popstate', report);
-	addEventListener('hashchange', report);
 
 	const deepest = (x, y) => {
 		let element = document.elementFromPoint(x, y);

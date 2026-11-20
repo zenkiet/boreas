@@ -17,7 +17,7 @@
 </script>
 
 <article
-	class="relative flex flex-col gap-2 rounded-nest bg-surface p-3 shadow-1 transition-[box-shadow,scale] duration-200 ease-out hover:ring-1 hover:ring-line active:scale-[0.98] has-[[aria-current]]:ring-2 has-[[aria-current]]:ring-accent"
+	class="relative flex scale-100 flex-col gap-2 rounded-nest bg-surface p-3 shadow-1 transition-[box-shadow,scale] duration-200 ease-out hover:ring-1 hover:ring-line has-[[aria-current]]:ring-2 has-[[aria-current]]:ring-accent motion-safe:active:scale-[0.98]"
 	{@attach flash(task)}
 >
 	<button
@@ -34,15 +34,20 @@
 			onclick={() => showProject(task.project.slug)}
 		/>
 		<span class="flex-auto"></span>
-		<span class="text-caption font-normal text-label-3 tabular-nums" title={stamp(task.updatedAt)}
-			>{ago(task.updatedAt, directory.now)}</span
-		>
+		<span class="text-caption font-normal text-label-3 tabular-nums" title={stamp(task.updatedAt)}>
+			{ago(task.updatedAt, directory.now)}
+		</span>
 	</div>
 	<div class="flex min-w-0 items-center gap-1.5">
 		<TaskId {task} />
 		<ContainerFlag status={task.status} />
 	</div>
-	<p class={['line-clamp-2 text-[14px]/[19px]', task.description ? 'text-label' : 'text-label-3']}>
+	<p
+		class={[
+			'line-clamp-2 text-[0.875rem]/[1.357]',
+			task.description ? 'text-label' : 'text-label-3'
+		]}
+	>
 		{task.description || 'No description'}
 	</p>
 	<div class="flex min-w-0 items-center justify-between gap-2">

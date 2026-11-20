@@ -29,7 +29,7 @@ test('the row cell shows running, then failed, then canceled, then deployed', ()
 	const deployed: Deploy = { status: 'success', at: at(1440) };
 	assert.equal(
 		cell({ state: 'running', stage: 'Test', progress: 62, at: at(6) }, deployed),
-		'run: Test · 62%'
+		'run: Test'
 	);
 	assert.equal(
 		cell({ state: 'running', at: at(3) }, { status: 'failure', at: at(1) }),
@@ -61,7 +61,7 @@ test('the row cell shows running, then failed, then canceled, then deployed', ()
 test('the build line reads the build with its time', () => {
 	assert.equal(
 		line(buildLine(task({ state: 'running', stage: 'Lint', progress: 20, at: at(2) }), NOW)),
-		'run: Lint · 20% | started 2 min ago'
+		'run: Lint | started 2 min ago'
 	);
 	assert.equal(
 		line(buildLine(task({ state: 'running', at: at(3) }), NOW)),

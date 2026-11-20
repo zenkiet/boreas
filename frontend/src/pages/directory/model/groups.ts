@@ -1,5 +1,6 @@
 import { DEV_STATUSES, DEV_STATUS_LABEL, devCount } from '#shared/api';
 import type { DevStatus, DirectoryTask, PublicTask } from '#shared/api';
+import { byInstant } from '#shared/lib';
 import { isUnassigned, NONE } from './scope.ts';
 
 export type GroupBy = 'status' | 'project' | 'person';
@@ -12,8 +13,7 @@ export interface TaskGroup {
 	readonly status?: DevStatus;
 }
 
-const newestFirst = (a: PublicTask, b: PublicTask) =>
-	Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+const newestFirst = (a: PublicTask, b: PublicTask) => byInstant(b.updatedAt, a.updatedAt);
 
 export const people = <T extends PublicTask>(tasks: readonly T[]): [string, T[]][] =>
 	[...new Set([...tasks].sort(newestFirst).flatMap((task) => task.assignees))]

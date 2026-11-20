@@ -7,7 +7,7 @@
 	let { tasks }: { tasks: readonly DirectoryTask[] } = $props();
 </script>
 
-<section class="mt-2 w-full text-left">
+<section class="mt-2 w-full text-start">
 	<h2 class="mb-2 text-caption text-label-3">Did you mean</h2>
 	<ul class="ilist rounded-box bg-surface shadow-1">
 		{#each tasks as task (taskKey(task))}

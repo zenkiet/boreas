@@ -58,10 +58,7 @@ export default defineConfig(
 		}
 	},
 	{
-		files: [
-			'src/pages/directory/ui/NoteMarkdown.svelte',
-			'src/pages/privacy/ui/PrivacyPage.svelte'
-		],
+		files: ['src/pages/privacy/ui/PrivacyPage.svelte'],
 		rules: { 'svelte/no-at-html-tags': 'off' }
 	},
 	{

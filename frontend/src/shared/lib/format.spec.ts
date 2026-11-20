@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 process.env.TZ = 'UTC';
-const { ago, agoLong, plural, stamp } = await import('./format.ts');
+const { ago, agoLong, byInstant, plural, stamp } = await import('./format.ts');
 
 const NOW = Date.parse('2026-11-07T14:30:00Z');
 const before = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
@@ -32,4 +32,9 @@ test('plural picks the noun form', () => {
 	assert.equal(plural(1, 'task'), '1 task');
 	assert.equal(plural(3, 'task'), '3 tasks');
 	assert.equal(plural(2, 'person', 'people'), '2 people');
+});
+
+test('byInstant orders timestamps past the millisecond', () => {
+	assert.ok(byInstant('2026-11-07T14:30:00.000000002Z', '2026-11-07T14:30:00.000000001Z') > 0);
+	assert.ok(byInstant('2026-11-07T14:27:00Z', '2026-11-07T14:30:00Z') < 0);
 });

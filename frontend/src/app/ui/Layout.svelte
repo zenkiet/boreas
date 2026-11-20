@@ -6,7 +6,8 @@
 	let { children }: { children: Snippet } = $props();
 
 	$effect(() => {
-		document.documentElement.dataset.theme = theme.resolved;
+		document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]')!.content =
+			theme.chosen ?? 'light dark';
 	});
 </script>
 

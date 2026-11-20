@@ -14,7 +14,7 @@
 
 <span
 	class={[
-		'inline-flex h-6 items-center gap-1.5 rounded-label pr-[9px] pl-1.5 text-footnote font-semibold whitespace-nowrap',
+		'inline-flex min-h-6 items-center gap-1.5 rounded-label ps-1.5 pe-[9px] text-footnote font-semibold whitespace-nowrap',
 		TONE[status]
 	]}
 >

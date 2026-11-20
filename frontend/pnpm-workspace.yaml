@@ -21,7 +21,7 @@ minimumReleaseAgeExclude:
   - '@tailwindcss/vite@4.3.5'
   - tailwindcss@4.3.5
   - eslint-plugin-svelte@3.24.1
-  - '@lucide/svelte@1.74.0'
+  - '@lucide/svelte@1.74.0 || 1.77.0'
   - '@typescript-eslint/eslint-plugin@8.73.0'
   - '@typescript-eslint/parser@8.73.0'
   - '@typescript-eslint/project-service@8.73.0'

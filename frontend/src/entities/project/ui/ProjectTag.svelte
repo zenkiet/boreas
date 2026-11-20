@@ -17,7 +17,7 @@
 	} = $props();
 
 	const TAG =
-		'relative z-1 inline-flex h-6 max-w-full items-center gap-[5px] rounded-label bg-fill-1 px-[7px] text-caption/none font-medium whitespace-nowrap text-label-2 no-underline';
+		'relative z-1 inline-flex min-h-6 max-w-full items-center gap-[5px] rounded-label bg-fill-1 px-[7px] text-caption/none font-medium whitespace-nowrap text-label-2 no-underline';
 	const ACTIVE =
 		'cursor-pointer transition-colors duration-200 ease-out hover:bg-fill-2 hover:text-label';
 </script>

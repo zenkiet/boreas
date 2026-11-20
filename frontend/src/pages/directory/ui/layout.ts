@@ -18,10 +18,10 @@ export const ROWS = {
 };
 
 export const COLHEAD =
-	'mb-1 grid h-7 grid-cols-(--cols) items-center gap-4 px-4 text-caption text-label-3 @max-[720px]/main:hidden';
+	'mb-1 grid min-h-7 grid-cols-(--cols) items-center gap-4 px-4 text-caption text-label-3 @max-[720px]/main:hidden';
 
 export const ROW =
-	'relative grid min-h-13 grid-cols-(--cols) items-center gap-4 px-4 py-2 [grid-template-areas:var(--areas)] not-first:before:absolute not-first:before:top-0 not-first:before:right-0 not-first:before:left-12 not-first:before:h-px not-first:before:bg-sep @max-[720px]/main:min-h-0 @max-[720px]/main:gap-x-2.5 @max-[720px]/main:gap-y-1.5 @max-[720px]/main:py-3 @max-[720px]/main:not-first:before:left-[42px]';
+	'relative grid min-h-13 grid-cols-(--cols) items-center gap-4 px-4 py-2 [grid-template-areas:var(--areas)] not-first:before:absolute not-first:before:top-0 not-first:before:end-0 not-first:before:start-12 not-first:before:h-px not-first:before:bg-sep @max-[720px]/main:min-h-0 @max-[720px]/main:gap-x-2.5 @max-[720px]/main:gap-y-1.5 @max-[720px]/main:py-3 @max-[720px]/main:not-first:before:start-[42px]';
 
 export const AREA = {
 	glyph: '@max-[720px]/main:[grid-area:g]',
@@ -30,6 +30,6 @@ export const AREA = {
 	proj: '@max-[720px]/main:[grid-area:proj]',
 	people: '@max-[720px]/main:[grid-area:people]',
 	pipe: '@max-[720px]/main:[grid-area:pipe] @max-[720px]/main:justify-end',
-	time: 'text-right @max-[1000px]/main:hidden @max-[720px]/main:block @max-[720px]/main:[grid-area:time]',
+	time: 'text-end @max-[1000px]/main:hidden @max-[720px]/main:block @max-[720px]/main:[grid-area:time]',
 	open: '@max-[1000px]/main:hidden'
 };

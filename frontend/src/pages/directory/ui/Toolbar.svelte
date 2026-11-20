@@ -4,7 +4,7 @@
 	import { StatusGlyph } from '#entities/task';
 	import { DEV_STATUSES, DEV_STATUS_LABEL, devCount } from '#shared/api';
 	import type { DirectoryTask } from '#shared/api';
-	import { Count, Segmented } from '#shared/ui';
+	import { Count, roving, scrollHints, Segmented } from '#shared/ui';
 	import type { GroupBy } from '../model/groups.ts';
 	import { replaceWith, urlState } from '../model/url-state.ts';
 
@@ -21,11 +21,18 @@
 	] as const;
 </script>
 
-<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2.5 @max-[720px]/main:gap-2.5">
+<div
+	class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2.5 @max-[720px]/main:gap-2.5"
+	role="toolbar"
+	aria-label="Filter and layout"
+	focusgroup="toolbar wrap"
+	{@attach roving}
+>
 	<div
-		class="flex [scrollbar-width:none] flex-wrap gap-1.5 @max-[720px]/main:-mx-4 @max-[720px]/main:flex-nowrap @max-[720px]/main:overflow-x-auto @max-[720px]/main:px-4 @max-[720px]/main:pb-0.5"
+		class="flex [scrollbar-width:none] flex-wrap gap-1.5 @max-[720px]/main:-mx-4 @max-[720px]/main:scroll-fade @max-[720px]/main:scroll-px-8 @max-[720px]/main:flex-nowrap @max-[720px]/main:overflow-x-auto @max-[720px]/main:px-4 @max-[720px]/main:pb-0.5"
 		role="group"
 		aria-label="Filter by status"
+		{@attach scrollHints}
 	>
 		<button
 			type="button"
@@ -47,6 +54,7 @@
 			</button>
 		{/each}
 	</div>
+	<span class="sr-only" role="separator" aria-orientation="vertical"></span>
 	<div
 		class="ms-auto flex items-center gap-2.5 @max-[720px]/main:ms-0 @max-[720px]/main:w-full @max-[720px]/main:justify-between"
 	>
@@ -61,6 +69,7 @@
 					}
 				/>
 			</div>
+			<span class="sr-only" role="separator" aria-orientation="vertical"></span>
 		{/if}
 		<Segmented
 			options={VIEWS}

@@ -28,7 +28,7 @@
 </script>
 
 <label
-	class="flex h-9 cursor-text items-center gap-2 rounded-full bg-surface pr-2 pl-3 text-label-3 inset-ring inset-ring-sep transition-shadow duration-200 ease-out focus-within:inset-ring-2 focus-within:inset-ring-accent"
+	class="flex min-h-9 cursor-text items-center gap-2 rounded-full bg-surface ps-3 pe-2 text-label-3 inset-ring inset-ring-sep transition-shadow duration-200 ease-out focus-within:inset-ring-2 focus-within:inset-ring-accent"
 >
 	<Search size={16} />
 	<input
@@ -39,7 +39,10 @@
 		aria-label={label}
 		{placeholder}
 		autocomplete="off"
+		autocorrect="off"
+		autocapitalize="none"
 		spellcheck="false"
+		aria-keyshortcuts="/"
 		class="h-full min-w-0 flex-1 bg-transparent text-subhead text-label outline-none placeholder:text-label-3 [&::-webkit-search-cancel-button]:appearance-none"
 	/>
 	{#if value}
@@ -53,8 +56,10 @@
 		</button>
 	{:else}
 		<kbd
-			class="inline-grid h-5 min-w-5 place-items-center rounded-label bg-fill-1 px-[5px] font-mono text-caption2/none font-medium text-label-3 inset-ring inset-ring-sep pointer-coarse:hidden"
-			title="Press / to search">/</kbd
+			class="inline-grid min-h-5 min-w-5 place-items-center rounded-label bg-fill-1 px-[5px] font-mono text-caption2/none font-medium text-label-3 inset-ring inset-ring-sep pointer-coarse:hidden"
+			aria-hidden="true"
 		>
+			/
+		</kbd>
 	{/if}
 </label>

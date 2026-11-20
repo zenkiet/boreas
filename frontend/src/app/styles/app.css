@@ -26,10 +26,7 @@
 			'cv04' 1,
 			'cv11' 1;
 		scrollbar-gutter: stable;
-
-		&:has(dialog:modal) {
-			overflow: hidden;
-		}
+		scrollbar-color: var(--app-scrollbar-thumb) transparent;
 	}
 
 	body {
@@ -44,6 +41,7 @@
 	pre,
 	.font-mono {
 		font-feature-settings: normal;
+		font-size-adjust: ch-width 0.6;
 	}
 
 	::selection {
@@ -55,27 +53,36 @@
 		outline-offset: 2px;
 	}
 
-	* {
-		scrollbar-width: thin;
-		scrollbar-color: var(--app-scrollbar-thumb) transparent;
-	}
+	@supports not (scrollbar-color: auto) {
+		::-webkit-scrollbar {
+			width: 12px;
+			height: 12px;
+		}
 
-	::-webkit-scrollbar {
-		width: 0.5rem;
-		height: 0.5rem;
-	}
-
-	::-webkit-scrollbar-thumb {
-		background: var(--app-scrollbar-thumb);
-		border-radius: 0.25rem;
+		::-webkit-scrollbar-thumb {
+			background: var(--app-scrollbar-thumb);
+			border-radius: 6px;
+		}
 	}
 
 	.lucide {
 		stroke-width: 1.75;
 	}
 
-	:where(.btn, .chip, .seg-btn, .iconbtn):active {
-		scale: 0.96;
+	@supports not selector(:popover-open) {
+		[popover] {
+			display: none;
+		}
+	}
+
+	:where(.btn, .chip, .seg-btn, .iconbtn) {
+		scale: 1;
+
+		@media (prefers-reduced-motion: no-preference) {
+			&:active {
+				scale: 0.96;
+			}
+		}
 	}
 }
 
@@ -84,14 +91,14 @@
 	align-items: center;
 	justify-content: center;
 	gap: 6px;
-	height: 40px;
+	min-block-size: 2.5rem;
 	padding-inline: 18px;
 	border-radius: 999px;
 	background-color: var(--app-accent);
 	color: var(--app-on-accent);
-	font-size: 15px;
+	font-size: var(--text-subhead);
 	font-weight: 600;
-	line-height: 20px;
+	line-height: var(--text-subhead--line-height);
 	white-space: nowrap;
 	text-decoration: none;
 	cursor: pointer;
@@ -129,9 +136,9 @@
 }
 
 @utility btn-sm {
-	height: 32px;
+	min-block-size: 2rem;
 	padding-inline: 12px;
-	font-size: 13px;
+	font-size: var(--text-footnote);
 }
 
 @utility iconbtn {
@@ -172,15 +179,15 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	height: 32px;
+	min-block-size: 2rem;
 	padding-inline: 12px;
 	border-radius: 999px;
 	background-color: var(--app-surface);
 	box-shadow: inset 0 0 0 1px var(--app-sep);
 	color: var(--app-label-2);
-	font-size: 13px;
+	font-size: var(--text-footnote);
 	font-weight: 500;
-	line-height: 18px;
+	line-height: var(--text-footnote--line-height);
 	white-space: nowrap;
 	cursor: pointer;
 	transition:
@@ -215,17 +222,17 @@
 	}
 
 	@variant max-sm {
-		height: 40px;
+		min-block-size: 2.5rem;
 		padding-inline: 14px;
-		font-size: 14px;
+		font-size: 0.875rem;
 	}
 }
 
 @utility chip-project {
-	font-size: 12px;
+	font-size: var(--text-caption);
 
 	@variant max-sm {
-		font-size: 14px;
+		font-size: 0.875rem;
 	}
 }
 
@@ -242,13 +249,13 @@
 	align-items: center;
 	justify-content: center;
 	gap: 6px;
-	height: 28px;
+	min-block-size: 1.75rem;
 	padding-inline: 12px;
 	border-radius: 999px;
 	color: var(--app-label-2);
-	font-size: 13px;
+	font-size: var(--text-footnote);
 	font-weight: 500;
-	line-height: 18px;
+	line-height: var(--text-footnote--line-height);
 	white-space: nowrap;
 	cursor: pointer;
 	position: relative;
@@ -268,7 +275,7 @@
 	}
 
 	@variant max-sm {
-		height: 34px;
+		min-block-size: 2.125rem;
 	}
 }
 
@@ -276,20 +283,29 @@
 	position: absolute;
 	inset: 0;
 	z-index: -1;
+	border: 1px solid transparent;
 	border-radius: inherit;
 	background-color: var(--app-thumb);
 	box-shadow: var(--app-thumb-shadow);
 }
 
 @utility pop {
-	transition-property: scale, opacity, filter;
+	scale: 1;
+	transition-property: opacity, filter;
 	transition-duration: 200ms;
 	transition-timing-function: var(--ease-out);
 
 	@starting-style {
-		scale: 0.5;
 		opacity: 0;
 		filter: blur(2px);
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		transition-property: scale, opacity, filter;
+
+		@starting-style {
+			scale: 0.5;
+		}
 	}
 }
 
@@ -298,12 +314,12 @@
 	flex: none;
 	align-items: center;
 	gap: 5px;
-	height: 20px;
+	min-block-size: 1.25rem;
 	padding-inline: 7px;
 	border-radius: var(--radius-label);
 	background-color: var(--app-fill-1);
 	color: var(--app-label-2);
-	font-size: 11px;
+	font-size: var(--text-caption2);
 	font-weight: 600;
 	line-height: 1;
 	letter-spacing: 0.01em;
@@ -312,9 +328,9 @@
 
 @utility flag-lg {
 	gap: 6px;
-	height: 24px;
+	min-block-size: 1.5rem;
 	padding-inline: 9px;
-	font-size: 13px;
+	font-size: var(--text-footnote);
 }
 
 @utility ilist {
@@ -331,19 +347,70 @@
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	min-height: 44px;
+	min-block-size: 2.75rem;
 	padding: 8px 12px;
-	font-size: 15px;
-	line-height: 20px;
+	font-size: var(--text-subhead);
+	line-height: var(--text-subhead--line-height);
 
 	& + &::before {
 		content: '';
 		position: absolute;
-		top: 0;
-		right: 0;
-		left: 12px;
-		height: 1px;
+		inset-block-start: 0;
+		inset-inline: 12px 0;
+		block-size: 1px;
 		background-color: var(--app-sep);
+	}
+}
+
+@utility scroll-fade {
+	--fade-size: 2rem;
+	--fade-dir: right;
+	--fade-start-pos: 0;
+	--fade-end-pos: 100%;
+	mask:
+		linear-gradient(black, black) no-clip subtract,
+		linear-gradient(to var(--fade-dir), black, transparent) var(--fade-start-pos) 0 /
+			var(--fade-start) 100% no-repeat no-clip,
+		linear-gradient(to var(--fade-dir), transparent, black) var(--fade-end-pos) 0 / var(--fade-end)
+			100% no-repeat no-clip;
+	transition:
+		--fade-start 0.2s,
+		--fade-end 0.2s;
+
+	&:dir(rtl) {
+		--fade-dir: left;
+		--fade-start-pos: 100%;
+		--fade-end-pos: 0;
+	}
+
+	&[data-more-start] {
+		--fade-start: var(--fade-size);
+	}
+
+	&[data-more-end] {
+		--fade-end: var(--fade-size);
+	}
+
+	@supports (animation-timeline: scroll()) {
+		animation:
+			reveal-fade-start linear both,
+			hide-fade-end linear both;
+		animation-timeline: scroll(self inline);
+		animation-range:
+			0 var(--fade-size),
+			calc(100% - var(--fade-size)) 100%;
+	}
+}
+
+@keyframes reveal-fade-start {
+	to {
+		--fade-start: var(--fade-size);
+	}
+}
+
+@keyframes hide-fade-end {
+	from {
+		--fade-end: var(--fade-size);
 	}
 }
 
@@ -351,9 +418,13 @@
 	display: block;
 	border-radius: var(--radius-label);
 	background-color: var(--app-fill-2);
-	animation:
-		skeleton-wait 200ms step-end,
-		skeleton-pulse 1.4s ease-in-out 200ms infinite;
+	animation: skeleton-wait 200ms step-end;
+
+	@media (prefers-reduced-motion: no-preference) {
+		animation:
+			skeleton-wait 200ms step-end,
+			skeleton-pulse 1.4s ease-in-out 200ms infinite;
+	}
 }
 
 @keyframes skeleton-wait {
@@ -368,17 +439,64 @@
 	}
 }
 
+::highlight(search-hit) {
+	background-color: color-mix(in oklab, var(--app-accent) 22%, transparent);
+	text-decoration: underline var(--app-accent);
+}
+
 ::view-transition-group(*) {
 	animation-duration: 200ms;
 	animation-timing-function: var(--ease-out);
 }
 
-@media (prefers-reduced-motion: reduce) {
-	*,
-	*::before,
-	*::after {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		transition-duration: 0.01ms !important;
+@media (prefers-reduced-motion: no-preference) {
+	html:active-view-transition-type(forward) {
+		--shift: 12px;
 	}
+
+	html:active-view-transition-type(back) {
+		--shift: -12px;
+	}
+
+	html:active-view-transition-type(forward, back) {
+		&::view-transition-old(main) {
+			animation-name: leave;
+		}
+
+		&::view-transition-new(main) {
+			animation-name: enter;
+		}
+	}
+}
+
+@keyframes leave {
+	to {
+		opacity: 0;
+		translate: calc(var(--shift) * -1) 0;
+	}
+}
+
+@keyframes enter {
+	from {
+		opacity: 0;
+		translate: var(--shift) 0;
+	}
+}
+
+@property --drawer-backdrop {
+	syntax: '<number>';
+	inherits: true;
+	initial-value: 0;
+}
+
+@property --fade-start {
+	syntax: '<length>';
+	inherits: false;
+	initial-value: 0px;
+}
+
+@property --fade-end {
+	syntax: '<length>';
+	inherits: false;
+	initial-value: 0px;
 }

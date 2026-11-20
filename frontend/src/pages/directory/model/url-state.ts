@@ -80,3 +80,12 @@ export const switchesView = ({ from, to }: { from: Hop; to: Hop }) =>
 	!to.url.searchParams.has('task') &&
 	(from.url.pathname !== to.url.pathname ||
 		VIEW.some((key) => from.url.searchParams.get(key) !== to.url.searchParams.get(key)));
+
+const scoped = (hop: Hop) =>
+	!!hop && (hop.url.pathname !== '/' || hop.url.searchParams.has('person'));
+
+export const directionOf = ({ from, to, delta }: { from: Hop; to: Hop; delta?: number | null }) => {
+	if (delta) return delta < 0 ? 'back' : 'forward';
+	if (scoped(to) === scoped(from)) return undefined;
+	return scoped(to) ? 'forward' : 'back';
+};

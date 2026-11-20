@@ -26,13 +26,16 @@
             type="password"
             autocomplete="current-password"
             aria-describedby="message"
+            aria-invalid="{{if eq .Mood "wrong"}}true{{else}}false{{end}}"
             required
             autofocus
           />
-          <button class="show" type="button" aria-pressed="false" hidden>Show</button>
+          <button class="show" type="button" aria-pressed="false" aria-label="Show password" hidden>
+            Show
+          </button>
         </div>
         <button class="unlock" type="submit">Unlock</button>
-        <p id="message" role="alert">{{.Message}}</p>
+        <p id="message">{{.Message}}</p>
       </form>
     </main>
     <script>

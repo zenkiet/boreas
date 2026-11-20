@@ -7,4 +7,6 @@ export { default as SearchField } from './SearchField.svelte';
 export { default as Segmented } from './Segmented.svelte';
 export { default as Skeleton } from './Skeleton.svelte';
 export { default as StatusPage } from './StatusPage.svelte';
-export { flash, lift, move, rise, viewTransition } from './motion.ts';
+export { closeTopLayer, flash, move, rise, viewTransition } from './motion.ts';
+export { roving } from './roving.ts';
+export { scrollHints } from './scroll-hints.ts';

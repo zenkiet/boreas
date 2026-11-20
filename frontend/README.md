@@ -39,6 +39,6 @@ Cross-slice imports use the package.json `imports` aliases, `#shared/ui`, `#enti
 
 - **Specs** run under plain Node. A module with a spec imports values only from its own slice (by relative path, with `.ts`) or from `#shared/api` and `#shared/lib`. Those two barrels never re-export `.svelte` files.
 - **Type sizes** come from the ramp, `text-caption2` through `text-large`. **Colours** come from tokens, such as `text-label-2` and `bg-surface`. Avoid raw values.
-- **Motion** uses the boreas-client tokens: `ease-out` and `ease-layout` in `tokens.css`, `T`, `move`, `rise`, `flash`, `viewTransition` and `Count` in `shared/ui`. JavaScript motion checks `prefersReducedMotion`; CSS motion falls under the global reduced-motion rule.
+- **Motion** uses the boreas-client tokens: `ease-out` and `ease-layout` in `tokens.css`, `T`, `move`, `rise`, `flash`, `viewTransition` and `Count` in `shared/ui`. JavaScript motion checks `prefersReducedMotion`; CSS motion opts in with `@media (prefers-reduced-motion: no-preference)` or Tailwind's `motion-safe:`, and colour fades stay.
 - **Files** stay small: a component is about 150 lines at most. Code explains itself without comments. Adding a dependency is a team decision.
 - **Password-protected tasks:** the API never sends their note or people, and `toTask` in `shared/api` enforces the same rule again on the client.

@@ -3,33 +3,36 @@
 }
 
 .policy h1 {
-	margin: 8px 0;
-	font-size: 34px;
-	line-height: 41px;
+	margin-block: 8px;
+	font-size: 2.125rem;
+	line-height: 1.206;
 	font-weight: 700;
 	letter-spacing: -0.022em;
 }
 
 .policy h2 {
-	margin: 36px 0 10px;
-	font-size: 20px;
-	line-height: 25px;
+	margin-block: 36px 10px;
+	font-size: 1.25rem;
+	line-height: 1.25;
 	font-weight: 600;
 	letter-spacing: -0.012em;
-	scroll-margin-top: 24px;
+}
+
+.policy section {
+	scroll-margin-block-start: 24px;
 }
 
 .policy :is(p, ul) {
-	margin: 0 0 14px;
+	margin-block-end: 14px;
 	color: var(--app-label-2);
-	font-size: 16px;
-	line-height: 25px;
+	font-size: 1rem;
+	line-height: 1.5625;
 }
 
 .policy ul {
 	display: grid;
 	gap: 6px;
-	padding-left: 22px;
+	padding-inline-start: 22px;
 	list-style: disc;
 }
 
@@ -50,12 +53,12 @@
 	border-radius: var(--radius-label);
 	background: var(--app-fill-2);
 	color: var(--app-label);
-	font: 500 13px/1.5 var(--app-font-mono);
+	font: 500 0.8125rem/1.5 var(--app-font-mono);
 }
 
 .policy .policy-table {
 	overflow-x: auto;
-	margin-bottom: 16px;
+	margin-block-end: 16px;
 	padding: 4px 8px;
 	border-radius: var(--radius-box);
 	background: var(--app-surface);
@@ -64,35 +67,35 @@
 
 .policy table {
 	width: 100%;
-	margin: 8px 0 16px;
+	margin-block: 8px 16px;
 	border-collapse: collapse;
-	font-size: 14px;
-	line-height: 20px;
+	font-size: 0.875rem;
+	line-height: 1.4286;
 }
 
 .policy :is(th, td) {
 	padding: 10px 12px;
-	text-align: left;
+	text-align: start;
 	vertical-align: top;
 }
 
 .policy th {
-	border-bottom: 1px solid var(--app-line);
+	border-block-end: 1px solid var(--app-line);
 	color: var(--app-label-3);
-	font-size: 12px;
+	font-size: 0.75rem;
 	font-weight: 600;
 }
 
 .policy td {
-	border-bottom: 1px solid var(--app-sep);
+	border-block-end: 1px solid var(--app-sep);
 	color: var(--app-label-2);
 }
 
 .policy-head {
-	margin-bottom: 28px;
+	margin-block-end: 28px;
 	color: var(--app-label-3);
-	font-size: 13px;
-	line-height: 18px;
+	font-size: 0.8125rem;
+	line-height: 1.3846;
 }
 
 .policy .policy-head :is(p, strong) {
@@ -107,11 +110,27 @@
 }
 
 .policy .policy-summary h2 {
-	margin: 0 0 8px;
-	font-size: 17px;
-	line-height: 22px;
+	margin-block: 0 8px;
+	font-size: 1.0625rem;
+	line-height: 1.294;
 }
 
 .policy .policy-summary p {
 	margin: 0;
+}
+
+.policy-toc {
+	scroll-target-group: auto;
+}
+
+.policy-toc a:target-current {
+	color: var(--app-accent-text);
+	font-weight: 600;
+}
+
+@supports not (scroll-target-group: auto) {
+	.policy-toc a[aria-current='true'] {
+		color: var(--app-accent-text);
+		font-weight: 600;
+	}
 }

@@ -12,9 +12,9 @@ document.body.innerHTML = `
 <div class="fit">
 	<div class="device">
 		<div class="screen">
-			<iframe title="${project} ${task}"></iframe>
-			<div class="statusbar"><span class="time"></span><span></span><span class="icons">${icons}</span></div>
-			<div class="indicator"></div>
+			<iframe></iframe>
+			<div class="statusbar" aria-hidden="true"><span class="time"></span><span></span><span class="icons">${icons}</span></div>
+			<div class="indicator" aria-hidden="true"></div>
 		</div>
 		<img class="bezel" src="/_device/iphone-18-pro-max-black.png" alt="" draggable="false">
 	</div>
@@ -52,4 +52,5 @@ window.__boreasDevice = {
 	}
 };
 
+$('iframe').title = `${project} ${task}`;
 $('iframe').src = location.href;

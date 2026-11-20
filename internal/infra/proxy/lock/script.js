@@ -6,14 +6,16 @@
   const unlock = lock.querySelector(".unlock");
 
   setTimeout(() => lock.classList.add("ready"), lock.classList.contains("wrong") ? 900 : 450);
-  input.addEventListener("input", () => lock.classList.remove("wrong", "wait"));
+  input.addEventListener("input", () => {
+    lock.classList.remove("wrong", "wait");
+    input.setAttribute("aria-invalid", "false");
+  });
 
   show.hidden = false;
   show.addEventListener("mousedown", (event) => event.preventDefault());
   show.addEventListener("click", () => {
     const visible = input.type === "password";
     input.type = visible ? "text" : "password";
-    show.textContent = visible ? "Hide" : "Show";
     show.setAttribute("aria-pressed", visible);
     lock.classList.toggle("peek", visible);
   });

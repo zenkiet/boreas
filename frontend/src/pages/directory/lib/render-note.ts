@@ -69,23 +69,14 @@ const createRenderer = () =>
 		renderer: {
 			html: () => '',
 			image: () => '',
+			checkbox: ({ checked }) =>
+				`<input type="checkbox" disabled${checked ? ' checked' : ''} aria-label="Task"> `,
 			code({ text, lang }) {
 				const language = lang?.split(/\s+/)[0] ?? '';
-				const code = hljs.getLanguage(language)
-					? hljs.highlight(text, { language }).value
-					: escapeHtml(text);
-				return `<div class="code-block">
-				<button type="button" data-copy-code aria-label="Copy code" title="Copy code" aria-live="polite">
-					<svg data-copy-icon width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<rect x="8" y="8" width="13" height="13" rx="2"/>
-						<path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>
-					</svg>
-					<svg data-copy-check width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="m5 12 4 4L19 6"/>
-					</svg>
-				</button>
-				<pre><code>${code}</code></pre>
-			</div>`;
+				const known = hljs.getLanguage(language);
+				const code = known ? hljs.highlight(text, { language }).value : escapeHtml(text);
+				const tag = known ? `<code class="language-${escapeHtml(language)}">` : '<code>';
+				return `<div class="code-block"><pre>${tag}${code}</code></pre></div>`;
 			},
 			link({ href, tokens }) {
 				const text = this.parser.parseInline(tokens);
@@ -101,6 +92,19 @@ const createRenderer = () =>
 			}
 		}
 	});
+
+export const NOTE_SANITIZER: SanitizerConfig = {
+	elements:
+		'a blockquote br code del div em h1 h2 h3 h4 h5 h6 hr input li ol p pre span strong table tbody td th thead tr ul'.split(
+			' '
+		),
+	attributes: 'align aria-label checked class disabled href rel start target type'.split(' ')
+};
+
+export const codeName = (pre: Element): string => {
+	const key = /language-([\w-]+)/.exec(pre.querySelector('code')?.className ?? '')?.[1];
+	return (key && hljs.getLanguage(key)?.name) || '';
+};
 
 export const renderNote = (markdown: string): string =>
 	(renderer ??= createRenderer()).parse(markdown.replace(/^([ \t]*)\\`\\`\\`/gm, '$1```'), {

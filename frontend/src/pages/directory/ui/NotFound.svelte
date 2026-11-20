@@ -23,7 +23,7 @@
 		description="It may have been renamed or deleted."
 	>
 		{#if hints.length}
-			<div class="mb-2 w-full max-w-105 text-left">
+			<div class="mb-2 w-full max-w-105 text-start">
 				<h3 class="text-headline text-label-3">Did you mean</h3>
 				<ul class="ilist">
 					{#each hints as hint (hint.slug)}

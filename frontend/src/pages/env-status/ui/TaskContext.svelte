@@ -9,14 +9,14 @@
 
 <section
 	aria-label="About this environment"
-	class="mt-2 w-full rounded-box bg-surface p-4 text-left shadow-1"
+	class="mt-2 w-full rounded-box bg-surface p-4 text-start shadow-1"
 >
 	<div class="flex min-w-0 items-center gap-2">
 		<ProjectTag slug={task.project.slug} link icon title="Every task in {task.project.name}" />
 		<span class="min-w-0 flex-1 truncate font-mono text-subhead font-semibold">{task.name}</span>
 		<StatusBadge status={task.devStatus} />
 	</div>
-	<p class={['mt-2 mb-3 text-subhead/[21px]', task.description ? 'text-label' : 'text-label-3']}>
+	<p class={['mt-2 mb-3 text-subhead/[1.4]', task.description ? 'text-label' : 'text-label-3']}>
 		{task.description || 'No description'}
 	</p>
 	<ul class="ilist">

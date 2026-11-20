@@ -7,7 +7,7 @@
 	import { taskKey } from '#shared/api';
 	import { ThemeToggle } from '#shared/theme';
 	import { Brand, EmptyState, viewTransition } from '#shared/ui';
-	import { closeTask, switchesView, urlState } from '../model/url-state.ts';
+	import { closeTask, directionOf, switchesView, urlState } from '../model/url-state.ts';
 	import { CARD } from './layout.ts';
 	import Sidebar from './Sidebar.svelte';
 	import TaskPanel from './TaskPanel.svelte';
@@ -22,20 +22,22 @@
 
 	$effect(() => directory.live());
 
-	onNavigate((navigation) => (switchesView(navigation) ? viewTransition(navigation) : undefined));
+	onNavigate((navigation) =>
+		switchesView(navigation) ? viewTransition(navigation, directionOf(navigation)) : undefined
+	);
 </script>
 
 <div class="flex min-h-dvh max-lg:flex-col">
 	<Sidebar />
 	<header
-		class="sticky top-0 z-5 flex h-13 items-center gap-1 border-b border-sep bg-surface/86 pr-2 pl-4 backdrop-blur-[14px] backdrop-saturate-180 lg:hidden"
+		class="sticky top-0 z-5 flex min-h-13 items-center gap-1 border-b border-sep bg-surface/86 ps-4 pe-2 backdrop-blur-[14px] backdrop-saturate-180 [view-transition-name:top] lg:hidden"
 	>
 		<Brand />
 		<span class="flex-auto"></span>
 		<ThemeToggle />
 	</header>
 	<main
-		class="@container/main min-w-0 flex-auto px-8 pt-7 pb-14 max-lg:pt-5 max-sm:px-4 max-sm:pt-3 max-sm:pb-10"
+		class="@container/main min-w-0 flex-auto px-8 pt-7 pb-14 [view-transition-name:main] max-lg:pt-5 max-sm:px-4 max-sm:pt-3 max-sm:pb-10"
 	>
 		<div class="mx-auto max-w-300">
 			<svelte:boundary>

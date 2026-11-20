@@ -32,7 +32,7 @@
 {/snippet}
 
 <aside
-	class="flex w-62 flex-none flex-col gap-[22px] border-r border-sep px-3 pt-4 pb-5 max-lg:hidden"
+	class="flex w-62 flex-none flex-col gap-[22px] border-e border-sep px-3 pt-4 pb-5 max-lg:hidden"
 	aria-label="Directory"
 >
 	<div class="flex items-center justify-between ps-2.5"><Brand /><ThemeToggle /></div>
@@ -50,9 +50,9 @@
 
 	<nav class={NAV} aria-label="Projects">
 		<div class={LABEL}>
-			<span>Projects</span><span class="tabular-nums"
-				>{#if !loading}<Count value={directory.projects.length} />{/if}</span
-			>
+			<span>Projects</span><span class="tabular-nums">
+				{#if !loading}<Count value={directory.projects.length} />{/if}
+			</span>
 		</div>
 		{#if loading}
 			{@render skeletons(false)}
@@ -77,9 +77,9 @@
 
 	<nav class={NAV} aria-label="People">
 		<div class={LABEL}>
-			<span>People</span><span class="tabular-nums"
-				>{#if !loading}<Count value={team.length} />{/if}</span
-			>
+			<span>People</span><span class="tabular-nums">
+				{#if !loading}<Count value={team.length} />{/if}
+			</span>
 		</div>
 		{#if loading}
 			{@render skeletons(true)}

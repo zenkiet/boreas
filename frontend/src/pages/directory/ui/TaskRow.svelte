@@ -31,7 +31,7 @@
 	onclick={() => openTask(key)}
 ></button>
 <StatusGlyph status={task.devStatus} label={DEV_STATUS_LABEL[task.devStatus]} class={AREA.glyph} />
-<TaskId {task} {needle} {idle} class={['@max-[720px]/main:text-[14px]', AREA.id]} />
+<TaskId {task} {needle} {idle} class={['@max-[720px]/main:text-[0.875rem]', AREA.id]} />
 <span class={['flex min-w-0 items-center gap-2 @max-[720px]/main:items-start', AREA.desc]}>
 	<ContainerFlag status={task.status} />
 	<span
@@ -56,13 +56,17 @@
 <span
 	class={['relative z-1 flex min-w-0 cursor-pointer items-center', AREA.people]}
 	role="presentation"
-	onclick={() => openTask(key)}><TaskPeople {task} /></span
+	onclick={() => openTask(key)}
 >
+	<TaskPeople {task} />
+</span>
 <span class={['flex min-w-0 items-center', AREA.pipe]}><PipeLabel {...pipelineOf(task)} /></span>
 <span
 	class={['text-footnote/5 whitespace-nowrap text-label-3 tabular-nums', AREA.time]}
-	title={stamp(task.updatedAt)}>{ago(task.updatedAt, directory.now)}</span
+	title={stamp(task.updatedAt)}
 >
+	{ago(task.updatedAt, directory.now)}
+</span>
 <a
 	class={['relative z-1 iconbtn', AREA.open]}
 	href={appUrl(task)}

@@ -33,7 +33,7 @@
 	</span>
 	{#if code}<span class="font-mono text-caption tracking-[0.12em] text-label-3">{code}</span>{/if}
 	<h2 class="text-headline">{title}</h2>
-	<p class="max-w-105 text-subhead/[21px] text-label-2">{description}</p>
+	<p class="max-w-105 text-subhead/[1.4] text-label-2">{description}</p>
 	{#if children}
 		<div class="mt-2 flex flex-wrap justify-center gap-2">{@render children()}</div>
 	{/if}

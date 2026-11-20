@@ -1,3 +1,5 @@
+import { byInstant } from '#shared/lib';
+
 export const DEV_STATUSES = ['blocked', 'in_progress', 'ready'] as const;
 
 export type DevStatus = (typeof DEV_STATUSES)[number];
@@ -124,7 +126,7 @@ export const bySeverity = <T extends PublicTask>(tasks: readonly T[]): T[] =>
 	[...tasks].sort(
 		(a, b) =>
 			DEV_STATUSES.indexOf(a.devStatus) - DEV_STATUSES.indexOf(b.devStatus) ||
-			Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+			byInstant(b.updatedAt, a.updatedAt)
 	);
 
 export const devCount = (tasks: readonly PublicTask[], status: DevStatus): number =>

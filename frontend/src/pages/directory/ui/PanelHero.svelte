@@ -10,14 +10,14 @@
 	import { StatusBadge } from '#entities/task';
 	import ContainerFlag from './ContainerFlag.svelte';
 
-	let { task }: { task: DirectoryTask } = $props();
+	let { task, heading }: { task: DirectoryTask; heading: string } = $props();
 
 	const url = $derived(appUrl(task));
 </script>
 
 <div class="mb-[18px] flex flex-col gap-2">
-	<h2 class="font-mono text-mono-title">{task.name}</h2>
-	<p class={['text-body/[23px]', task.description ? 'text-label' : 'text-label-3']}>
+	<h2 id={heading} class="font-mono text-mono-title">{task.name}</h2>
+	<p class={['text-body/[1.353]', task.description ? 'text-label' : 'text-label-3']}>
 		{task.description || 'No description'}
 	</p>
 	<div class="mt-1 flex flex-wrap gap-1.5">

@@ -35,16 +35,16 @@
 	<li class="ilist-row">
 		{@render title('Revision')}
 		<span
-			class="inline-flex h-[22px] items-center gap-[5px] rounded-label bg-fill-1 px-[7px] font-mono text-caption/none font-medium text-label"
+			class="inline-flex min-h-[1.375rem] items-center gap-[5px] rounded-label bg-fill-1 px-[7px] font-mono text-caption/none font-medium text-label"
 			title={task.revision.commit}
 		>
 			<GitCommitHorizontal size={12} />{task.revision.commit.slice(0, 7)}
 		</span>
 		{#if task.revision.previous}
 			<span class="ms-auto ps-2.5 text-footnote whitespace-nowrap text-label-3">
-				from <span class="font-mono" title={task.revision.previous}
-					>{task.revision.previous.slice(0, 7)}</span
-				>
+				from <span class="font-mono" title={task.revision.previous}>
+					{task.revision.previous.slice(0, 7)}
+				</span>
 			</span>
 		{/if}
 	</li>

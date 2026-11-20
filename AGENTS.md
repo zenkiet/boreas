@@ -108,6 +108,13 @@ tests use the fakes and stubs already present (`fakes_test.go`,
 frameworks. Handlers answer `404` (not `403`) for resources the caller
 cannot see, so names do not leak; preserve that behavior in new endpoints.
 
+## Browser support
+
+Web code (`frontend/`, the proxy's lock and error pages, `frontend/static/_device`) follows
+`frontend/.agents/skills/modern-web-guidance`. Baseline Widely available features need no
+fallback. Newer features are feature-detected with a small native fallback, often the code
+they replace; never add a polyfill package.
+
 ## Commit messages
 
 Commits follow Conventional Commits with a type-specific emoji, enforced by
