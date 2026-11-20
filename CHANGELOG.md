@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.35.1 - 2026-11-20
+#### ♻️ Code Refactoring
+- ♻️ modernize the app to current web standards - (ab82217) - *zenkiet*
+
+- - -
+
 ## v1.35.0 - 2026-11-17
 #### 🚀 Features
 - ✨ add device sessions, crash alerts, push filters and fleet metrics - (9d8ef47) - *zenkiet*
