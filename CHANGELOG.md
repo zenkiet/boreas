@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.36.1 - 2026-11-22
+#### ♻️ Code Refactoring
+- ♻️ use one Libredesk inbox and drop chat notifications - (87b175d) - *zenkiet*
+
+- - -
+
 ## v1.36.0 - 2026-11-22
 #### 🚀 Features
 - ✨ add per-project Libredesk support chat and its notifications - (545d442) - *zenkiet*
