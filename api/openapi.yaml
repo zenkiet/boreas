@@ -1876,42 +1876,6 @@ paths:
       summary: Health check
       tags:
       - system
-  /api/v1/hooks/libredesk:
-    post:
-      description: Libredesk's webhook, signed with BOREAS_LIBREDESK_WEBHOOK_SECRET
-        in X-Libredesk-Signature (sha256=<hex HMAC of the body>). conversation.created
-        records a support_request for the project named like the chat's inbox; other
-        events are ignored. 404 when the signature is wrong or no secret is set.
-      operationId: post-hooks-libredesk
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LibredeskEvent'
-      responses:
-        "204":
-          description: No Content
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Bad Request
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Not Found
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-          description: Internal Server Error
-      summary: Receive Libredesk events
-      tags:
-      - notifications
   /api/v1/metrics/stream:
     get:
       description: 'GET /api/v1/projects/{project}/metrics/stream for every project
@@ -5187,35 +5151,6 @@ components:
       - status
       - at
       type: object
-    LibredeskEvent:
-      properties:
-        event:
-          example: conversation.created
-          type: string
-        payload:
-          properties:
-            contact:
-              properties:
-                email:
-                  type: string
-                first_name:
-                  type: string
-                last_name:
-                  type: string
-              type: object
-            inbox_name:
-              example: shop
-              type: string
-            last_message:
-              example: The checkout page is blank
-              type: string
-          required:
-          - contact
-          type: object
-      required:
-      - event
-      - payload
-      type: object
     LoginRequest:
       properties:
         password:
@@ -5342,7 +5277,6 @@ components:
       - spec_confirming
       - spec_ready
       - spec_failed
-      - support_request
       type: string
     NotificationsResponse:
       properties:

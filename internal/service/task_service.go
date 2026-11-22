@@ -369,13 +369,10 @@ func (s *TaskService) Deploy(ctx context.Context, slug, name, image string, rev 
 }
 
 func notification(ctx context.Context, project core.Project, task string, kind core.NotificationType, event, detail string) core.Notification {
-	if task != "" {
-		detail = task + ": " + detail
-	}
 	return core.Notification{
 		ProjectID: project.ID, TaskName: task, Type: kind, Status: kind.Status(),
 		Title:   event + " • " + project.Name,
-		Body:    detail,
+		Body:    task + ": " + detail,
 		ActorID: core.ActorFrom(ctx),
 	}
 }

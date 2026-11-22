@@ -31,7 +31,7 @@ func testHandler(tasks TaskService, auth AuthService, projects ProjectService) h
 	if projects == nil {
 		projects = &stubProjects{}
 	}
-	return APIHandler(tasks, auth, projects, &stubPush{}, NewHub(), Hooks{}, "test", slog.New(slog.DiscardHandler))
+	return APIHandler(tasks, auth, projects, &stubPush{}, NewHub(), "test", slog.New(slog.DiscardHandler))
 }
 
 func authed(method, target string, body io.Reader) *http.Request {
@@ -51,7 +51,6 @@ func TestOnlyPublicRoutesSkipAuthentication(t *testing.T) {
 	public := map[string]bool{
 		"GET /api/v1/health": true, "POST /api/v1/auth/login": true, "POST /api/v1/auth/pairing/claim": true,
 		"GET /api/v1/public/projects": true, "GET /api/v1/public/events/stream": true, "GET /api/v1/users/{id}/avatar": true,
-		"POST /api/v1/hooks/libredesk": true,
 	}
 	h := testHandler(stubTasks{}, nil, nil)
 	gone, cancel := context.WithCancel(t.Context())
@@ -729,7 +728,7 @@ func TestUpdateTaskForwardsOnlySuppliedFields(t *testing.T) {
 
 // Preflight must advertise every routed method because browsers reject missing methods.
 func TestCORSAdvertisesEveryRoutedMethod(t *testing.T) {
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, NewHub(), Hooks{}, "test", slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, NewHub(), "test", slog.New(slog.DiscardHandler))
 	r := httptest.NewRequest(http.MethodOptions, "/api/v1/projects/team/tasks/T", nil)
 	r.Header.Set("Origin", "http://localhost:4200")
 	headers := do(h, r).Header()
@@ -931,7 +930,7 @@ func TestEventsStream(t *testing.T) {
 	default:
 	}
 	hub.Close()
-	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, Hooks{}, "test", slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
 	if rr := do(h, authed(http.MethodGet, "/api/v1/events/stream", nil)); rr.Body.String() != "data: {}\n\n" {
 		t.Fatalf("stream after close = %d %q", rr.Code, rr.Body.String())
 	}
@@ -964,7 +963,7 @@ func TestOnlySuccessfulAuthenticatedWritesPublish(t *testing.T) {
 	events, unsubscribe := hub.subscribe()
 	defer unsubscribe()
 	<-events
-	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, hub, Hooks{}, "test", slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testAdmin}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
 	member := `{"user_id":"` + uuid.NewString() + `","role":"operator"}`
 	for _, tc := range []struct {
 		name string
@@ -1190,7 +1189,7 @@ func TestARDManifestNamesThisServersResources(t *testing.T) {
 func TestJSONIsGzippedButStreamsAreNot(t *testing.T) {
 	hub := NewHub()
 	hub.Close()
-	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, Hooks{}, "test", slog.New(slog.DiscardHandler))
+	h := APIHandler(stubTasks{}, &stubAuth{user: testMember}, &stubProjects{}, &stubPush{}, hub, "test", slog.New(slog.DiscardHandler))
 	health := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	health.Header.Set("Accept-Encoding", "gzip, br")
 	rr := do(h, health)

@@ -221,7 +221,6 @@ type stubProjects struct {
 	allTasks        *bool
 	accessErr       error
 	update          func(context.Context, string, service.UpdateProjectInput) (core.Project, error)
-	support         func(slug, detail string) error
 	listCredentials func(context.Context) ([]core.RegistryCredential, error)
 	notifications   func(context.Context, core.User, *uuid.UUID, *uuid.UUID, int) ([]core.Notification, error)
 	markSeen        func(context.Context, core.User, []uuid.UUID) error
@@ -364,13 +363,6 @@ func (s *stubProjects) List(c context.Context, actor core.User) ([]core.ProjectA
 
 func (s *stubProjects) GrantedRoles(context.Context, uuid.UUID) (map[uuid.UUID]core.ProjectRole, error) {
 	return s.grantedRoles, nil
-}
-
-func (s *stubProjects) SupportRequested(_ context.Context, slug, detail string) error {
-	if s.support != nil {
-		return s.support(slug, detail)
-	}
-	return nil
 }
 
 func (s *stubProjects) Update(c context.Context, slug string, in service.UpdateProjectInput) (core.Project, error) {

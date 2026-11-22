@@ -36,14 +36,14 @@ func (s *PushStore) DeleteTokens(ctx context.Context, tokens []string) error {
 
 // Tokens mirrors NotificationStore.List: a notification with a recipient reaches only them;
 // otherwise administrators and project members see every task, grantees only what they hold,
-// and a device that asked for the important ones gets only failures and support requests. The actor's own devices
+// and a device that asked for the important ones gets only failures. The actor's own devices
 // get nothing: they just did it. Disabled accounts see nothing, so revoking a user stops their
 // devices along with their login.
 func (s *PushStore) Tokens(ctx context.Context, n core.Notification) ([]string, error) {
 	return many(ctx, s.pool, pgx.RowTo[string], "list push subscriptions", "scan push subscriptions", `
 		SELECT p.token FROM push_subscriptions p
 		JOIN users u ON u.id = p.user_id AND u.disabled_at IS NULL
-		WHERE p.user_id IS DISTINCT FROM $5 AND (p.user_id = $3 OR $3::uuid IS NULL AND (p.events = 'all' OR $4) AND (u.role = 'admin'
+		WHERE p.user_id IS DISTINCT FROM $5 AND (p.user_id = $3 OR $3::uuid IS NULL AND (p.events = 'all' OR $4 = 'failure') AND (u.role = 'admin'
 		   OR EXISTS (
 			SELECT 1 FROM project_members m
 			WHERE m.project_id = $1 AND m.user_id = p.user_id)
@@ -51,5 +51,5 @@ func (s *PushStore) Tokens(ctx context.Context, n core.Notification) ([]string, 
 			SELECT 1 FROM task_grants g
 			JOIN tasks t ON t.id = g.task_id
 			WHERE g.user_id = p.user_id AND t.project_id = $1 AND t.name = $2)))`,
-		n.ProjectID, n.TaskName, n.UserID, n.Type.Important(), n.ActorID)
+		n.ProjectID, n.TaskName, n.UserID, n.Status, n.ActorID)
 }

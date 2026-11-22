@@ -65,28 +65,25 @@ func TestLoadRejectsPartialFCMConfig(t *testing.T) {
 	}
 }
 
-func TestLoadLibredeskInboxes(t *testing.T) {
+func TestLoadLibredeskInbox(t *testing.T) {
 	const inbox = "550e8400-e29b-41d4-a716-446655440000"
 	t.Setenv("BOREAS_LIBREDESK_URL", "https://support.example.com/")
-	t.Setenv("BOREAS_LIBREDESK_INBOXES", " shop="+inbox+", *="+inbox+",")
+	t.Setenv("BOREAS_LIBREDESK_INBOX", inbox)
 
 	cfg, err := Load()
-	if err != nil || !cfg.Libredesk.Enabled() || cfg.Libredesk.URL != "https://support.example.com" ||
-		cfg.Libredesk.Inboxes["shop"] != inbox || cfg.Libredesk.Inboxes["*"] != inbox || len(cfg.Libredesk.Inboxes) != 2 {
+	if err != nil || !cfg.Libredesk.Enabled() || cfg.Libredesk.URL != "https://support.example.com" || cfg.Libredesk.Inbox != inbox {
 		t.Fatalf("libredesk = %+v, %v", cfg.Libredesk, err)
 	}
 
-	for _, value := range []string{"Shop=" + inbox, "shop=not-a-uuid", "shop", "api=" + inbox} {
-		t.Setenv("BOREAS_LIBREDESK_INBOXES", value)
-		if _, err := Load(); err == nil {
-			t.Fatalf("BOREAS_LIBREDESK_INBOXES=%q must be rejected", value)
-		}
+	t.Setenv("BOREAS_LIBREDESK_INBOX", "not-a-uuid")
+	if _, err := Load(); err == nil {
+		t.Fatal("an inbox that is not a UUID must be rejected")
 	}
 
 	t.Setenv("BOREAS_LIBREDESK_URL", "")
-	t.Setenv("BOREAS_LIBREDESK_INBOXES", "shop="+inbox)
+	t.Setenv("BOREAS_LIBREDESK_INBOX", inbox)
 	if _, err := Load(); err == nil {
-		t.Fatal("inboxes without a Libredesk URL must be rejected")
+		t.Fatal("an inbox without a Libredesk URL must be rejected")
 	}
 }
 

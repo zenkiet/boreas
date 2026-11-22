@@ -151,8 +151,6 @@ const (
 	NotificationSpecConfirming NotificationType = "spec_confirming"
 	NotificationSpecReady      NotificationType = "spec_ready"
 	NotificationSpecFailed     NotificationType = "spec_failed"
-
-	NotificationSupportRequest NotificationType = "support_request"
 )
 
 func (NotificationType) Enum() []any {
@@ -160,7 +158,6 @@ func (NotificationType) Enum() []any {
 		NotificationDeployed, NotificationDeployFailed, NotificationStatusChanged,
 		NotificationTaskCreated, NotificationTaskAssigned, NotificationBuildFailed, NotificationContainerDown,
 		NotificationSpecAsking, NotificationSpecConfirming, NotificationSpecReady, NotificationSpecFailed,
-		NotificationSupportRequest,
 	}
 }
 
@@ -173,10 +170,6 @@ func (t NotificationType) Status() NotificationStatus {
 		return NotificationFailure
 	}
 	return NotificationInfo
-}
-
-func (t NotificationType) Important() bool {
-	return t.Status() == NotificationFailure || t == NotificationSupportRequest
 }
 
 type actorKey struct{}

@@ -642,28 +642,3 @@ func TestFindPerson(t *testing.T) {
 		}
 	}
 }
-
-func TestSupportRequestNotifiesTheWholeProject(t *testing.T) {
-	ctx := context.Background()
-	svc, _ := newProjects(t)
-	project, err := svc.Create(ctx, member(), CreateProjectInput{Slug: "team", Name: "Team Alpha"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var notified []core.Notification
-	svc.Notify = func(_ context.Context, n core.Notification) { notified = append(notified, n) }
-
-	if err := svc.SupportRequested(ctx, "team", "Lan: the cart is empty"); err != nil {
-		t.Fatal(err)
-	}
-	want := core.Notification{
-		ProjectID: project.ID, Type: core.NotificationSupportRequest, Status: core.NotificationInfo,
-		Title: "💬 Support Request • Team Alpha", Body: "Lan: the cart is empty",
-	}
-	if len(notified) != 1 || notified[0] != want {
-		t.Fatalf("notified %+v, want %+v", notified, want)
-	}
-	if err := svc.SupportRequested(ctx, "missing", "hi"); !errors.Is(err, core.ErrNotFound) {
-		t.Fatalf("SupportRequested(missing) = %v, want not found", err)
-	}
-}

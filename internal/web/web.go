@@ -26,8 +26,8 @@ var encodings = [...]struct{ token, ext string }{{"br", ".br"}, {"gzip", ".gz"}}
 const SupportTag = `<script src="/_boreas/support.js" async fetchpriority="low"></script>`
 
 type SupportConfig struct {
-	Desk    string            `json:"desk"`
-	Inboxes map[string]string `json:"inboxes"`
+	BaseURL string `json:"baseURL"`
+	InboxID string `json:"inboxID"`
 }
 
 func etag(body []byte) string {
@@ -40,9 +40,9 @@ var supportScript []byte
 
 func Support(cfg SupportConfig) http.Handler {
 	var body []byte
-	if len(cfg.Inboxes) > 0 {
-		config, _ := json.Marshal(cfg)
-		body = fmt.Appendf(nil, "self.boreasSupport=%s;\n%s", config, supportScript)
+	if cfg.InboxID != "" {
+		settings, _ := json.Marshal(cfg)
+		body = fmt.Appendf(nil, "self.LibredeskSettings=%s;\n%s", settings, supportScript)
 	}
 	tag := etag(body)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

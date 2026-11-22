@@ -91,13 +91,13 @@ Avatars under `avatars/` must stay.
 
 ### Support chat (Libredesk)
 
-| Variable                          | Default | What it does                                                        |
-| --------------------------------- | ------- | ------------------------------------------------------------------- |
-| `BOREAS_LIBREDESK_URL`            | none    | Your Libredesk server, such as `https://support.example.com`        |
-| `BOREAS_LIBREDESK_INBOXES`        | none    | Comma-separated `<project slug>=<live chat inbox UUID>` pairs; `*` covers the directory and projects without their own inbox |
-| `BOREAS_LIBREDESK_WEBHOOK_SECRET` | none    | The secret of the Libredesk webhook; turns on chat notifications    |
+| Variable                 | Default | What it does                                                      |
+| ------------------------ | ------- | ----------------------------------------------------------------- |
+| `BOREAS_LIBREDESK_URL`   | none    | Your Libredesk server, such as `https://support.example.com`      |
+| `BOREAS_LIBREDESK_INBOX` | none    | The UUID of a Libredesk **Live chat** inbox; the directory and every task page show its chat widget |
 
-Inbox names and the webhook are in [Notifications](notifications.md#support-chats-from-libredesk).
+Add your Boreas address to the inbox's trusted domains, or browsers refuse to
+open the chat window. Libredesk notifies its agents of new chats by email.
 
 ### Settings that go together
 
@@ -109,7 +109,7 @@ Required combinations (incomplete groups prevent startup):
 - `BOREAS_FCM_PROJECT` and `BOREAS_FCM_KEYFILE`; without them, there is no push.
 - `BOREAS_S3_ENDPOINT` needs `BOREAS_S3_BUCKET` and both keys; without file
   storage, avatars and images are off.
-- `BOREAS_LIBREDESK_URL` and `BOREAS_LIBREDESK_INBOXES`; without them, there is
+- `BOREAS_LIBREDESK_URL` and `BOREAS_LIBREDESK_INBOX`; without them, there is
   no chat widget.
 
 ## Compose settings

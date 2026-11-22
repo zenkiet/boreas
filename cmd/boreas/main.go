@@ -104,7 +104,7 @@ func run(logger *slog.Logger) error {
 
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
 	fallback := http.NewServeMux()
-	fallback.Handle("GET /_boreas/support.js", web.Support(web.SupportConfig{Desk: cfg.Libredesk.URL, Inboxes: cfg.Libredesk.Inboxes}))
+	fallback.Handle("GET /_boreas/support.js", web.Support(web.SupportConfig{BaseURL: cfg.Libredesk.URL, InboxID: cfg.Libredesk.Inbox}))
 	fallback.Handle("/", web.Handler())
 	routes.Fallback = fallback
 	if cfg.Libredesk.Enabled() {
@@ -157,8 +157,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	handler := httptransport.ApplicationHandler(
-		httptransport.APIHandler(tasks, auth, projects, push, events,
-			httptransport.Hooks{LibredeskSecret: cfg.Libredesk.WebhookSecret}, version, logger),
+		httptransport.APIHandler(tasks, auth, projects, push, events, version, logger),
 		routes,
 		logger,
 	)

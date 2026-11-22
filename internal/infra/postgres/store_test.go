@@ -226,11 +226,6 @@ func TestNotificationStoreRoundTrip(t *testing.T) {
 	}); err == nil {
 		t.Fatal("the database must reject an unknown type")
 	}
-	if _, err := store.Create(ctx, core.Notification{
-		ProjectID: project.ID, Type: core.NotificationSupportRequest, Status: core.NotificationInfo, Title: "chat",
-	}); err != nil {
-		t.Fatalf("a project-wide support request must be stored: %v", err)
-	}
 
 	actor := seedUser(t, pool, "actor", core.RoleUser)
 	spec := core.BoraSpec{
@@ -928,18 +923,17 @@ func TestPushTokensMatchNotificationAudience(t *testing.T) {
 		n    core.Notification
 		want bool
 	}{
-		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Type: core.NotificationTaskCreated}, false},
-		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Type: core.NotificationDeployed}, false},
-		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Type: core.NotificationContainerDown}, true},
-		{core.Notification{ProjectID: project.ID, Type: core.NotificationSupportRequest}, true},
-		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Type: core.NotificationTaskCreated, UserID: &quiet.ID}, true},
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationInfo}, false},
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationSuccess}, false},
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationFailure}, true},
+		{core.Notification{ProjectID: project.ID, TaskName: web.Name, Status: core.NotificationInfo, UserID: &quiet.ID}, true},
 	} {
 		if tokens, err = push.Tokens(ctx, c.n); err != nil {
 			t.Fatal(err)
 		}
 		if slices.Contains(tokens, token["quiet"]) != c.want || !slices.Contains(tokens, token["admin"]) && c.n.UserID == nil {
 			t.Errorf("%s notification (personal %v): reached the important-only device %v, want %v",
-				c.n.Type, c.n.UserID != nil, !c.want, c.want)
+				c.n.Status, c.n.UserID != nil, !c.want, c.want)
 		}
 	}
 
