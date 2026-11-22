@@ -110,7 +110,7 @@ cannot see, so names do not leak; preserve that behavior in new endpoints.
 
 ## Browser support
 
-Web code (`frontend/`, the proxy's lock and error pages, `frontend/static/_device`) follows
+Web code (`frontend/`, the proxy's lock and error pages, `frontend/static/_device`, `internal/web/support.js`) follows
 `frontend/.agents/skills/modern-web-guidance`. Baseline Widely available features need no
 fallback. Newer features are feature-detected with a small native fallback, often the code
 they replace; never add a polyfill package.

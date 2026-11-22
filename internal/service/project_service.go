@@ -491,6 +491,17 @@ func (s *ProjectService) tellAssignee(ctx context.Context, project core.Project,
 	s.Notify(ctx, n)
 }
 
+func (s *ProjectService) SupportRequested(ctx context.Context, slug, detail string) error {
+	project, err := s.Get(ctx, slug)
+	if err != nil {
+		return err
+	}
+	if s.Notify != nil {
+		s.Notify(ctx, notification(ctx, project, "", core.NotificationSupportRequest, "💬 Support Request", detail))
+	}
+	return nil
+}
+
 func (s *ProjectService) ListCredentials(ctx context.Context) ([]core.RegistryCredential, error) {
 	credentials, err := s.credentials.List(ctx)
 	return credentials, wrap("list credentials", err)

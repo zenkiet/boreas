@@ -58,6 +58,7 @@ type Registry struct {
 	Fallback  http.Handler
 	// Mobile is asked on every HTML page rather than cached, so flipping a task's flag applies to its next page.
 	Mobile func(ctx context.Context, project, task string) bool
+	Inject string
 }
 
 func (r *Registry) miss(w http.ResponseWriter, request *http.Request) {
@@ -251,11 +252,15 @@ func (h *hop) modifyResponse(response *http.Response) error {
 	}
 	// Only a <base> the app declared moves under the task: adding one would re-aim a page's own relative URLs.
 	body = baseTagPattern.ReplaceAllFunc(body, h.base)
+	head := h.registry.Inject
 	if mobile := h.registry.Mobile; mobile != nil && mobile(response.Request.Context(), h.project, h.task) {
-		// ponytail: a page without <head> stays unframed, and no task sends a CSP nonce or X-Frame-Options DENY
-		// yet; carry the nonce over or relax the header once one does.
+		head = deviceShim + head
+	}
+	// ponytail: a page without <head> stays unframed, and no task sends a CSP nonce or X-Frame-Options DENY
+	// yet; carry the nonce over or relax the header once one does.
+	if head != "" {
 		if at := headTagPattern.FindIndex(body); at != nil {
-			body = slices.Concat(body[:at[1]], []byte(deviceShim), body[at[1]:])
+			body = slices.Concat(body[:at[1]], []byte(head), body[at[1]:])
 		}
 	}
 	response.Body = io.NopCloser(bytes.NewReader(body))

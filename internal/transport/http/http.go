@@ -93,6 +93,7 @@ type ProjectService interface {
 	StopSpec(ctx context.Context, actor core.User, id uuid.UUID) error
 	DeleteSpec(ctx context.Context, actor core.User, id uuid.UUID) error
 	ExportSpec(ctx context.Context, actor core.User, id uuid.UUID, project, origin string) (string, error)
+	SupportRequested(ctx context.Context, slug, detail string) error
 	ListGrants(ctx context.Context, slug, taskName string) ([]core.TaskGrant, error)
 	Grant(ctx context.Context, slug, taskName string, userID uuid.UUID, role core.ProjectRole) error
 	Revoke(ctx context.Context, slug, taskName string, userID uuid.UUID) error
@@ -115,10 +116,10 @@ const (
 )
 
 // APIHandler serves the API and applies each route's declared access policy.
-func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, events *Hub, version string, logger *slog.Logger) http.Handler {
+func APIHandler(tasks TaskService, auth AuthService, projects ProjectService, push PushStore, events *Hub, hooks Hooks, version string, logger *slog.Logger) http.Handler {
 	h := &Handler{
 		tasks: tasks, auth: auth, projects: projects, push: push, events: events,
-		publicStreams: make(chan struct{}, maxPublicStreams), version: version, logger: logger,
+		publicStreams: make(chan struct{}, maxPublicStreams), hooks: hooks, version: version, logger: logger,
 	}
 
 	mux := http.NewServeMux()

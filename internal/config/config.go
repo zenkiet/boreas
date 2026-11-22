@@ -8,6 +8,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/zenkiet/boreas/internal/core"
 )
 
 type Config struct {
@@ -19,7 +23,15 @@ type Config struct {
 	AI        AIConfig
 	Sourcebot SourcebotConfig
 	S3        S3Config
+	Libredesk LibredeskConfig
 }
+
+type LibredeskConfig struct {
+	URL, WebhookSecret string
+	Inboxes            map[string]string
+}
+
+func (c LibredeskConfig) Enabled() bool { return c.URL != "" && len(c.Inboxes) > 0 }
 
 type FCMConfig struct {
 	Project string
@@ -110,6 +122,15 @@ func Load() (*Config, error) {
 	setString("BOREAS_S3_REGION", &cfg.S3.Region)
 	setString("BOREAS_S3_ACCESS_KEY_ID", &cfg.S3.AccessKeyID)
 	setString("BOREAS_S3_SECRET_ACCESS_KEY", &cfg.S3.SecretAccessKey)
+	setString("BOREAS_LIBREDESK_URL", &cfg.Libredesk.URL)
+	setString("BOREAS_LIBREDESK_WEBHOOK_SECRET", &cfg.Libredesk.WebhookSecret)
+	cfg.Libredesk.URL = strings.TrimSuffix(cfg.Libredesk.URL, "/")
+
+	inboxes, err := parseInboxes(os.Getenv("BOREAS_LIBREDESK_INBOXES"))
+	if err != nil {
+		return nil, fmt.Errorf("BOREAS_LIBREDESK_INBOXES: %w", err)
+	}
+	cfg.Libredesk.Inboxes = inboxes
 
 	if value, ok := os.LookupEnv("BOREAS_PORT"); ok {
 		port, err := strconv.Atoi(value)
@@ -129,6 +150,21 @@ func setString(name string, target *string) {
 	if value, ok := os.LookupEnv(name); ok {
 		*target = value
 	}
+}
+
+func parseInboxes(value string) (map[string]string, error) {
+	inboxes := map[string]string{}
+	for pair := range strings.SplitSeq(value, ",") {
+		if pair = strings.TrimSpace(pair); pair == "" {
+			continue
+		}
+		slug, id, _ := strings.Cut(pair, "=")
+		if (slug != "*" && core.ValidateProjectSlug(slug) != nil) || uuid.Validate(id) != nil {
+			return nil, fmt.Errorf("%q is not <project slug or *>=<inbox uuid>", pair)
+		}
+		inboxes[slug] = id
+	}
+	return inboxes, nil
 }
 
 func (c Config) validate() error {
@@ -151,6 +187,9 @@ func (c Config) validate() error {
 	}
 	if s3 := c.S3; s3.Endpoint != "" && (s3.Bucket == "" || s3.AccessKeyID == "" || s3.SecretAccessKey == "") {
 		result = errors.Join(result, errors.New("BOREAS_S3_ENDPOINT needs BOREAS_S3_BUCKET, BOREAS_S3_ACCESS_KEY_ID and BOREAS_S3_SECRET_ACCESS_KEY"))
+	}
+	if (c.Libredesk.URL == "") != (len(c.Libredesk.Inboxes) == 0) {
+		result = errors.Join(result, errors.New("BOREAS_LIBREDESK_URL and BOREAS_LIBREDESK_INBOXES must be set together"))
 	}
 	return result
 }

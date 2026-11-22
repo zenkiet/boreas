@@ -23,6 +23,7 @@ type Handler struct {
 	push          PushStore
 	events        *Hub
 	publicStreams chan struct{}
+	hooks         Hooks
 	version       string
 	logger        *slog.Logger
 }

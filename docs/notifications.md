@@ -22,6 +22,7 @@ setup. API examples use [AUTH and JSON](getting-started.md#3-sign-in).
 | `spec_confirming` | `info` | Bora has decisions to confirm |
 | `spec_ready` | `success` | Ticket plan and tests are ready |
 | `spec_failed` | `failure` | Planning stopped: manual stop, model failure or server restart |
+| `support_request` | `info` | A visitor started a chat in the project's [Libredesk inbox](#support-chats-from-libredesk) |
 
 Messages name the project and task or ticket. Deploy times use server `TZ`.
 Feed integrations should use `type` and `project` (slug), not display text.
@@ -39,6 +40,8 @@ Build failures notify once per run. Unexpected container exits mark the task
 - Plan updates (`spec_*`) are private to the starter and ticket-task assignees
   with the `member` role who can view the whole plan. They never go to team
   channels. Stop messages identify the step and, for manual stops, the person.
+- Support requests name no task, so they reach administrators, project members
+  and team channels, but not task grantees.
 
 ## The feed
 
@@ -97,8 +100,8 @@ Administrators enable FCM; users then subscribe through the app:
 
 An unreadable or invalid key stops startup. Each subscription chooses `events`:
 
-- `important` (default): failures and all updates addressed directly to its
-  owner, including assignments and plan updates.
+- `important` (default): failures, support requests and all updates addressed
+  directly to its owner, including assignments and plan updates.
 - `all`: every notification its owner can see.
 
 Neither setting pushes the actor's own actions. Disabling an account stops
@@ -115,3 +118,25 @@ curl -X POST -H "$AUTH" -H "$JSON" \
   http://localhost:8080/api/v1/push/subscriptions
 curl -X DELETE -H "$AUTH" "http://localhost:8080/api/v1/push/subscriptions/<FCM registration token>"
 ```
+
+## Support chats from Libredesk
+
+[Libredesk](https://libredesk.io) gives each project a chat widget in the
+corner of its directory page and task pages. Every new chat becomes a
+`support_request` for that project.
+
+1. In Libredesk, create one **Live chat** inbox per project and name it exactly
+   like the project's slug, such as `shop`. Add your Boreas address, such as
+   `https://boreas.example.com`, to the inbox's trusted domains.
+2. List the inboxes in `BOREAS_LIBREDESK_INBOXES` as `shop=<inbox UUID>`, set
+   `BOREAS_LIBREDESK_URL`, and recreate the Boreas service. See
+   [Configuration](configuration.md#support-chat-libredesk).
+3. Under **Admin → Integrations → Webhooks**, add a webhook for the
+   `conversation.created` event at
+   `https://boreas.example.com/api/v1/hooks/libredesk`, with a secret. Set the
+   same secret in `BOREAS_LIBREDESK_WEBHOOK_SECRET`.
+
+A chat in an inbox that matches no project slug is logged and sends nothing;
+Libredesk still notifies its agents by email. If a proxy in front of Libredesk
+adds `X-Frame-Options` to every response, exempt `/widget`, or the chat window
+cannot open inside your pages.

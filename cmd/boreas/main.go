@@ -103,7 +103,13 @@ func run(logger *slog.Logger) error {
 	}
 
 	routes := proxyinfra.New(dialTimeout, responseTimeout)
-	routes.Fallback = web.Handler()
+	fallback := http.NewServeMux()
+	fallback.Handle("GET /_boreas/support.js", web.Support(web.SupportConfig{Desk: cfg.Libredesk.URL, Inboxes: cfg.Libredesk.Inboxes}))
+	fallback.Handle("/", web.Handler())
+	routes.Fallback = fallback
+	if cfg.Libredesk.Enabled() {
+		routes.Inject = web.SupportTag
+	}
 	routes.Mobile = func(ctx context.Context, slug, name string) bool {
 		project, err := projectStore.GetBySlug(ctx, slug)
 		if err != nil {
@@ -151,7 +157,8 @@ func run(logger *slog.Logger) error {
 	}
 
 	handler := httptransport.ApplicationHandler(
-		httptransport.APIHandler(tasks, auth, projects, push, events, version, logger),
+		httptransport.APIHandler(tasks, auth, projects, push, events,
+			httptransport.Hooks{LibredeskSecret: cfg.Libredesk.WebhookSecret}, version, logger),
 		routes,
 		logger,
 	)

@@ -86,3 +86,28 @@ func TestHandlerAnswersMissingFilesWith404(t *testing.T) {
 		}
 	}
 }
+
+func TestSupportServesTheLoaderWithTheInboxes(t *testing.T) {
+	get := func(h http.Handler, etag string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/_boreas/support.js", nil)
+		r.Header.Set("If-None-Match", etag)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, r)
+		return rr
+	}
+	if rr := get(Support(SupportConfig{Desk: "https://desk.example"}), ""); rr.Code != http.StatusOK || rr.Body.Len() != 0 {
+		t.Fatalf("without inboxes: status=%d body=%q, want an empty script", rr.Code, rr.Body)
+	}
+
+	h := Support(SupportConfig{Desk: "https://desk.example", Inboxes: map[string]string{"shop": "inbox-1"}})
+	rr := get(h, "")
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.HasPrefix(rr.Header().Get("Content-Type"), "text/javascript") ||
+		!strings.HasPrefix(body, `self.boreasSupport={"desk":"https://desk.example","inboxes":{"shop":"inbox-1"}};`) ||
+		!strings.Contains(body, "LibredeskSettings") {
+		t.Fatalf("status=%d body=%q", rr.Code, body)
+	}
+	if again := get(h, rr.Header().Get("ETag")); again.Code != http.StatusNotModified {
+		t.Fatalf("revalidation status = %d, want 304", again.Code)
+	}
+}

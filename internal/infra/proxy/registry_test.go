@@ -202,6 +202,16 @@ func TestRegistryInjectsTheDeviceShimForMobileTasks(t *testing.T) {
 	if body := serve(registry, httptest.NewRequest(http.MethodGet, "/shop/t1/api", nil)).Body.String(); body != page {
 		t.Fatalf("a route's HTML must pass through untouched: %s", body)
 	}
+
+	registry.Inject = `<script src="/_boreas/support.js" async></script>`
+	want = `<HEAD lang="en"><script src="/_device/shim.js"></script><script src="/_boreas/support.js" async></script><base href="/shop/t1/">`
+	if body := serve(registry, httptest.NewRequest(http.MethodGet, "/shop/t1/", nil)).Body.String(); !strings.Contains(body, want) {
+		t.Fatalf("the shim must stay the first script before the injected one: %s", body)
+	}
+	if body := serve(registry, httptest.NewRequest(http.MethodGet, "/shop/t2/", nil)).Body.String(); strings.Count(body, "support.js") != 1 ||
+		strings.Contains(body, "shim.js") {
+		t.Fatalf("a web task gets the injected script alone: %s", body)
+	}
 }
 
 func TestRegistryConcurrentAccess(t *testing.T) {

@@ -346,6 +346,14 @@ var routeTable = [...]route{
 		req:         new(markSeenRequest), resp: new(successResponse), extraErrors: []int{http.StatusBadRequest},
 	},
 	{
+		method: http.MethodPost, path: "/api/v1/hooks/libredesk", access: accessPublic, handler: (*Handler).libredeskHook,
+		tag: "notifications", summary: "Receive Libredesk events",
+		description: "Libredesk's webhook, signed with BOREAS_LIBREDESK_WEBHOOK_SECRET in X-Libredesk-Signature (sha256=<hex HMAC of the body>). " +
+			"conversation.created records a support_request for the project named like the chat's inbox; other events are ignored. " +
+			"404 when the signature is wrong or no secret is set.",
+		req: new(libredeskEvent), status: http.StatusNoContent, extraErrors: []int{http.StatusBadRequest, http.StatusNotFound},
+	},
+	{
 		method: http.MethodGet, path: "/api/v1/projects/{project}/notifications", access: accessViewer, handler: (*Handler).listNotifications,
 		tag: "projects", summary: "List a project's notifications",
 		description: "The cross-project feed, limited to this project. A retried deploy callback " +

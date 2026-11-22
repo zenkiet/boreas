@@ -23,6 +23,6 @@ export default defineConfig({
 		})
 	],
 	server: {
-		proxy: { '/api': process.env.BOREAS_API ?? 'http://localhost:8080' }
+		proxy: { '^/(api|_boreas)/': process.env.BOREAS_API ?? 'http://localhost:8080' }
 	}
 });
