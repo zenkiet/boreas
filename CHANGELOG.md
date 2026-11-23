@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.36.2 - 2026-11-23
+#### 🐛 Bug Fixes
+- 🐛 show the support chat only on the directory and project pages - (bb6389c) - *zenkiet*
+#### 📝 Documentation
+- 📝 add Libredesk launcher, header and email artwork - (c79afc9) - *zenkiet*
+
+- - -
+
 ## v1.36.1 - 2026-11-22
 #### ♻️ Code Refactoring
 - ♻️ use one Libredesk inbox and drop chat notifications - (87b175d) - *zenkiet*
