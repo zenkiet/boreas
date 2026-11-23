@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v1.36.3 - 2026-11-23
+#### 🎨 Styles & Formatting
+- (**ui**) 💄 polish the directory UI - (13080b9) - *zenkiet*
+
+- - -
+
 ## v1.36.2 - 2026-11-23
 #### 🐛 Bug Fixes
 - 🐛 show the support chat only on the directory and project pages - (bb6389c) - *zenkiet*
