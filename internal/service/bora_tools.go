@@ -355,7 +355,7 @@ func (b *bora) activity(ctx context.Context, in args) (string, error) {
 		return "", err
 	}
 	b.step("Reading the activity of " + named(scope) + "…")
-	// ponytail: one query per project keeps grant-only projects out of the limit; one SQL query if it shows.
+	// one query per project keeps grant-only projects out of the limit; one SQL query if it shows.
 	var events []core.Notification
 	for _, acc := range scope {
 		list, err := b.s.Notifications(ctx, b.actor, &acc.Project.ID, nil, limit)

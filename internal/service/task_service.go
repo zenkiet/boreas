@@ -705,7 +705,7 @@ func (h *metricsHub) watch(ctx context.Context, containerID string) (<-chan core
 	defer h.mu.Unlock()
 	f := h.feeds[containerID]
 	if f == nil {
-		// ponytail: Docker answers in ms, so opening holds the hub lock; per-feed locks if a slow daemon stalls viewers.
+		// Docker answers in ms, so opening holds the hub lock; per-feed locks if a slow daemon stalls viewers.
 		feedCtx, stop := context.WithCancel(context.Background())
 		samples, err := h.open(feedCtx, containerID)
 		if err != nil {

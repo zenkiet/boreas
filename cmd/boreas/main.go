@@ -107,9 +107,6 @@ func run(logger *slog.Logger) error {
 	fallback.Handle("GET /_boreas/support.js", web.Support(web.SupportConfig{BaseURL: cfg.Libredesk.URL, InboxID: cfg.Libredesk.Inbox}))
 	fallback.Handle("/", web.Handler())
 	routes.Fallback = fallback
-	if cfg.Libredesk.Enabled() {
-		routes.Inject = web.SupportTag
-	}
 	routes.Mobile = func(ctx context.Context, slug, name string) bool {
 		project, err := projectStore.GetBySlug(ctx, slug)
 		if err != nil {

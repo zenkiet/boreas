@@ -88,7 +88,7 @@ func (s *Sender) Send(ctx context.Context, n core.Notification) error {
 	}
 	_ = g.Wait()
 	if len(gone) > 0 {
-		// ponytail: a send that used up the whole timeout leaves its dead tokens to the next send.
+		// a send that used up the whole timeout leaves its dead tokens to the next send.
 		if err := s.remove(ctx, gone); err != nil {
 			return err
 		}

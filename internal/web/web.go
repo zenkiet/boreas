@@ -23,8 +23,6 @@ var files embed.FS
 // encodings are the build's precompressed siblings, best first.
 var encodings = [...]struct{ token, ext string }{{"br", ".br"}, {"gzip", ".gz"}}
 
-const SupportTag = `<script src="/_boreas/support.js" async fetchpriority="low"></script>`
-
 type SupportConfig struct {
 	BaseURL string `json:"baseURL"`
 	InboxID string `json:"inboxID"`

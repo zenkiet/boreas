@@ -6,7 +6,8 @@ import (
 )
 
 // Hub wakes every open event stream after a change; clients refetch what they show.
-// ponytail: every stream hears every change; filter per project if fleet refetches grow heavy.
+//
+// every stream hears every change; filter per project if fleet refetches grow heavy.
 type Hub struct {
 	mu   sync.Mutex
 	subs map[chan struct{}]struct{} // nil once closed

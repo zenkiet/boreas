@@ -71,7 +71,7 @@ func TestLoadLibredeskInbox(t *testing.T) {
 	t.Setenv("BOREAS_LIBREDESK_INBOX", inbox)
 
 	cfg, err := Load()
-	if err != nil || !cfg.Libredesk.Enabled() || cfg.Libredesk.URL != "https://support.example.com" || cfg.Libredesk.Inbox != inbox {
+	if err != nil || cfg.Libredesk.URL != "https://support.example.com" || cfg.Libredesk.Inbox != inbox {
 		t.Fatalf("libredesk = %+v, %v", cfg.Libredesk, err)
 	}
 

@@ -28,8 +28,6 @@ type LibredeskConfig struct {
 	URL, Inbox string
 }
 
-func (c LibredeskConfig) Enabled() bool { return c.URL != "" }
-
 type FCMConfig struct {
 	Project string
 	Keyfile string

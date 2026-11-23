@@ -98,7 +98,8 @@ func (s *AuthService) session(ctx context.Context, userID uuid.UUID, device stri
 }
 
 // StartPairing returns a code that signs its user in on another device, once, within pairingTTL.
-// ponytail: in memory, one instance; a table if Boreas ever runs replicas.
+//
+// in memory, one instance; a table if Boreas ever runs replicas.
 func (s *AuthService) StartPairing(user core.User) (string, time.Time) {
 	code, now := rand.Text(), time.Now().UTC()
 	s.mu.Lock()

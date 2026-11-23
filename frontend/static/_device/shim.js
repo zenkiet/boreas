@@ -65,7 +65,7 @@
 			// another origin's stylesheet cannot be read
 		}
 	};
-	// ponytail: <style>, <link> and replaceSync() sheets only; one grown by insertRule() or rewritten in place keeps its hover.
+	// <style>, <link> and replaceSync() sheets only; one grown by insertRule() or rewritten in place keeps its hover.
 	new MutationObserver((records) => {
 		for (const { addedNodes } of records)
 			for (const node of addedNodes) {
@@ -227,7 +227,7 @@
 		}
 		return false;
 	};
-	// ponytail: polling the colours behind the status bar and home indicator; hook page transitions if 1.5 s lags.
+	// polling the colours behind the status bar and home indicator; hook page transitions if 1.5 s lags.
 	setInterval(() => device.colors(dark(deepest(40, 12)), dark(deepest(innerWidth / 2, innerHeight - 6))), 1500);
 
 	addEventListener('load', () => {

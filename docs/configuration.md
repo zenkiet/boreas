@@ -94,7 +94,7 @@ Avatars under `avatars/` must stay.
 | Variable                 | Default | What it does                                                      |
 | ------------------------ | ------- | ----------------------------------------------------------------- |
 | `BOREAS_LIBREDESK_URL`   | none    | Your Libredesk server, such as `https://support.example.com`      |
-| `BOREAS_LIBREDESK_INBOX` | none    | The UUID of a Libredesk **Live chat** inbox; the directory and every task page show its chat widget |
+| `BOREAS_LIBREDESK_INBOX` | none    | The UUID of a Libredesk **Live chat** inbox                       |
 
 Add your Boreas address to the inbox's trusted domains, or browsers refuse to
 open the chat window. Libredesk notifies its agents of new chats by email.

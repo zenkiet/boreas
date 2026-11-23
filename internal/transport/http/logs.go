@@ -104,7 +104,7 @@ func (h *Handler) streamLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Docker's since includes its own instant, so resuming starts one nanosecond later.
-		// ponytail: two lines stamped in the same nanosecond can lose the second across a reconnect.
+		// two lines stamped in the same nanosecond can lose the second across a reconnect.
 		opts.Since = since.Add(time.Nanosecond)
 	}
 	reader, err := h.tasks.Logs(r.Context(), r.PathValue("project"), r.PathValue("name"), opts)

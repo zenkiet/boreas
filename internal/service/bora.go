@@ -78,7 +78,8 @@ var (
 const vietnamese = "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
 
 // answerIn names the reply's language, since the model has answered an English question in Spanish.
-// ponytail: Vietnamese typed without marks is answered in English; tell by words if users type that way.
+//
+// Vietnamese typed without marks is answered in English; tell by words if users type that way.
 func answerIn(question string) string {
 	return "\n- Write the answer, its say and the title in " + language(question) + ", whatever language the data is in."
 }
@@ -896,7 +897,8 @@ func (b *bora) brief(screen string, ran []string) string {
 }
 
 // data is others' text, sent with the question rather than in the system message.
-// ponytail: past about 150 tasks the 24 KiB clip cuts this list short; list_tasks still reads them all.
+//
+// past about 150 tasks the 24 KiB clip cuts this list short; list_tasks still reads them all.
 func (b *bora) data() string {
 	var out strings.Builder
 	if b.subject != "" {

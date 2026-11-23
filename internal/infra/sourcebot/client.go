@@ -41,7 +41,7 @@ const (
 	answerMarker = "<!--answer-->"
 )
 
-// ponytail: a secret hardcoded in ordinary source still reaches the client; extend this list as such files turn up.
+// a secret hardcoded in ordinary source still reaches the client; extend this list as such files turn up.
 var blockedNames = []string{
 	"*.config", "appsettings*.json", ".env*", "*.pem", "*.key", "*.pfx", "*.p12", "*.jks", "*.keystore",
 	"*secret*", "id_rsa*", ".git-credentials", ".npmrc", "*.tfvars", "*.pubxml*", "*.publishsettings", ".vs",
@@ -95,7 +95,8 @@ func (c *Client) Has(ctx context.Context, projects []string) []bool {
 }
 
 // matches asks whether query finds anything, once per contextTTL; while Sourcebot cannot answer, its last answer stands.
-// ponytail: a failure is not remembered, so a hung Sourcebot costs each project list up to probeTimeout; remember it if that bites.
+//
+// a failure is not remembered, so a hung Sourcebot costs each project list up to probeTimeout; remember it if that bites.
 func (c *Client) matches(ctx context.Context, key, query string) (bool, error) {
 	c.mu.Lock()
 	last, ok := c.seen[key]
@@ -374,7 +375,8 @@ func (c *Client) Blame(ctx context.Context, project, repo, ref, file string) ([]
 
 // Ask has Sourcebot's agent answer with every app its API key's user connected, such as Jira, and any code that user can
 // read: the project's context only starts its searches, so it is not confined like Search and Read.
-// ponytail: the web app's chat route, the only one that runs connectors; a Sourcebot release may change it.
+//
+// the web app's chat route, the only one that runs connectors; a Sourcebot release may change it.
 func (c *Client) Ask(ctx context.Context, project, question string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, askTimeout)
 	defer cancel()
@@ -417,7 +419,8 @@ func (c *Client) Ask(ctx context.Context, project, question string) (string, err
 }
 
 // open forgets the shared chat when Sourcebot turns the request down, so a retry starts a fresh one.
-// ponytail: one chat for every question, so concurrent ones overwrite its history; a chat per conversation if anyone reads them.
+//
+// one chat for every question, so concurrent ones overwrite its history; a chat per conversation if anyone reads them.
 func (c *Client) open(ctx context.Context, project, question string) (*http.Response, error) {
 	chat, err := c.askChat(ctx)
 	if err != nil {
