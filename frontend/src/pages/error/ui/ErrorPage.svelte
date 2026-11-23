@@ -15,13 +15,7 @@
 <svelte:head><title>{title} · Boreas</title></svelte:head>
 
 {#if page.status === 404}
-	<StatusPage
-		icon={Compass}
-		code="404 · NOT FOUND"
-		{title}
-		body="Check the address."
-		path={page.url.pathname}
-	>
+	<StatusPage icon={Compass} {title} body="Check the address." path={page.url.pathname}>
 		{#snippet actions()}
 			<a class="btn" href={resolve('/(directory)')}><List size={16} />Browse all tasks</a>
 		{/snippet}
@@ -30,7 +24,6 @@
 	<StatusPage
 		icon={TriangleAlert}
 		tone="bad"
-		code="{page.status} · SERVER ERROR"
 		{title}
 		body="Environments keep running."
 		path={page.url.pathname}

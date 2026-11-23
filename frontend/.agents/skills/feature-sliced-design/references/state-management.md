@@ -35,48 +35,40 @@ when a business rule needs a shape the backend does not send.
 
 ```typescript
 // shared/api/todo.ts
-import { apiClient } from './client';
+import { apiClient } from "./client";
 
-export interface TodoDto {
-	id: string;
-	title: string;
-	completed: boolean;
-}
+export interface TodoDto { id: string; title: string; completed: boolean }
 
-export const getTodos = (): Promise<TodoDto[]> => apiClient.get('/todos').then((r) => r.data);
+export const getTodos = (): Promise<TodoDto[]> =>
+  apiClient.get("/todos").then((r) => r.data);
 ```
 
 ```typescript
 // entities/todo/model/todo.ts
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { getTodos, type TodoDto } from '@/shared/api';
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { getTodos, type TodoDto } from "@/shared/api";
 
-interface TodoState {
-	items: TodoDto[];
-	loading: boolean;
-}
+interface TodoState { items: TodoDto[]; loading: boolean }
 
-export const fetchTodos = createAsyncThunk('todos/fetch', getTodos);
+export const fetchTodos = createAsyncThunk("todos/fetch", getTodos);
 
 const todoSlice = createSlice({
-	name: 'todos',
-	initialState: { items: [], loading: false } as TodoState,
-	reducers: {
-		setCompleted: (state, { payload }: { payload: { id: string; completed: boolean } }) => {
-			const todo = state.items.find((t) => t.id === payload.id);
-			if (todo) todo.completed = payload.completed;
-		}
-	},
-	extraReducers: (builder) => {
-		builder
-			.addCase(fetchTodos.pending, (state) => {
-				state.loading = true;
-			})
-			.addCase(fetchTodos.fulfilled, (state, action) => {
-				state.items = action.payload;
-				state.loading = false;
-			});
-	}
+  name: "todos",
+  initialState: { items: [], loading: false } as TodoState,
+  reducers: {
+    setCompleted: (state, { payload }: { payload: { id: string; completed: boolean } }) => {
+      const todo = state.items.find((t) => t.id === payload.id);
+      if (todo) todo.completed = payload.completed;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchTodos.pending, (state) => { state.loading = true; })
+      .addCase(fetchTodos.fulfilled, (state, action) => {
+        state.items = action.payload;
+        state.loading = false;
+      });
+  },
 });
 
 export const { setCompleted } = todoSlice.actions;
@@ -99,7 +91,7 @@ The slice's public API re-exports what consumers need:
 
 ```typescript
 // entities/todo/index.ts
-export { todoReducer, selectTodos, setCompleted, fetchTodos } from './model/todo';
+export { todoReducer, selectTodos, setCompleted, fetchTodos } from "./model/todo";
 ```
 
 **Key:** Do not split Redux code by Redux mechanism into `reducers.ts`,
@@ -116,12 +108,13 @@ and exposes its own hook through the feature's:
 
 ```typescript
 // features/toggle-todo/model/use-toggle-todo.ts
-import { useDispatch } from 'react-redux';
-import { setCompleted } from '@/entities/todo';
+import { useDispatch } from "react-redux";
+import { setCompleted } from "@/entities/todo";
 
 export const useToggleTodo = () => {
-	const dispatch = useDispatch();
-	return (id: string, current: boolean) => dispatch(setCompleted({ id, completed: !current }));
+  const dispatch = useDispatch();
+  return (id: string, current: boolean) =>
+    dispatch(setCompleted({ id, completed: !current }));
 };
 ```
 
@@ -129,15 +122,15 @@ export const useToggleTodo = () => {
 
 ```typescript
 // app/providers/store.ts
-import { configureStore } from '@reduxjs/toolkit';
-import { todoReducer } from '@/entities/todo';
-import { userReducer } from '@/entities/user';
+import { configureStore } from "@reduxjs/toolkit";
+import { todoReducer } from "@/entities/todo";
+import { userReducer } from "@/entities/user";
 
 export const store = configureStore({
-	reducer: {
-		todos: todoReducer,
-		user: userReducer
-	}
+  reducer: {
+    todos: todoReducer,
+    user: userReducer,
+  },
 });
 
 export type RootState = ReturnType<typeof store.getState>;
@@ -206,13 +199,11 @@ accepted:
    ```typescript
    // src/pages/example/api/use-update-example.ts
    export const useUpdateExample = () => {
-   	const queryClient = useQueryClient();
-   	return useMutation({
-   		mutationFn: ({ id, newTitle }) =>
-   			apiClient.patch(`/posts/${id}`, { title: newTitle }).then((r) => r.data),
-   		onSuccess: (newPost, { id }) =>
-   			queryClient.setQueryData(POST_QUERIES.detail({ id }).queryKey, newPost)
-   	});
+     const queryClient = useQueryClient();
+     return useMutation({
+       mutationFn: ({ id, newTitle }) => apiClient.patch(`/posts/${id}`, { title: newTitle }).then((r) => r.data),
+       onSuccess: (newPost, { id }) => queryClient.setQueryData(POST_QUERIES.detail({ id }).queryKey, newPost),
+     });
    };
    ```
 
@@ -229,23 +220,21 @@ without rewriting them:
 
 ```typescript
 // src/shared/api/post/post.queries.ts
-import { queryOptions } from '@tanstack/react-query';
-import { getPosts, getDetailPost, type DetailPostQuery } from './get-posts';
+import { queryOptions } from "@tanstack/react-query";
+import { getPosts, getDetailPost, type DetailPostQuery } from "./get-posts";
 
 export const POST_QUERIES = {
-	all: () => ['posts'],
-	lists: () => [...POST_QUERIES.all(), 'list'],
-	list: (page: number, limit: number) =>
-		queryOptions({
-			queryKey: [...POST_QUERIES.lists(), page, limit],
-			queryFn: () => getPosts(page, limit),
-			placeholderData: (prev) => prev
-		}),
-	detail: (query?: DetailPostQuery) =>
-		queryOptions({
-			queryKey: [...POST_QUERIES.all(), 'detail', query?.id],
-			queryFn: () => getDetailPost({ id: query?.id })
-		})
+  all: () => ["posts"],
+  lists: () => [...POST_QUERIES.all(), "list"],
+  list: (page: number, limit: number) => queryOptions({
+    queryKey: [...POST_QUERIES.lists(), page, limit],
+    queryFn: () => getPosts(page, limit),
+    placeholderData: (prev) => prev,
+  }),
+  detail: (query?: DetailPostQuery) => queryOptions({
+    queryKey: [...POST_QUERIES.all(), "detail", query?.id],
+    queryFn: () => getDetailPost({ id: query?.id }),
+  }),
 };
 ```
 
@@ -287,13 +276,13 @@ not change. Components use `useSuspenseQuery` instead of `useQuery` and skip
 
 ```tsx
 // src/app/providers/suspense-provider.tsx
-import { Suspense } from 'react';
-import { ErrorBoundary } from 'react-error-boundary';
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 
 export const SuspenseProvider = ({ children }) => (
-	<ErrorBoundary fallback={<div>Something went wrong</div>}>
-		<Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
-	</ErrorBoundary>
+  <ErrorBoundary fallback={<div>Something went wrong</div>}>
+    <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+  </ErrorBoundary>
 );
 ```
 
@@ -306,8 +295,8 @@ to the query factory:
 ```typescript
 // src/shared/api/post/post.queries.ts
 export const POST_MUTATIONS = {
-	updateTitle: () => ['post', 'update-title'],
-	create: () => ['post', 'create']
+  updateTitle: () => ["post", "update-title"],
+  create: () => ["post", "create"],
 };
 ```
 
@@ -316,22 +305,21 @@ Tag the mutation with `mutationKey`, then read its state from any component:
 ```tsx
 // src/features/update-post/api/use-update-post-title.ts
 export const useUpdatePostTitle = () =>
-	useMutation({
-		mutationKey: POST_MUTATIONS.updateTitle(),
-		mutationFn: ({ id, newTitle }) => apiClient.patch(`/posts/${id}`, { title: newTitle })
-	});
+  useMutation({
+    mutationKey: POST_MUTATIONS.updateTitle(),
+    mutationFn: ({ id, newTitle }) => apiClient.patch(`/posts/${id}`, { title: newTitle }),
+  });
 
 // src/app/ui/save-indicator.tsx   (app-wide; page-local if one page)
-import { useMutationState } from '@tanstack/react-query';
-import { POST_MUTATIONS } from '@/shared/api/post';
+import { useMutationState } from "@tanstack/react-query";
+import { POST_MUTATIONS } from "@/shared/api/post";
 
 export const SaveIndicator = () => {
-	const isPending =
-		useMutationState({
-			filters: { mutationKey: POST_MUTATIONS.updateTitle(), status: 'pending' },
-			select: (m) => m.state.status
-		}).length > 0;
-	return isPending && <span>Saving...</span>;
+  const isPending = useMutationState({
+    filters: { mutationKey: POST_MUTATIONS.updateTitle(), status: "pending" },
+    select: (m) => m.state.status,
+  }).length > 0;
+  return isPending && <span>Saving...</span>;
 };
 ```
 
@@ -339,21 +327,21 @@ export const SaveIndicator = () => {
 
 ```tsx
 // src/app/providers/query-provider.tsx
-import { QueryClient, QueryClientProvider, MutationCache, QueryCache } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { toast } from 'sonner';
+import { QueryClient, QueryClientProvider, MutationCache, QueryCache } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { toast } from "sonner";
 
 const queryClient = new QueryClient({
-	queryCache: new QueryCache({ onError: (e) => toast.error(e.message) }),
-	mutationCache: new MutationCache({ onError: (e) => toast.error(e.message) }),
-	defaultOptions: { queries: { staleTime: 5 * 60 * 1000, gcTime: 5 * 60 * 1000 } }
+  queryCache: new QueryCache({ onError: (e) => toast.error(e.message) }),
+  mutationCache: new MutationCache({ onError: (e) => toast.error(e.message) }),
+  defaultOptions: { queries: { staleTime: 5 * 60 * 1000, gcTime: 5 * 60 * 1000 } },
 });
 
 export const QueryProvider = ({ children }) => (
-	<QueryClientProvider client={queryClient}>
-		{children}
-		<ReactQueryDevtools />
-	</QueryClientProvider>
+  <QueryClientProvider client={queryClient}>
+    {children}
+    <ReactQueryDevtools />
+  </QueryClientProvider>
 );
 ```
 
@@ -376,18 +364,16 @@ Standardize base URL, headers, and JSON handling in a single class in
 ```typescript
 // src/shared/api/api-client.ts
 export class ApiClient {
-	#baseUrl: string;
-	constructor(url: string) {
-		this.#baseUrl = url;
-	}
+  #baseUrl: string;
+  constructor(url: string) { this.#baseUrl = url; }
 
-	async #handle<T>(response: Response): Promise<T> {
-		if (!response.ok) throw new Error(`HTTP ${response.status}`);
-		return response.json();
-	}
+  async #handle<T>(response: Response): Promise<T> {
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
 
-	get = <T>(path: string) => fetch(`${this.#baseUrl}${path}`).then((r) => this.#handle<T>(r));
-	// post, put, delete follow the same pattern with method/headers/body.
+  get = <T>(path: string) => fetch(`${this.#baseUrl}${path}`).then((r) => this.#handle<T>(r));
+  // post, put, delete follow the same pattern with method/headers/body.
 }
 
 export const apiClient = new ApiClient(API_URL);

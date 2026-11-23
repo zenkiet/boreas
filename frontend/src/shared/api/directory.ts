@@ -1,4 +1,4 @@
-import { byInstant } from '#shared/lib';
+import { byName } from '#shared/lib';
 
 export const DEV_STATUSES = ['blocked', 'in_progress', 'ready'] as const;
 
@@ -102,12 +102,12 @@ const toTask = (task: TaskPayload): PublicTask => {
 
 export const listProjects = (load: typeof fetch = fetch): Promise<readonly PublicProject[]> =>
 	load('/api/v1/public/projects')
+		.then((response) => {
+			if (!response.ok) throw new Error();
+			return response.json() as Promise<DirectoryPayload>;
+		})
 		.catch(() => {
 			throw new Error('The Boreas API didn’t answer.');
-		})
-		.then((response) => {
-			if (!response.ok) throw new Error(`The Boreas API didn’t answer (${response.status}).`);
-			return response.json() as Promise<DirectoryPayload>;
 		})
 		.then(({ projects }) =>
 			projects.map((project) => ({
@@ -126,7 +126,7 @@ export const bySeverity = <T extends PublicTask>(tasks: readonly T[]): T[] =>
 	[...tasks].sort(
 		(a, b) =>
 			DEV_STATUSES.indexOf(a.devStatus) - DEV_STATUSES.indexOf(b.devStatus) ||
-			byInstant(b.updatedAt, a.updatedAt)
+			byName(a.name, b.name)
 	);
 
 export const devCount = (tasks: readonly PublicTask[], status: DevStatus): number =>

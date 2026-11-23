@@ -6,7 +6,7 @@
 
 <a
 	href={resolve('/(directory)')}
-	class="inline-flex items-center gap-2 text-headline font-bold tracking-[-0.01em] text-label no-underline"
+	class="hit inline-flex items-center gap-2 text-headline font-bold tracking-[-0.01em] text-label no-underline"
 	aria-label="Boreas, all tasks"
 >
 	<svg viewBox="0 0 1024 1024" class="size-7 flex-none" aria-hidden="true">

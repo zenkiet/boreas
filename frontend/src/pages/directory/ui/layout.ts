@@ -27,7 +27,7 @@ export const AREA = {
 	glyph: '@max-[720px]/main:[grid-area:g]',
 	id: '@max-[720px]/main:[grid-area:id]',
 	desc: '@max-[720px]/main:[grid-area:desc]',
-	proj: '@max-[720px]/main:[grid-area:proj]',
+	proj: '@max-[720px]/main:[grid-area:proj] @max-[720px]/main:[&_svg]:hidden',
 	people: '@max-[720px]/main:[grid-area:people]',
 	pipe: '@max-[720px]/main:[grid-area:pipe] @max-[720px]/main:justify-end',
 	time: 'text-end @max-[1000px]/main:hidden @max-[720px]/main:block @max-[720px]/main:[grid-area:time]',

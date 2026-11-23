@@ -29,7 +29,7 @@
 	{@attach roving}
 >
 	<div
-		class="flex [scrollbar-width:none] flex-wrap gap-1.5 @max-[720px]/main:-mx-4 @max-[720px]/main:scroll-fade @max-[720px]/main:scroll-px-8 @max-[720px]/main:flex-nowrap @max-[720px]/main:overflow-x-auto @max-[720px]/main:px-4 @max-[720px]/main:pb-0.5"
+		class="flex [scrollbar-width:none] flex-wrap gap-1.5 @max-[720px]/main:-mx-4 @max-[720px]/main:scroll-fade @max-[720px]/main:scroll-px-8 @max-[720px]/main:flex-nowrap @max-[720px]/main:overflow-x-auto @max-[720px]/main:overflow-y-hidden @max-[720px]/main:px-4 @max-[720px]/main:pb-0.5"
 		role="group"
 		aria-label="Filter by status"
 		{@attach scrollHints}

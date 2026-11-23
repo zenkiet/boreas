@@ -3,9 +3,9 @@
 	import { directory, PipeLabel, pipelineOf } from '#entities/task';
 	import { taskKey } from '#shared/api';
 	import type { DirectoryTask } from '#shared/api';
-	import { ago, stamp } from '#shared/lib';
+	import { ago } from '#shared/lib';
 	import { flash } from '#shared/ui';
-	import { openTask, showProject, urlState } from '../model/url-state.ts';
+	import { openTask, urlState } from '../model/url-state.ts';
 	import ContainerFlag from './ContainerFlag.svelte';
 	import TaskId from './TaskId.svelte';
 	import TaskPeople from './TaskPeople.svelte';
@@ -23,18 +23,16 @@
 	<button
 		type="button"
 		class="absolute inset-0 cursor-pointer rounded-nest"
+		data-task={key}
+		title={task.description ? `${task.name} · ${task.description}` : task.name}
 		aria-label="Details for {task.name} in {task.project.slug}"
 		aria-current={open || undefined}
 		onclick={() => openTask(key)}
 	></button>
 	<div class="flex min-w-0 items-center gap-1.5">
-		<ProjectTag
-			slug={task.project.slug}
-			title="Show every task in {task.project.name}"
-			onclick={() => showProject(task.project.slug)}
-		/>
+		<ProjectTag slug={task.project.slug} />
 		<span class="flex-auto"></span>
-		<span class="text-caption font-normal text-label-3 tabular-nums" title={stamp(task.updatedAt)}>
+		<span class="text-caption font-normal text-label-3 tabular-nums">
 			{ago(task.updatedAt, directory.now)}
 		</span>
 	</div>

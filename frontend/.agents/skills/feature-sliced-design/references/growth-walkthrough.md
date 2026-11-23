@@ -99,7 +99,7 @@ is the subject of Snapshot 2.
 ## Snapshot 2: a rule diverges, `entities/product` appears
 
 Marketing changes what "on sale" means: the price must be below the list
-price _and_ the item must be in stock. The product page is updated. The
+price *and* the item must be in stock. The product page is updated. The
 copy in the search page, made in Snapshot 1, is not. Search now marks
 items on sale that the detail page says are not.
 
@@ -178,12 +178,12 @@ one, and the callout in Section 1 says not to reach for it.
 
 ## What the walkthrough shows
 
-| Moment | Trigger                           | Response                                        | Rule                        |
-| ------ | --------------------------------- | ----------------------------------------------- | --------------------------- |
-| 0      | Two pages                         | `app/`, `pages/`, `shared/`                     | Section 5-3                 |
-| 1      | Third page reads product data     | No layer; `fetchProducts` moves to `shared/api` | Question 1, Question 2      |
-| 2      | Same rule, two copies, one stale  | `entities/product/model`                        | The extraction rule, Step 4 |
-| 3      | Same complete action on two pages | `features/add-to-cart`                          | Step 3                      |
+| Moment | Trigger | Response | Rule |
+| --- | --- | --- | --- |
+| 0 | Two pages | `app/`, `pages/`, `shared/` | Section 5-3 |
+| 1 | Third page reads product data | No layer; `fetchProducts` moves to `shared/api` | Question 1, Question 2 |
+| 2 | Same rule, two copies, one stale | `entities/product/model` | The extraction rule, Step 4 |
+| 3 | Same complete action on two pages | `features/add-to-cart` | Step 3 |
 
 Reuse alone opened no layer. A domain rule that had to stay consistent
 across its consumers earned `entities`; a complete user action with one

@@ -6,20 +6,11 @@
 		slug,
 		link = false,
 		title,
-		icon = false,
-		onclick
-	}: {
-		slug: string;
-		link?: boolean;
-		title?: string;
-		icon?: boolean;
-		onclick?: (event: MouseEvent) => void;
-	} = $props();
+		icon = false
+	}: { slug: string; link?: boolean; title?: string; icon?: boolean } = $props();
 
 	const TAG =
-		'relative z-1 inline-flex min-h-6 max-w-full items-center gap-[5px] rounded-label bg-fill-1 px-[7px] text-caption/none font-medium whitespace-nowrap text-label-2 no-underline';
-	const ACTIVE =
-		'cursor-pointer transition-colors duration-200 ease-out hover:bg-fill-2 hover:text-label';
+		'inline-flex min-h-6 max-w-full items-center gap-[5px] rounded-label bg-fill-1 px-[7px] font-mono text-caption/none font-medium whitespace-nowrap text-label-2 no-underline';
 </script>
 
 {#snippet content()}
@@ -29,13 +20,14 @@
 {#if link}
 	<a
 		href={resolve('/(directory)/[project]', { project: slug })}
-		{title}
-		class={[TAG, ACTIVE, 'font-mono']}
+		title={title ?? slug}
+		class={[
+			TAG,
+			'cursor-pointer transition-colors duration-200 ease-out hover:bg-fill-2 hover:text-label'
+		]}
 	>
 		{@render content()}
 	</a>
-{:else if onclick}
-	<button type="button" {title} {onclick} class={[TAG, ACTIVE]}>{@render content()}</button>
 {:else}
-	<span class={[TAG, 'font-mono']}>{@render content()}</span>
+	<span title={title ?? slug} class={TAG}>{@render content()}</span>
 {/if}

@@ -13,7 +13,7 @@
 
 	let {
 		text,
-		label = 'Copy link',
+		label = 'Copy task link',
 		compact = false,
 		class: className
 	}: { text: string; label?: string; compact?: boolean; class?: ClassValue } = $props();

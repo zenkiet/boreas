@@ -3,7 +3,6 @@ import type { DirectoryTask, PublicProject, TaskStatus } from '#shared/api';
 type EnvKind = 'starting' | 'stopped' | 'failed' | 'missing' | 'notfound';
 
 interface EnvCopy {
-	readonly code: string;
 	readonly title: string;
 	readonly body: string;
 }
@@ -47,37 +46,31 @@ export const copyOf = (
 	switch (kind) {
 		case 'starting':
 			return {
-				code: '503 · STARTING',
 				title: `${name} is starting`,
 				body: 'Booting after a deploy. This page retries on its own.'
 			};
 		case 'stopped':
 			return {
-				code: '503 · STOPPED',
 				title: `${name} is stopped`,
 				body: `Ask ${who || 'a project member'} to start it from the Boreas console.`
 			};
 		case 'failed':
 			return {
-				code: '502 · FAILED TO START',
 				title: `${name} failed to start`,
 				body: `Ask ${who || 'the project owner'} to check the logs.`
 			};
 		case 'missing':
 			return {
-				code: '404 · NO SUCH ENVIRONMENT',
 				title: 'Nothing is served at this address',
 				body: `${slug} has no task called ${name}.`
 			};
 		case 'notfound':
 			return {
-				code: '404 · NOT FOUND',
 				title: 'This page doesn’t exist',
 				body: 'Check the address.'
 			};
 		default:
 			return {
-				code: '500 · SERVER ERROR',
 				title: 'Boreas couldn’t load this page',
 				body: 'Environments keep running.'
 			};

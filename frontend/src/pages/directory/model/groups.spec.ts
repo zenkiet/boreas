@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DevStatus, DirectoryTask } from '#shared/api';
-import { breakdown, columns, groupTasks, people } from './groups.ts';
+import { columns, groupTasks, people } from './groups.ts';
 
 const PROJECTS = [
 	{ slug: 'blogic-view', name: 'Blogic View' },
@@ -39,14 +39,14 @@ const TASKS = [
 
 const names = (tasks: DirectoryTask[]) => tasks.map((each) => each.name);
 
-test('people rank by task count, then by the most recent activity', () => {
+test('people sort by name', () => {
 	assert.deepEqual(
 		people(TASKS).map(([name, own]) => [name, own.length]),
 		[
 			['hoang.vu', 3],
-			['ty.go', 2],
+			['qui.nguyen', 1],
 			['tuan.pham', 1],
-			['qui.nguyen', 1]
+			['ty.go', 2]
 		]
 	);
 });
@@ -60,9 +60,9 @@ test('a task with several people appears in each person group, then Unassigned a
 		]),
 		[
 			['person', 'hoang.vu', ['kiosk-403', 'bview-21', 'myl-2101']],
-			['person', 'ty.go', ['bview-21', 'myl-1976']],
-			['person', 'tuan.pham', ['kiosk-403']],
 			['person', 'qui.nguyen', ['wo-718']],
+			['person', 'tuan.pham', ['kiosk-403']],
+			['person', 'ty.go', ['bview-21', 'myl-1976']],
 			['none', 'none', ['staging']],
 			['private', 'private', ['bdm-999']]
 		]
@@ -90,9 +90,7 @@ test('status and project groups keep their order and drop empty groups', () => {
 	);
 });
 
-test('breakdown and board columns follow severity order', () => {
-	assert.equal(breakdown(TASKS), '1 blocked · 2 in progress · 4 ready');
-	assert.equal(breakdown([TASKS[0], TASKS[3]]), '2 ready');
+test('board columns follow severity order', () => {
 	assert.deepEqual(
 		columns(TASKS, 'all').map((column) => [column.status, column.tasks.length]),
 		[

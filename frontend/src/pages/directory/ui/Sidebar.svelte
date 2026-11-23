@@ -5,7 +5,7 @@
 	import { devCount } from '#shared/api';
 	import { plural } from '#shared/lib';
 	import { ThemeToggle } from '#shared/theme';
-	import { Brand, Count, Skeleton } from '#shared/ui';
+	import { Brand, Skeleton } from '#shared/ui';
 	import { people } from '../model/groups.ts';
 	import { isUnassigned, NONE } from '../model/scope.ts';
 	import { hrefWith, urlState } from '../model/url-state.ts';
@@ -17,7 +17,7 @@
 	const unassigned = $derived(directory.tasks.filter(isUnassigned).length);
 
 	const NAV = 'flex flex-col gap-px';
-	const LABEL = 'flex justify-between px-2.5 pb-1.5 text-caption/5 font-semibold text-label-3';
+	const LABEL = 'px-2.5 pb-1.5 text-caption/5 font-semibold text-label-3';
 	const NAME = 'min-w-0 flex-1 truncate';
 	const SKELETON = [70, 55, 80, 45, 62];
 </script>
@@ -49,11 +49,7 @@
 	</nav>
 
 	<nav class={NAV} aria-label="Projects">
-		<div class={LABEL}>
-			<span>Projects</span><span class="tabular-nums">
-				{#if !loading}<Count value={directory.projects.length} />{/if}
-			</span>
-		</div>
+		<div class={LABEL}>Projects</div>
 		{#if loading}
 			{@render skeletons(false)}
 		{/if}
@@ -65,7 +61,7 @@
 				count={project.tasks.length}
 			>
 				<ProjectMark name={project.name} />
-				<span class={NAME}>{project.name}</span>
+				<span class={NAME} title={project.name}>{project.name}</span>
 				{#if blocked}
 					<StatusGlyph status="blocked" size={12} label={plural(blocked, 'blocked task')} />
 				{/if}
@@ -76,11 +72,7 @@
 	</nav>
 
 	<nav class={NAV} aria-label="People">
-		<div class={LABEL}>
-			<span>People</span><span class="tabular-nums">
-				{#if !loading}<Count value={team.length} />{/if}
-			</span>
-		</div>
+		<div class={LABEL}>People</div>
 		{#if loading}
 			{@render skeletons(true)}
 		{/if}
@@ -92,7 +84,7 @@
 				replace
 			>
 				<Avatar username={name} src={directory.avatars[name]} size={20} />
-				<span class={NAME}>{name}</span>
+				<span class={NAME} title={name}>{name}</span>
 			</NavItem>
 		{/each}
 		{#if unassigned}
@@ -105,6 +97,9 @@
 				<Avatar size={20} />
 				<span class={NAME}>Unassigned</span>
 			</NavItem>
+		{/if}
+		{#if !loading && !team.length && !unassigned}
+			<p class="px-2.5 py-1 text-footnote/5 text-label-3">No people yet</p>
 		{/if}
 	</nav>
 </aside>

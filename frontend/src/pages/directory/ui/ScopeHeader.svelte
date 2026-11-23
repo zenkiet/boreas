@@ -27,7 +27,7 @@
 	<div class={HEAD_TEXT}>
 		{#if heading.kind !== 'all'}
 			<a
-				class="-ms-1 mb-1.5 inline-flex items-center gap-0.5 rounded-label px-1 py-0.5 text-footnote/5 font-medium text-label-2 hover:bg-fill-1 hover:text-label"
+				class="hit -ms-1 mb-1.5 inline-flex items-center gap-0.5 rounded-label px-1 py-0.5 text-footnote/5 font-medium text-label-2 hover:bg-fill-1 hover:text-label"
 				href={hrefWith({ person: '' }, '')}
 			>
 				<ChevronLeft size={14} />All tasks
@@ -57,11 +57,13 @@
 			</div>
 		{/if}
 	</div>
-	<search class={HEAD_SIDE}>
-		<SearchField
-			label="Search tasks, projects and people"
-			placeholder="Search tasks, projects, people"
-			bind:value={() => query, (q) => replaceWith({ q: (query = q) })}
-		/>
-	</search>
+	{#if directory.tasks.length}
+		<search class={HEAD_SIDE}>
+			<SearchField
+				label="Search tasks, projects and people"
+				placeholder="Search tasks, projects, people"
+				bind:value={() => query, (q) => replaceWith({ q: (query = q) })}
+			/>
+		</search>
+	{/if}
 </div>

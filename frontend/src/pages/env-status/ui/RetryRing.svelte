@@ -29,5 +29,5 @@
 			transform="rotate(-90 10 10)"
 		/>
 	</svg>
-	Retry now · {seconds}s
+	Try again · {seconds}s
 </button>

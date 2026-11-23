@@ -53,14 +53,20 @@ export const hrefWith = (patch: Patch, project = urlState.project) =>
 export const replaceWith = (patch: Patch) =>
 	go(patch, urlState.project, { replace: true, reset: false });
 
-export const showProject = (project: string, options?: { reset: boolean }) =>
-	go({ person: '' }, project, options);
+export const showProject = (project: string) => go({ person: '' }, project, { reset: false });
 
 let pushed = '';
 
 export const openTask = (key: string) => {
 	go({ task: key }, urlState.project, { reset: false }).then(() => {
 		pushed = page.url.href;
+	});
+};
+
+export const switchTask = (key: string) => {
+	const own = pushed === page.url.href;
+	replaceWith({ task: key }).then(() => {
+		if (own) pushed = page.url.href;
 	});
 };
 

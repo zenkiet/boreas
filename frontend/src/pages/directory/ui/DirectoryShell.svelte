@@ -1,14 +1,12 @@
 <script lang="ts">
-	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import type { Snippet } from 'svelte';
 	import { onNavigate } from '$app/navigation';
 	import { directory } from '#entities/task';
 	import { taskKey } from '#shared/api';
 	import { ThemeToggle } from '#shared/theme';
-	import { Brand, EmptyState, viewTransition } from '#shared/ui';
+	import { Brand, viewTransition } from '#shared/ui';
 	import { closeTask, directionOf, switchesView, urlState } from '../model/url-state.ts';
-	import { CARD } from './layout.ts';
+	import DirectoryStates from './DirectoryStates.svelte';
 	import Sidebar from './Sidebar.svelte';
 	import TaskPanel from './TaskPanel.svelte';
 
@@ -17,8 +15,7 @@
 	const opened = $derived(directory.tasks.find((task) => taskKey(task) === urlState.task));
 
 	const reason = (error: unknown) =>
-		(error as Partial<App.Error> | undefined)?.message?.replace(/\.$/, '') ||
-		'Something went wrong while showing it';
+		`${(error as Partial<App.Error> | undefined)?.message?.replace(/\.$/, '') || 'The page hit an unexpected error'}.`;
 
 	$effect(() => directory.live());
 
@@ -43,18 +40,7 @@
 			<svelte:boundary>
 				{@render children()}
 				{#snippet failed(error, reset)}
-					<div class={CARD}>
-						<EmptyState
-							icon={TriangleAlert}
-							tone="bad"
-							title="Couldn’t load the directory"
-							description={`${reason(error)}. Environments keep running.`}
-						>
-							<button type="button" class="btn" onclick={reset}>
-								<RefreshCw size={16} />Try again
-							</button>
-						</EmptyState>
-					</div>
+					<DirectoryStates kind="error" reason={reason(error)} onretry={reset} />
 				{/snippet}
 			</svelte:boundary>
 		</div>

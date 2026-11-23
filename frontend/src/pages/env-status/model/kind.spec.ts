@@ -55,7 +55,10 @@ test('the body names the assignees, or falls back to a role', () => {
 		'Ask a, b and c to check the logs.'
 	);
 	assert.match(copyOf('failed', 'license', 'bld-10').body, /^Ask the project owner to check/);
-	assert.equal(copyOf('missing', 'qrcode-dinein', 'wo-719').code, '404 · NO SUCH ENVIRONMENT');
+	assert.equal(
+		copyOf('missing', 'qrcode-dinein', 'wo-719').body,
+		'qrcode-dinein has no task called wo-719.'
+	);
 });
 
 test('closest matches put the same project first, then the nearest names elsewhere', () => {

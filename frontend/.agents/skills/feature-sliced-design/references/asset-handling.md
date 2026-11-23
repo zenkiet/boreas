@@ -147,15 +147,15 @@ points as a framework boundary, not as an FSD segment.
 
 ## Summary table
 
-| Asset                                  | Location                                |
-| -------------------------------------- | --------------------------------------- |
-| Asset owned by one slice               | Inside that slice, next to its consumer |
-| PDF or template tied to business logic | Inside the slice's `model/` segment     |
-| Presentation asset several must share  | `shared/ui/`, with the module owning it |
-| Icon used by exactly one shared kit UI | Next to that component in `shared/ui/`  |
-| Global CSS reset, theme variables      | `app/styles/`                           |
-| Web fonts                              | App layer when bundled, else public dir |
-| Favicon, robots.txt, sitemap           | Framework convention, else public dir   |
+| Asset                                  | Location                                  |
+| -------------------------------------- | ----------------------------------------- |
+| Asset owned by one slice               | Inside that slice, next to its consumer   |
+| PDF or template tied to business logic | Inside the slice's `model/` segment       |
+| Presentation asset several must share  | `shared/ui/`, with the module owning it   |
+| Icon used by exactly one shared kit UI | Next to that component in `shared/ui/`    |
+| Global CSS reset, theme variables      | `app/styles/`                             |
+| Web fonts                              | App layer when bundled, else public dir   |
+| Favicon, robots.txt, sitemap           | Framework convention, else public dir     |
 
 ## Anti-patterns
 

@@ -8,7 +8,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { TaskStatus } from '#shared/api';
-	import { PageTop, StatusPage } from '#shared/ui';
+	import { PageTop, Skeleton, StatusPage } from '#shared/ui';
 	import { directory } from '#entities/task';
 	import { closestMatches, copyOf, findTask, kindOf } from '../model/kind.ts';
 	import ClosestMatches from './ClosestMatches.svelte';
@@ -76,6 +76,15 @@
 <svelte:boundary failed={serverError}>
 	{#if directory.status === 'loading'}
 		<PageTop />
+		<div
+			class="flex flex-col items-center gap-4 px-5 pt-14 max-sm:px-4 max-sm:pt-8"
+			role="status"
+			aria-label="Checking the environment"
+		>
+			<Skeleton class="size-14 rounded-box" />
+			<Skeleton class="max-w-full" width="280px" height="34px" />
+			<Skeleton class="max-w-full" width="360px" height="20px" />
+		</div>
 	{:else if directory.status === 'error'}
 		{@render serverError()}
 	{:else}
@@ -89,7 +98,9 @@
 				{#if kind === 'starting'}
 					<RetryRing onretry={check} />
 				{:else if retries}
-					<button type="button" class="btn" onclick={check}><RefreshCw size={16} />Retry</button>
+					<button type="button" class="btn" onclick={check}>
+						<RefreshCw size={16} />Try again
+					</button>
 				{/if}
 				<a
 					class={['btn', retries && 'btn-ghost']}

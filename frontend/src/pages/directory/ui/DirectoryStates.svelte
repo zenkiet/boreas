@@ -9,7 +9,11 @@
 	import { hrefWith, urlState } from '../model/url-state.ts';
 	import { CARD, HEAD, HEAD_TEXT, TITLE } from './layout.ts';
 
-	let { kind }: { kind: 'error' | 'empty' | 'nomatch' } = $props();
+	let {
+		kind,
+		reason,
+		onretry
+	}: { kind: 'error' | 'empty' | 'nomatch'; reason?: string; onretry?: () => void } = $props();
 
 	const query = $derived(urlState.q.trim());
 	const place = $derived(
@@ -30,9 +34,9 @@
 			icon={TriangleAlert}
 			tone="bad"
 			title="Couldn’t load the directory"
-			description="{directory.error} Environments keep running."
+			description="{reason ?? directory.error} Environments keep running."
 		>
-			<button type="button" class="btn" onclick={() => directory.refresh()}>
+			<button type="button" class="btn" onclick={onretry ?? (() => directory.refresh())}>
 				<RefreshCw size={16} />Try again
 			</button>
 		</EmptyState>
@@ -50,9 +54,9 @@
 				? `Nothing matches “${query}”${place ? ` in ${place}` : ''}.`
 				: 'None with this status.'}
 		>
-			<a class="btn btn-ghost" href={hrefWith({ q: '', status: '', person: '' }, '')}
-				>Clear filters</a
-			>
+			<a class="btn btn-ghost" href={hrefWith({ q: '', status: '', person: '' }, '')}>
+				Clear filters
+			</a>
 		</EmptyState>
 	{/if}
 </div>

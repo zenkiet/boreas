@@ -1,6 +1,6 @@
-import { DEV_STATUSES, DEV_STATUS_LABEL, devCount } from '#shared/api';
+import { DEV_STATUSES, DEV_STATUS_LABEL } from '#shared/api';
 import type { DevStatus, DirectoryTask, PublicTask } from '#shared/api';
-import { byInstant } from '#shared/lib';
+import { byName } from '#shared/lib';
 import { isUnassigned, NONE } from './scope.ts';
 
 export type GroupBy = 'status' | 'project' | 'person';
@@ -13,18 +13,10 @@ export interface TaskGroup {
 	readonly status?: DevStatus;
 }
 
-const newestFirst = (a: PublicTask, b: PublicTask) => byInstant(b.updatedAt, a.updatedAt);
-
 export const people = <T extends PublicTask>(tasks: readonly T[]): [string, T[]][] =>
-	[...new Set([...tasks].sort(newestFirst).flatMap((task) => task.assignees))]
-		.map((name): [string, T[]] => [name, tasks.filter((task) => task.assignees.includes(name))])
-		.sort((a, b) => b[1].length - a[1].length);
-
-export const breakdown = (tasks: readonly PublicTask[]): string =>
-	DEV_STATUSES.map((status) => [devCount(tasks, status), DEV_STATUS_LABEL[status]] as const)
-		.filter(([count]) => count)
-		.map(([count, label]) => `${count} ${label.toLowerCase()}`)
-		.join(' · ');
+	[...new Set(tasks.flatMap((task) => task.assignees))]
+		.sort(byName)
+		.map((name): [string, T[]] => [name, tasks.filter((task) => task.assignees.includes(name))]);
 
 const byStatus = (tasks: readonly DirectoryTask[], status: DevStatus) =>
 	tasks.filter((task) => task.devStatus === status);

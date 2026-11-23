@@ -45,16 +45,18 @@
 {:else}
 	<div in:rise>
 		<ScopeHeader {heading} />
-		<ProjectChips />
-		<Toolbar tasks={scoped} />
 		{#if !directory.tasks.length}
 			<DirectoryStates kind="empty" />
-		{:else if !visible.length}
-			<DirectoryStates kind="nomatch" />
-		{:else if urlState.view === 'board'}
-			<TaskBoard tasks={visible} />
 		{:else}
-			<TaskList tasks={visible} {needle} />
+			<ProjectChips />
+			<Toolbar tasks={scoped} />
+			{#if !visible.length}
+				<DirectoryStates kind="nomatch" />
+			{:else if urlState.view === 'board'}
+				<TaskBoard tasks={visible} />
+			{:else}
+				<TaskList tasks={visible} {needle} />
+			{/if}
 		{/if}
 	</div>
 {/if}

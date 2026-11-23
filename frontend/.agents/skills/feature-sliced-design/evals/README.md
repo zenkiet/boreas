@@ -27,25 +27,14 @@ There is no semantic grader in CI, because comparing an answer to
 
 ### With a harness
 
-From the repository root, with an OpenAI-compatible API key in the
-environment:
+See "Running the eval cases" in the root `README.md` for the command.
+The command is documented outside `feature-sliced-design/` because that
+directory is distributed to agents as the skill.
 
-```bash
-npx agent-skills-eval . --target <model> --judge <model> --baseline
-```
-
-It runs every prompt twice, with and without the skill in context, grades
-both against the case's assertions, and writes a report under
-`agent-skills-workspace/`. Read the `--baseline` column first. A case that
-passes without the skill is guarding a mistake the model does not make, so
-consider dropping it. A case that passes only with the skill shows where the
-skill changes the answer.
-
-The harness puts `SKILL.md` and every file under `references/` into context
-at once, so a pass shows that the documents decide the case correctly.
-Whether `SKILL.md` sends an agent to the right reference is a separate
-question the harness cannot answer, because an agent reads the skill one
-file at a time. Check that by hand.
+This harness loads `SKILL.md` and all files in `references/` upfront.
+A pass means the model answered the case correctly with all those files
+available. It does not show whether the agent follows `SKILL.md` to find
+the right reference files. Check that separately by hand.
 
 ### By hand
 
@@ -66,15 +55,15 @@ will steer the next one.
 
 Add an object to `evals` with all seven fields:
 
-| Field             | Meaning                                                                                                                      |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `id`              | kebab-case, unique                                                                                                           |
-| `prompt`          | what the user types, verbatim                                                                                                |
-| `expected_output` | the placement, plus what must not happen if that matters                                                                     |
-| `assertions`      | `expected_output` split into conditions a judge can grade one at a time                                                      |
-| `why`             | what regression this case guards against                                                                                     |
-| `source`          | repo-relative path to the primary file that decides it                                                                       |
-| `rule`            | the passage that decides it, as `;`-separated fragments; name a passage from another file too when the decision leans on one |
+| Field | Meaning |
+| --- | --- |
+| `id` | kebab-case, unique |
+| `prompt` | what the user types, verbatim |
+| `expected_output` | the placement, plus what must not happen if that matters |
+| `assertions` | `expected_output` split into conditions a judge can grade one at a time |
+| `why` | what regression this case guards against |
+| `source` | repo-relative path to the primary file that decides it |
+| `rule` | the passage that decides it, as `;`-separated fragments; name a passage from another file too when the decision leans on one |
 
 Each assertion states one condition on the answer, phrased as "The output
 ...". The first one names the placement. Each thing that must not happen

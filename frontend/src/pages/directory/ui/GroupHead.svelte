@@ -4,7 +4,6 @@
 	import { directory, StatusGlyph } from '#entities/task';
 	import { Avatar } from '#entities/user';
 	import { Count } from '#shared/ui';
-	import { breakdown } from '../model/groups.ts';
 	import type { TaskGroup } from '../model/groups.ts';
 	import { hrefWith, urlState } from '../model/url-state.ts';
 	import ProjectMark from './ProjectMark.svelte';
@@ -16,7 +15,11 @@
 			return { label: 'Open project', href: hrefWith({ person: '' }, group.key), replace: false };
 		}
 		if ((group.kind === 'person' || group.kind === 'none') && urlState.person !== group.key) {
-			return { label: 'Only these', href: hrefWith({ person: group.key }, ''), replace: true };
+			return {
+				label: group.kind === 'none' ? 'Only unassigned' : `Only ${group.label}`,
+				href: hrefWith({ person: group.key }, ''),
+				replace: true
+			};
 		}
 	});
 </script>
@@ -38,11 +41,11 @@
 		<span class="font-mono text-caption font-normal text-label-3">/{group.key}</span>
 	{/if}
 	<span class="font-medium text-label-3 tabular-nums"><Count value={group.tasks.length} /></span>
-	{#if !group.status}<span class="text-label-3">· {breakdown(group.tasks)}</span>{/if}
 	{#if pick}
 		<a
 			class="ms-auto inline-flex items-center gap-1 font-semibold text-accent-text hover:underline hover:underline-offset-2"
 			href={pick.href}
+			aria-label={group.kind === 'project' ? `Open project ${group.label}` : undefined}
 			data-sveltekit-replacestate={pick.replace || undefined}
 		>
 			{pick.label}<ChevronRight size={12} />

@@ -18,13 +18,12 @@
 	<h1 class="sr-only">Not found</h1>
 	<EmptyState
 		icon={Compass}
-		code="404 · NOT FOUND"
 		title="No project at /{slug}"
 		description="It may have been renamed or deleted."
 	>
 		{#if hints.length}
 			<div class="mb-2 w-full max-w-105 text-start">
-				<h3 class="text-headline text-label-3">Did you mean</h3>
+				<h3 class="mb-2 text-caption text-label-3">Did you mean</h3>
 				<ul class="ilist">
 					{#each hints as hint (hint.slug)}
 						<li>

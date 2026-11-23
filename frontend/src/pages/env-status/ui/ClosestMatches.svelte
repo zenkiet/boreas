@@ -25,6 +25,7 @@
 							'min-w-0 flex-1 truncate text-footnote',
 							task.description ? 'text-label-2' : 'text-label-3'
 						]}
+						title={task.description}
 					>
 						{task.description || 'No description'}
 					</span>

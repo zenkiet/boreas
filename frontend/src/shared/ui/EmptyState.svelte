@@ -5,14 +5,12 @@
 	let {
 		icon: Icon,
 		tone = 'neutral',
-		code,
 		title,
 		description,
 		children
 	}: {
 		icon: LucideIcon;
 		tone?: 'neutral' | 'bad';
-		code?: string;
 		title: string;
 		description: string;
 		children?: Snippet;
@@ -31,7 +29,6 @@
 	>
 		<Icon size={20} />
 	</span>
-	{#if code}<span class="font-mono text-caption tracking-[0.12em] text-label-3">{code}</span>{/if}
 	<h2 class="text-headline">{title}</h2>
 	<p class="max-w-105 text-subhead/[1.4] text-label-2">{description}</p>
 	{#if children}

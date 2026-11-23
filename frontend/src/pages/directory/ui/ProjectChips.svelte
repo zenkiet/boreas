@@ -15,7 +15,7 @@
 
 	const pick = (slug: string) => {
 		refocus = slug;
-		showProject(slug, { reset: false });
+		showProject(slug);
 	};
 
 	const reveal: Attachment<HTMLElement> = (chip) => {
@@ -27,7 +27,7 @@
 </script>
 
 <div
-	class="-mx-8 mb-3 flex scroll-fade scroll-px-8 [scrollbar-width:none] gap-1.5 overflow-x-auto px-8 pb-0.5 max-sm:-mx-4 max-sm:px-4 lg:hidden"
+	class="-mx-8 mb-3 flex scroll-fade scroll-px-8 [scrollbar-width:none] gap-1.5 overflow-x-auto overflow-y-hidden px-8 pb-0.5 max-sm:-mx-4 max-sm:px-4 lg:hidden"
 	role="toolbar"
 	aria-label="Filter by project"
 	focusgroup="toolbar wrap"

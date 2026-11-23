@@ -110,7 +110,7 @@
 	>
 		<span class="max-sm:snap-start sm:hidden"></span>
 		<div
-			class="flex min-h-0 flex-col max-sm:max-h-[90svh] max-sm:snap-end max-sm:rounded-t-box max-sm:bg-surface max-sm:shadow-2 sm:flex-auto"
+			class="flex min-h-0 min-w-0 flex-col max-sm:max-h-[90svh] max-sm:snap-end max-sm:rounded-t-box max-sm:bg-surface max-sm:shadow-2 sm:flex-auto"
 		>
 			{#if shown}
 				<PanelBar task={shown} {onclose} />

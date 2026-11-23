@@ -220,7 +220,7 @@ A new piece of domain-related code or state needs a home.
 - **Mirroring every API endpoint with an entity.** API endpoints belong in
   `shared/api`. Entities exist for business logic, not for paralleling the
   backend structure.
-- **Creating a `user` entity _only_ to wrap a login response.** A `user`
+- **Creating a `user` entity *only* to wrap a login response.** A `user`
   entity is justified when a stable user-domain responsibility is shared
   across non-auth flows (avatars in comments, names in posts). Until then
   `shared/auth` is simpler. The official Auth guide accepts a token store

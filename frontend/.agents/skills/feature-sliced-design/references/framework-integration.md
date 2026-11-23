@@ -141,8 +141,12 @@ inside the FSD layers. Next.js looks for them in the project root, or in
 `src/` when the Next.js app itself uses `src/`, at the same level as its
 `app/` or `pages/` folder. Keep them there and out of `src/_app/`.
 
-Next.js 16 deprecated the `middleware` convention and renamed it `proxy`;
-older projects still use `middleware.ts`.
+Next.js 16 deprecated the `middleware` convention and renamed it `proxy`.
+Check the `next` version in `package.json` before modifying `middleware.ts`
+or `proxy.ts`. Use `proxy.ts` for Next.js 16+ and `middleware.ts` for 15 or
+earlier. Earlier versions do not load `proxy.ts`, so renaming `middleware.ts`
+to `proxy.ts` disables middleware without an error, including auth checks.
+Only rename an existing `middleware.ts` as part of a Next.js 16 upgrade.
 
 With the layout above, the Next.js `app/` and `pages/` folders sit at the
 project root, so both files sit there too. The `src/` option applies to
@@ -168,15 +172,15 @@ become thin re-exports.
 import { getExamplesList } from '@/shared/db';
 
 export const getExampleData = () => {
-	try {
-		const examplesList = getExamplesList();
-		return Response.json({ examplesList });
-	} catch {
-		return Response.json(null, {
-			status: 500,
-			statusText: 'Ouch, something went wrong'
-		});
-	}
+  try {
+    const examplesList = getExamplesList();
+    return Response.json({ examplesList });
+  } catch {
+    return Response.json(null, {
+      status: 500,
+      statusText: 'Ouch, something went wrong',
+    });
+  }
 };
 
 // src/_app/api-routes/index.ts
@@ -194,7 +198,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 const config = { api: { bodyParser: { sizeLimit: '1mb' } }, maxDuration: 5 };
 const handler = (req: NextApiRequest, res: NextApiResponse) =>
-	res.status(200).json({ message: 'Hello from FSD' });
+  res.status(200).json({ message: 'Hello from FSD' });
 
 export const getExampleData = { config, handler } as const;
 
@@ -223,14 +227,14 @@ the slice that owns them.
 ```json
 // tsconfig.json
 {
-	"compilerOptions": {
-		"baseUrl": ".",
-		"paths": {
-			"@/_app/*": ["src/_app/*"],
-			"@/_pages/*": ["src/_pages/*"],
-			"@/shared/*": ["src/shared/*"]
-		}
-	}
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/_app/*": ["src/_app/*"],
+      "@/_pages/*": ["src/_pages/*"],
+      "@/shared/*": ["src/shared/*"]
+    }
+  }
 }
 ```
 
@@ -288,13 +292,13 @@ my-nuxt-project/
 ```typescript
 // nuxt.config.ts
 export default defineNuxtConfig({
-	alias: {
-		'@': '../src'
-	},
-	dir: {
-		pages: './src/app/routes',
-		layouts: './src/app/layouts'
-	}
+  alias: {
+    "@": "../src",
+  },
+  dir: {
+    pages: "./src/app/routes",
+    layouts: "./src/app/layouts",
+  },
 });
 ```
 
@@ -303,11 +307,11 @@ export default defineNuxtConfig({
 ```vue
 <!-- src/app/routes/index.vue -->
 <script setup>
-import { HomePage } from '@/pages/home';
+import { HomePage } from "@/pages/home";
 </script>
 
 <template>
-	<HomePage />
+  <HomePage />
 </template>
 ```
 
@@ -341,19 +345,19 @@ Vite resolver agrees with TypeScript:
 
 ```typescript
 // vite.config.ts
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { resolve } from "path";
 
 export default defineConfig({
-	plugins: [react()],
-	resolve: {
-		alias: {
-			'@/app': resolve(__dirname, 'src/app'),
-			'@/pages': resolve(__dirname, 'src/pages'),
-			'@/shared': resolve(__dirname, 'src/shared')
-		}
-	}
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@/app": resolve(__dirname, "src/app"),
+      "@/pages": resolve(__dirname, "src/pages"),
+      "@/shared": resolve(__dirname, "src/shared"),
+    },
+  },
 });
 ```
 
@@ -406,11 +410,11 @@ delegate the application work to what the FSD page's public API exposes.
 
 ```typescript
 // app/routes.ts
-import { type RouteConfig, index, route } from '@react-router/dev/routes';
+import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
-	index('routes/home.tsx'),
-	route('products/:id', 'routes/product.tsx')
+  index("routes/home.tsx"),
+  route("products/:id", "routes/product.tsx"),
 ] satisfies RouteConfig;
 ```
 
@@ -443,12 +447,12 @@ Vite plugin:
 
 ```typescript
 // vite.config.ts
-import { defineConfig } from 'vite';
-import { reactRouter } from '@react-router/dev/vite';
-import tsconfigPaths from 'vite-tsconfig-paths';
+import { defineConfig } from "vite";
+import { reactRouter } from "@react-router/dev/vite";
+import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-	plugins: [reactRouter(), tsconfigPaths()]
+  plugins: [reactRouter(), tsconfigPaths()],
 });
 ```
 
@@ -495,12 +499,12 @@ rather than one alias per layer, and this section follows it:
 
 ```json
 {
-	"extends": "astro/tsconfigs/strict",
-	"compilerOptions": {
-		"paths": {
-			"@/*": ["./src/*"]
-		}
-	}
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
 }
 ```
 

@@ -83,10 +83,10 @@ entities/
 
 ```typescript
 // entities/user/@x/order.ts: exposes only what order needs
-export { getUserDisplayName } from '../model/user';
+export { getUserDisplayName } from "../model/user";
 
 // entities/order/model/order-summary.ts
-import { getUserDisplayName } from '@/entities/user/@x/order';
+import { getUserDisplayName } from "@/entities/user/@x/order";
 ```
 
 ### Rules when using @x
@@ -256,26 +256,26 @@ defineProps<{ items: WishlistItem[] }>();
 </script>
 
 <template>
-	<ul>
-		<li v-for="item in items" :key="item.id">
-			<span>{{ item.title }}</span>
-			<slot name="add-to-cart" :productId="item.productId" />
-		</li>
-	</ul>
+  <ul>
+    <li v-for="item in items" :key="item.id">
+      <span>{{ item.title }}</span>
+      <slot name="add-to-cart" :productId="item.productId" />
+    </li>
+  </ul>
 </template>
 
 <!-- pages/wishlist/ui/WishlistPage.vue -->
 <script setup lang="ts">
-import { WishlistItems } from '@/features/manage-wishlist';
-import { AddToCartButton } from '@/features/add-to-cart';
+import { WishlistItems } from "@/features/manage-wishlist";
+import { AddToCartButton } from "@/features/add-to-cart";
 </script>
 
 <template>
-	<WishlistItems :items="items">
-		<template #add-to-cart="{ productId }">
-			<AddToCartButton :productId="productId" />
-		</template>
-	</WishlistItems>
+  <WishlistItems :items="items">
+    <template #add-to-cart="{ productId }">
+      <AddToCartButton :productId="productId" />
+    </template>
+  </WishlistItems>
 </template>
 ```
 

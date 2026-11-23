@@ -84,6 +84,19 @@
 			}
 		}
 	}
+
+	:where(.btn, .chip, .iconbtn, .hit) {
+		position: relative;
+
+		&::after {
+			content: '';
+			position: absolute;
+			inset: 50% auto auto 50%;
+			translate: -50% -50%;
+			inline-size: max(100%, 3rem);
+			block-size: max(100%, 3rem);
+		}
+	}
 }
 
 @utility btn {
@@ -108,12 +121,6 @@
 
 	&:hover {
 		background-color: var(--app-accent-hover);
-	}
-
-	&:disabled {
-		opacity: 0.45;
-		cursor: default;
-		scale: none;
 	}
 }
 
@@ -195,6 +202,10 @@
 		color 200ms var(--ease-out),
 		scale 120ms var(--ease-out);
 
+	&:focus-visible {
+		outline-offset: -2px;
+	}
+
 	&:hover {
 		background-color: var(--app-surface-2);
 		color: var(--app-label);
@@ -205,11 +216,6 @@
 		box-shadow: none;
 		color: var(--app-accent-text);
 		font-weight: 600;
-	}
-
-	&:disabled {
-		opacity: 0.45;
-		cursor: default;
 	}
 
 	& [data-count] {

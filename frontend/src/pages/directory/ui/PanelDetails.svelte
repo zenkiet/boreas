@@ -30,7 +30,7 @@
 			{#each task.assignees as username (username)}
 				<li class="ilist-row">
 					<Avatar {username} src={directory.avatars[username]} size={28} />
-					<span class="min-w-0 flex-1 truncate">{username}</span>
+					<span class="min-w-0 flex-1 truncate" title={username}>{username}</span>
 					<span class="text-footnote whitespace-nowrap text-label-3">
 						{plural(load(username), 'task')}
 					</span>

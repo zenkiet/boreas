@@ -20,6 +20,8 @@ const narrow = (span: { minutes: number } | { hours: number } | { days: number }
 export const byInstant = (a: string, b: string): number =>
 	typeof Temporal === 'object' ? Temporal.Instant.compare(a, b) : Date.parse(a) - Date.parse(b);
 
+export const byName = new Intl.Collator('en', { numeric: true }).compare;
+
 export const plural = (count: number, noun: string, many = `${noun}s`): string =>
 	`${count} ${count === 1 ? noun : many}`;
 

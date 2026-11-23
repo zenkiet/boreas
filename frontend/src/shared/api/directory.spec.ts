@@ -14,7 +14,7 @@ const payload = {
 					assignees: [{ username: 'tuan.pham', avatar: '/a/tuan' }],
 					status: 'running',
 					dev_status: 'ready',
-					updated_at: '2026-11-01T09:00:00Z',
+					updated_at: '2026-11-08T09:00:00Z',
 					last_deploy: { status: 'success', at: '2026-11-01T09:00:00Z' },
 					form_factor: 'mobile',
 					has_password: true
@@ -62,14 +62,14 @@ test('listProjects maps the wire to camelCase and drops non-deploys', async () =
 });
 
 test('listProjects explains a failed answer', async () => {
-	await assert.rejects(listProjects(respond(502, {})), /didn’t answer \(502\)/);
+	await assert.rejects(listProjects(respond(502, {})), /didn’t answer\./);
 	await assert.rejects(
 		listProjects(() => Promise.reject(new TypeError('offline'))),
 		/didn’t answer\./
 	);
 });
 
-test('tasks sort worst first, then newest', async () => {
+test('tasks sort worst first, then by name', async () => {
 	const tasks = flattenTasks(await listProjects(respond(200, payload)));
 	assert.deepEqual(bySeverity(tasks).map(taskKey), [
 		'portal/bdm-1',

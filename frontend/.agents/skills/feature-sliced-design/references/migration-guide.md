@@ -24,7 +24,7 @@ entities with the `@x` notation. See `references/cross-import-patterns.md`.
 Use Steiger to detect slices that are used in only one place:
 
 ```bash
-npm install -D @feature-sliced/steiger
+npm install -D steiger
 npx steiger src
 ```
 
@@ -147,7 +147,7 @@ work outward.
 
 ### Before you start
 
-The most important question to ask the team is: _do you really need it?_
+The most important question to ask the team is: *do you really need it?*
 Some projects are perfectly fine without FSD. Reasons to consider the
 switch:
 

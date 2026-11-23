@@ -4,8 +4,8 @@
 	import { directory, PipeLabel, pipelineOf, StatusGlyph } from '#entities/task';
 	import { appUrl, DEV_STATUS_LABEL, taskKey } from '#shared/api';
 	import type { DirectoryTask } from '#shared/api';
-	import { ago, stamp } from '#shared/lib';
-	import { openTask, showProject, urlState } from '../model/url-state.ts';
+	import { ago } from '#shared/lib';
+	import { openTask, urlState } from '../model/url-state.ts';
 	import ContainerFlag from './ContainerFlag.svelte';
 	import Highlight from './Highlight.svelte';
 	import { AREA } from './layout.ts';
@@ -26,6 +26,8 @@
 <button
 	type="button"
 	class="absolute inset-0 cursor-pointer focus-visible:-outline-offset-2"
+	data-task={key}
+	title={task.description ? `${task.name} · ${task.description}` : task.name}
 	aria-label="Details for {task.name} in {task.project.slug}"
 	aria-current={open || undefined}
 	onclick={() => openTask(key)}
@@ -45,12 +47,7 @@
 </span>
 {#if projectColumn}
 	<span class={['flex min-w-0 items-center', AREA.proj]}>
-		<ProjectTag
-			slug={task.project.slug}
-			icon
-			title="Show every task in {task.project.name}"
-			onclick={() => showProject(task.project.slug)}
-		/>
+		<ProjectTag slug={task.project.slug} icon />
 	</span>
 {/if}
 <span
@@ -61,10 +58,7 @@
 	<TaskPeople {task} />
 </span>
 <span class={['flex min-w-0 items-center', AREA.pipe]}><PipeLabel {...pipelineOf(task)} /></span>
-<span
-	class={['text-footnote/5 whitespace-nowrap text-label-3 tabular-nums', AREA.time]}
-	title={stamp(task.updatedAt)}
->
+<span class={['text-footnote/5 whitespace-nowrap text-label-3 tabular-nums', AREA.time]}>
 	{ago(task.updatedAt, directory.now)}
 </span>
 <a
